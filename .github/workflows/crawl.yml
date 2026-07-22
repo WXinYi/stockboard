@@ -33,7 +33,7 @@ jobs:
         run: pip install requests aiohttp
 
       - name: 数据采集
-        run: cd jiarenmens && python main.py
+        run: cd jiarenmens && python main.py --checkpoint-reset
 
       - name: 导出 JSON
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
