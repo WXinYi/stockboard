@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+dist/
+dist-ssr
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+.venv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# uv
+uv.lock
+
+# Env
+.env
+.env.local
+.env.*.local

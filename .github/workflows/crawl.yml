@@ -1,0 +1,50 @@
+name: 数据采集
+# 由 cron-job.org 通过 repository_dispatch 触发，不用 GitHub 自带 schedule
+
+on:
+  repository_dispatch:
+    types: [crawl]
+  workflow_dispatch:  # 也允许手动触发
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: jiarenmens/requirements.txt
+
+      - name: 安装依赖
+        run: pip install requests aiohttp
+
+      - name: 数据采集
+        run: cd jiarenmens && python main.py
+
+      - name: 导出 JSON
+        run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: stockboard-app/package-lock.json
+
+      - name: Build Vue
+        run: cd stockboard-app && npm ci && npm run build
+
+      - name: 提交数据
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add stockboard-app/public/data/ jiarenmens/data/
+          git diff --staged --quiet || git commit -m "📊 数据更新 $(date +%Y-%m-%d)"
+          git push
