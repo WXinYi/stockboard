@@ -1,10 +1,17 @@
-name: 数据采集
+name: 数据采集 + 部署
 # 由 cron-job.org 通过 repository_dispatch 触发，不用 GitHub 自带 schedule
 
 on:
   repository_dispatch:
     types: [crawl]
   workflow_dispatch:  # 也允许手动触发
+  push:
+    branches: [main]
+
+# 确保并发运行不会被互相覆盖
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   crawl:
@@ -48,3 +55,23 @@ jobs:
           git add stockboard-app/public/data/ jiarenmens/data/
           git diff --staged --quiet || git commit -m "📊 数据更新 $(date +%Y-%m-%d)"
           git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: stockboard-app/dist
+
+  deploy:
+    needs: crawl
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
