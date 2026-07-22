@@ -21,7 +21,7 @@ API_V2_URL = "https://emdcspzhapi.eastmoney.com/rtV2"
 API_V2_HEADERS = {
     "Content-Type": "application/json",
     "Accept": "application/json",
-    "User-Agent": "app-iphone-client-iPhone15,2-95AF5622-67A4-4E77-A1D5-A81063767A79",
+    "User-Agent": "app-iphone-client-iPhone15,2-FAC3049C-3BE9-4D4C-88E3-3B4FD518050A",
     "Accept-Language": "zh-CN,zh-Hans;q=0.9",
 }
 
