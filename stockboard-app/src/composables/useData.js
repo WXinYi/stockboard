@@ -61,10 +61,12 @@ export function useData() {
     return Object.values(map).sort((a, b) => b.total_position - a.total_position)
   })
 
-  // 调仓共识
+  // 调仓共识（仅当日实际交易）
   const tradeConsensus = computed(() => {
     const map = {}
+    const today = currentDate.value
     for (const t of rawTrades.value) {
+      if (t.trade_date !== today) continue
       const code = t.stock_code
       if (!code) continue
       if (!map[code]) {
@@ -163,8 +165,10 @@ export function useData() {
       }
     }
 
-    // 调仓信号：高手买入大幅加分，卖出扣分
+    // 调仓信号：高手买入大幅加分，卖出扣分（仅当日实际交易）
+    const today = currentDate.value
     for (const t of rawTrades.value) {
+      if (t.trade_date !== today) continue
       if (!qualityPlayers[t.zh_id]) continue
       const code = t.stock_code
       if (!code) continue
@@ -215,7 +219,9 @@ export function useData() {
       stockMap[code].totalPosition += pos.position_ratio || 0
       if (qualitySet[pos.zh_id]) stockMap[code].qualityHolders++
     }
+    const today2 = currentDate.value
     for (const t of rawTrades.value) {
+      if (t.trade_date !== today2) continue
       const code = t.stock_code
       if (!code || !stockMap[code]) continue
       if (t.direction === '买入') {
@@ -240,11 +246,12 @@ export function useData() {
     }
   })
 
-  // 今日有调仓的选手 ID 集合
+  // 今日有调仓的选手 ID 集合（按 trade_date 过滤，非 crawl_date）
   const tradedPlayerIds = computed(() => {
     const ids = new Set()
+    const today = currentDate.value
     for (const t of rawTrades.value) {
-      if (t.zh_id) ids.add(t.zh_id)
+      if (t.zh_id && t.trade_date === today) ids.add(t.zh_id)
     }
     return ids
   })
