@@ -24,8 +24,8 @@ function pct(v) {
     <h2 style="border:none;margin-bottom:8px;">💡 今日抄作业指南</h2>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
       <span style="background:#e8f4fd;color:#2980b9;padding:4px 12px;border-radius:8px;font-size:13px;font-weight:600;">🏅 高手定义</span>
-      <span style="font-size:12px;color:#666;">运行 <b>≥ 200天</b> + 最大回撤 <b>≤ 30%</b></span>
-      <span style="font-size:11px;color:#aaa;">（排除短期运气型选手，只看经过时间检验的稳健选手）</span>
+      <span style="font-size:12px;color:#666;">运行 <b>≥ 200天</b></span>
+      <span style="font-size:11px;color:#aaa;">（经过时间检验的选手，回撤需结合历史收益综合判断）</span>
     </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
       <div><span style="font-size:28px;font-weight:700;color:#e74c3c;">{{ signals.buySignals.length }}</span><span style="font-size:13px;color:#888;"> 只股票有高手买入</span></div>

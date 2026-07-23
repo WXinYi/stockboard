@@ -23,7 +23,9 @@ export function useData() {
   const qualityOnly = ref(false)
 
   function isQuality(p) {
-    return (p.days || 0) >= 200 && (p.max_drawdown || 0) <= 30
+    // 高手定义：运营天数足够长（经过时间检验），不做硬性回撤限制
+    // 因为 max_drawdown 是全历史最大回撤，早期回撤高不代表现在不行
+    return (p.days || 0) >= 200
   }
 
   // 排序后的选手（置顶优先）

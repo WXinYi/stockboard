@@ -67,27 +67,27 @@ onMounted(async () => {
                   :stock-count="stockStats.length" />
 
     <div class="container">
-      <nav class="tabs" v-if="!detailPlayer">
+      <nav class="tabs" v-show="!detailPlayer">
         <button v-for="t in tabs" :key="t.key"
                 :class="['tab', { active: activeTab === t.key }]"
                 @click="activeTab = t.key">{{ t.label }}</button>
       </nav>
 
+      <KeepAlive>
+        <CopyTradeTab v-if="!detailPlayer && activeTab === 'copy'" :signals="copyTradeSignals" :player-ids="playerNameMap" @show-player="showPlayer" />
+        <OverviewTab v-else-if="!detailPlayer && activeTab === 'overview'" :dist="positionDist" :players="sortedPlayers" :traded-player-ids="tradedPlayerIds" @show-player="showPlayer" />
+        <RankingsTab v-else-if="!detailPlayer && activeTab === 'rankings'" :sorted="sortedPlayers" :styles="playerStyles" :traded-player-ids="tradedPlayerIds" @show-player="showPlayer" />
+        <StockTab v-else-if="!detailPlayer && activeTab === 'stocks'" :stats="stockStats" :all-players="sortedPlayers" @show-player="showPlayer" />
+        <SectorTab v-else-if="!detailPlayer && activeTab === 'sectors'" :sectors="sectorStats" />
+        <TradeTab v-else-if="!detailPlayer && activeTab === 'trades'" :consensus="tradeConsensus" :player-ids="playerNameMap" @show-player="showPlayer" />
+        <CompareTab v-else-if="!detailPlayer && activeTab === 'compare'" :compare="stockCompare" />
+        <PositionTracking v-else-if="!detailPlayer && activeTab === 'tracking'" :changes="positionChanges" @show-player="showPlayer" />
+      </KeepAlive>
+
       <div v-if="detailPlayer">
         <button class="back-btn" @click="backToList">← 返回列表</button>
         <PlayerDetail :player="detailPlayer" :history="playerReturnHistory" @show-player="showPlayer" />
       </div>
-
-      <template v-else>
-        <CopyTradeTab v-if="activeTab === 'copy'" :signals="copyTradeSignals" :player-ids="playerNameMap" @show-player="showPlayer" />
-        <OverviewTab v-else-if="activeTab === 'overview'" :dist="positionDist" :players="sortedPlayers" :traded-player-ids="tradedPlayerIds" />
-        <RankingsTab v-else-if="activeTab === 'rankings'" :sorted="sortedPlayers" :styles="playerStyles" :traded-player-ids="tradedPlayerIds" @show-player="showPlayer" />
-        <StockTab v-else-if="activeTab === 'stocks'" :stats="stockStats" :all-players="sortedPlayers" @show-player="showPlayer" />
-        <SectorTab v-else-if="activeTab === 'sectors'" :sectors="sectorStats" />
-        <TradeTab v-else-if="activeTab === 'trades'" :consensus="tradeConsensus" :player-ids="playerNameMap" @show-player="showPlayer" />
-        <CompareTab v-else-if="activeTab === 'compare'" :compare="stockCompare" />
-        <PositionTracking v-else-if="activeTab === 'tracking'" :changes="positionChanges" @show-player="showPlayer" />
-      </template>
     </div>
 
     <footer class="footer">数据看板 · {{ currentDate || '—' }}</footer>
