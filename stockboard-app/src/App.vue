@@ -13,7 +13,7 @@ import CompareTab from './components/CompareTab.vue'
 import PositionTracking from './components/PositionTracking.vue'
 import PlayerDetail from './components/PlayerDetail.vue'
 
-const { dates, currentDate, loading, sortedPlayers, stockStats, tradeConsensus, positionDist, playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare, tradedPlayerIds, playerNameMap, loadDates, loadDate } = useData()
+const { dates, currentDate, loading, sortedPlayers, stockStats, tradeConsensus, positionDist, playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare, tradedPlayerIds, playerNameMap, crawlTime, loadDates, loadDate } = useData()
 const { positionChanges, getPlayerHistory, loadHistory } = useHistory()
 
 const tabs = [
@@ -55,6 +55,7 @@ onMounted(async () => {
           <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
         </select>
         数据来源: 东方财富
+        <span v-if="crawlTime" style="font-size:11px;color:#aaa;">抓取时间: {{ crawlTime }}</span>
         <span v-if="fullRankPlayers.length" style="font-size:11px;color:#f1c40f;">{{ fullRankPlayers.length }}人五榜全上</span>
         <span v-if="loading" class="loading">加载中...</span>
       </div>

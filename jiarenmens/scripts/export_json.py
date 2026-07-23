@@ -6,8 +6,7 @@
 """
 import sqlite3, json, os, argparse
 from pathlib import Path
-from datetime import date
-
+from datetime import date, datetime
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "crawl_data.db"
 
@@ -57,7 +56,8 @@ def export(db_path, crawl_date, out_dir):
     if crawl_date not in existing_dates:
         existing_dates.append(crawl_date)
         existing_dates.sort()
-    index_path.write_text(json.dumps({"dates": existing_dates}, ensure_ascii=False), encoding="utf-8")
+    crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    index_path.write_text(json.dumps({"dates": existing_dates, "crawl_time": crawl_time}, ensure_ascii=False), encoding="utf-8")
 
     print(f"✅ 导出完成: {len(players)} 选手, {len(positions)} 持仓, {len(trades)} 调仓 → {date_dir}")
 

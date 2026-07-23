@@ -7,6 +7,7 @@ const WATCHED_IDS = new Set(['900240956'])
 export function useData() {
   const dates = ref([])
   const currentDate = ref('')
+  const crawlTime = ref('')
   const loading = ref(false)
   const players = ref([])
   const positions = ref([])
@@ -283,6 +284,7 @@ export function useData() {
     try {
       const idx = await fetchIndex()
       dates.value = idx.dates || []
+      crawlTime.value = idx.crawl_time || ''
       if (dates.value.length > 0) {
         currentDate.value = dates.value[dates.value.length - 1]
         await loadDate(currentDate.value)
@@ -334,6 +336,6 @@ export function useData() {
     sortKey, qualityOnly,
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
     tradedPlayerIds, playerNameMap,
-    loadDates, loadDate,
+    crawlTime, loadDates, loadDate,
   }
 }
