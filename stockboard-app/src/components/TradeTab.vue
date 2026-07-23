@@ -17,13 +17,12 @@ const search = ref('')
       <input type="text" v-model="search" placeholder="🔍 搜索股票名..." />
     </div>
     <div style="max-height:600px;overflow-y:auto;">
-      <div v-if="!consensus.length" class="empty-state">📭 今日暂无调仓记录</div>
+      <div v-if="!consensus.length" class="empty-state">📭 今日暂无调仓 · 下个交易日 09:45 自动采集</div>
       <div v-for="c in consensus" :key="c.code"
            class="consensus-card"
            v-show="!search || (c.name+''+c.code).toLowerCase().includes(search.toLowerCase())">
         <h3>
-          <template v-if="c.buy_players.length + c.sell_players.length >= 5">🔥</template>
-          <template v-else-if="c.buy_players.length + c.sell_players.length >= 3">📈</template>
+          <span class="strength-tag" :style="{color: c.strengthColor, fontSize: '11px'}">{{ c.strength }}</span>
           {{ c.name }}
         </h3>
         <div class="code">{{ c.code }} · {{ c.buy_players.length + c.sell_players.length }}人交易</div>

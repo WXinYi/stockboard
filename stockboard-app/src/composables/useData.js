@@ -106,9 +106,18 @@ export function useData() {
         }
       }
     }
-    return Object.values(map).sort((a, b) =>
+    const result = Object.values(map).sort((a, b) =>
       (b.buy_players.length + b.sell_players.length) - (a.buy_players.length + a.sell_players.length)
     )
+    // 共识强度分级
+    for (const item of result) {
+      const n = item.buy_players.length + item.sell_players.length
+      if (n >= 10) { item.strength = '🔥 强烈'; item.strengthColor = '#e74c3c' }
+      else if (n >= 5) { item.strength = '📈 一般'; item.strengthColor = '#e67e22' }
+      else if (n >= 2) { item.strength = '💡 微弱'; item.strengthColor = '#2980b9' }
+      else { item.strength = '单一'; item.strengthColor = '#999' }
+    }
+    return result
   })
 
   // 操作风格分类

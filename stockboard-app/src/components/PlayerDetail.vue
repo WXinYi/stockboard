@@ -71,6 +71,7 @@ onMounted(() => renderCurve())
 
 <template>
   <div v-if="player">
+    <button class="back-btn" @click="router.back()">← 返回</button>
     <div class="player-meta">
       <div class="player-meta-item"><div class="val" style="color:#2980b9;">{{ player.name || player.zh_id }}</div><div class="lbl">选手</div></div>
       <div class="player-meta-item"><div class="val" :style="{ color: player.total_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>

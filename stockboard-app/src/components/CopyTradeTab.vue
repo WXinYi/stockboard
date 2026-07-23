@@ -5,6 +5,7 @@ import { useTableSort } from '../composables/useTableSort.js'
 
 const router = useRouter()
 const { copyTradeSignals: signals, playerNameMap: playerIds } = inject('stockData')
+const { alerts, positionChanges: posCh } = inject('stockHistory')
 function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
 const coreData = computed(() => signals.value.coreHoldings)
@@ -18,6 +19,18 @@ function pct(v) {
 </script>
 
 <template>
+  <!-- 异常预警 -->
+  <div v-if="alerts.high.length" class="alert-banner">
+    ⚠️ <strong>异常预警</strong>：
+    <span v-for="a in alerts.high" :key="a.zh_id+a.stock_code" style="margin-right:12px;cursor:pointer;" @click="goPlayer(a.zh_id)">{{ a.msg }}</span>
+  </div>
+
+  <!-- 持仓变更摘要 -->
+  <div v-if="posCh.hasHistory" class="summary-bar">
+    📌 {{ posCh.today }} · +{{ posCh.added.length }}新进 -{{ posCh.cleared.length }}清仓 {{ posCh.changes.length }}笔变动
+  </div>
+  <div v-else class="summary-bar" style="color:#aaa;">📌 需要至少2天数据 · 下个交易日 09:45 自动采集</div>
+
   <!-- 置顶总结 -->
   <div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,#fef9e7 0%,#fff 100%);border:1px solid #f0d060;">
     <h2 style="border:none;margin-bottom:8px;">💡 今日抄作业指南</h2>

@@ -108,5 +108,18 @@ export function useHistory() {
     }
   }
 
-  return { historyLoaded, dateList, positionChanges, getPlayerHistory, loadHistory }
+  // 异常检测：清仓 + 大幅减仓
+  const alerts = computed(() => {
+    const ch = positionChanges.value
+    if (!ch || !ch.changes) return { high: [], mid: [] }
+    const high = []
+    const mid = []
+    for (const c of ch.changes) {
+      if (c.type === '清除') high.push({ player_name: c.player_name, zh_id: c.zh_id, stock_name: c.stock_name, stock_code: c.stock_code, msg: `${c.player_name} 清仓 ${c.stock_name}`, delta: c.delta })
+      else if (c.delta < -30) mid.push({ player_name: c.player_name, zh_id: c.zh_id, stock_name: c.stock_name, stock_code: c.stock_code, msg: `${c.player_name} 减仓 ${c.stock_name} ${Math.abs(c.delta).toFixed(0)}%`, delta: c.delta })
+    }
+    return { high, mid }
+  })
+
+  return { historyLoaded, dateList, positionChanges, alerts, getPlayerHistory, loadHistory }
 }

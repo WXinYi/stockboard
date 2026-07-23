@@ -10,7 +10,7 @@ import PositionTracking from './components/PositionTracking.vue'
 import PlayerDetail from './components/PlayerDetail.vue'
 
 const routes = [
-  { path: '/', redirect: '/overview' },
+  { path: '/', redirect: '/copy' },
   { path: '/overview', component: OverviewTab, meta: { keepAlive: true } },
   { path: '/copy', component: CopyTradeTab, meta: { keepAlive: true } },
   { path: '/rankings', component: RankingsTab, meta: { keepAlive: true } },

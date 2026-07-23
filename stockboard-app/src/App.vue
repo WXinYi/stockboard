@@ -31,7 +31,7 @@ onMounted(async () => {
         <span v-if="crawlTime" style="font-size:11px;color:#aaa;">抓取时间: {{ crawlTime }}</span>
         数据来源: 东方财富
         <span v-if="fullRankPlayers.length" style="font-size:11px;color:#f1c40f;">{{ fullRankPlayers.length }}人五榜全上</span>
-        <span v-if="loading" class="loading">加载中...</span>
+        <span v-if="loading" class="skeleton" style="width:60px;height:14px;display:inline-block;vertical-align:middle;"></span>
       </div>
     </header>
 

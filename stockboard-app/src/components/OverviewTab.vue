@@ -87,10 +87,10 @@ watch(() => dist.value, () => renderCharts(), { deep: true })
 
 <template>
   <div class="stats-row">
-    <div class="stat-card"><div class="stat-val">{{ allPlayers.length }}</div><div class="stat-lbl">选手总数</div></div>
-    <div class="stat-card"><div class="stat-val">{{ stockStats.reduce((s,x)=>s+x.count,0) }}</div><div class="stat-lbl">持仓记录</div></div>
-    <div class="stat-card"><div class="stat-val">{{ tradeConsensus.reduce((s,x)=>s+x.buy_count+x.sell_count,0) }}</div><div class="stat-lbl">调仓笔数</div></div>
-    <div class="stat-card"><div class="stat-val">{{ stockStats.length }}</div><div class="stat-lbl">涉及标的</div></div>
+    <div class="stat-card clickable" @click="router.push('/rankings')"><div class="stat-val">{{ allPlayers.length }}</div><div class="stat-lbl">选手总数</div></div>
+    <div class="stat-card" :class="{ clickable: stockStats.length }" @click="stockStats.length && router.push('/stocks')"><div class="stat-val">{{ stockStats.reduce((s,x)=>s+x.count,0) }}</div><div class="stat-lbl">持仓记录</div></div>
+    <div class="stat-card clickable" @click="router.push('/trades')"><div class="stat-val">{{ tradeConsensus.reduce((s,x)=>s+x.buy_count+x.sell_count,0) }}</div><div class="stat-lbl">调仓笔数</div></div>
+    <div class="stat-card" :class="{ clickable: stockStats.length }" @click="stockStats.length && router.push('/stocks')"><div class="stat-val">{{ stockStats.length }}</div><div class="stat-lbl">涉及标的</div></div>
   </div>
   <div class="grid-2">
     <div class="card">
