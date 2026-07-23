@@ -13,7 +13,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from typing import List, Dict, Any, Tuple, Optional
 
 from src.spiders.player_list import PlayerListSpider
@@ -295,6 +295,10 @@ def main():
     logger.info(f"股票数据看板 - 数据采集")
     logger.info(f"每榜单: {args.limit}名, 并发数: {args.workers}, 批量大小: {BATCH_SIZE}")
     logger.info(f"存储模式: SQLite")
+    # 记录抓取开始时间（北京时间）
+    crawl_start = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    (Path(__file__).parent / "data" / "crawl_start.txt").write_text(crawl_start)
+
     logger.info("=" * 60)
 
     # Step 1: 获取选手列表
