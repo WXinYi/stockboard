@@ -23,9 +23,27 @@ export function useData() {
   const qualityOnly = ref(false)
 
   function isQuality(p) {
-    // 高手定义：运营天数足够长（经过时间检验），不做硬性回撤限制
-    // 因为 max_drawdown 是全历史最大回撤，早期回撤高不代表现在不行
-    return (p.days || 0) >= 200
+    // 科学筛选：时间加权 + 动量趋势 + 风险调整
+    // 近期表现权重更高（月>周>日），结合长期年收益，除以回撤做风险调整
+    const days = p.days || 0
+    if (days < 200) return false
+
+    const daily = p.daily_return || 0
+    const weekly = p.weekly_return || 0
+    const monthly = p.monthly_return || 0
+    const yearly = p.yearly_return || 0
+
+    // 近端得分：月×0.5 + 周×0.3 + 日×0.2 （近期眼光更重）
+    const recentScore = monthly * 0.5 + weekly * 0.3 + daily * 0.2
+    // 长期得分：年×0.6 + 近端×0.4 （长短期平衡）
+    const longTermScore = yearly * 0.6 + recentScore * 0.4
+
+    const drawdown = Math.abs(p.max_drawdown || 0)
+    if (drawdown < 0.01) return longTermScore > 0
+
+    // 风险调整：每承担1%回撤能获得多少收益
+    const riskAdjusted = longTermScore / drawdown
+    return riskAdjusted >= 0.15
   }
 
   // 排序后的选手（置顶优先）
@@ -342,7 +360,7 @@ export function useData() {
   return {
     dates, currentDate, loading,
     sortedPlayers, stockStats, tradeConsensus, positionDist,
-    sortKey, qualityOnly,
+    sortKey, qualityOnly, isQuality,
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
     tradedPlayerIds, playerNameMap,
     crawlTime, loadDates, loadDate,

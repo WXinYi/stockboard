@@ -1,17 +1,23 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Chart, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler } from 'chart.js'
 import { useTableSort } from '../composables/useTableSort.js'
 Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler)
 
-const props = defineProps({
-  player: { type: Object, required: true },
-  history: { type: Array, default: () => [] },
-})
-const emit = defineEmits(['show-player'])
+const route = useRoute()
+const router = useRouter()
+const { sortedPlayers } = inject('stockData')
+const { getPlayerHistory } = inject('stockHistory')
 
-const posData = computed(() => props.player._positions || [])
-const tradeData = computed(() => props.player._trades || [])
+const player = computed(() => {
+  const all = [...sortedPlayers.value.pinned, ...sortedPlayers.value.rest]
+  return all.find(p => p.zh_id === route.params.zh_id) || null
+})
+const history = computed(() => getPlayerHistory(route.params.zh_id))
+
+const posData = computed(() => player.value?._positions || [])
+const tradeData = computed(() => player.value?._trades || [])
 const { sorted: sortedPos, toggle: tp, indicator: ip } = useTableSort(posData, 'position_ratio')
 const { sorted: sortedTrades, toggle: tt, indicator: it } = useTableSort(tradeData, 'trade_date')
 
@@ -34,17 +40,17 @@ const curveCanvas = ref(null)
 let curveChart = null
 
 function renderCurve() {
-  if (!curveCanvas.value || !props.history.length) return
+  if (!curveCanvas.value || !history.value.length) return
   if (curveChart) curveChart.destroy()
-  const labels = props.history.map(h => h.date.slice(5))
-  const dailyData = props.history.map(h => h.daily_return)
+  const labels = history.value.map(h => h.date.slice(5))
+  const dailyData = history.value.map(h => h.daily_return)
   curveChart = new Chart(curveCanvas.value, {
     type: 'line',
     data: {
       labels,
       datasets: [
         { label: '日收益 %', data: dailyData, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)', fill: true, tension: 0.3, pointRadius: 3, yAxisID: 'y' },
-        { label: '净值', data: props.history.map(h => h.net_value), borderColor: '#2980b9', backgroundColor: 'rgba(41,128,185,0.05)', fill: true, tension: 0.3, pointRadius: 2, yAxisID: 'y1' }
+        { label: '净值', data: history.value.map(h => h.net_value), borderColor: '#2980b9', backgroundColor: 'rgba(41,128,185,0.05)', fill: true, tension: 0.3, pointRadius: 2, yAxisID: 'y1' }
       ]
     },
     options: {
@@ -59,7 +65,7 @@ function renderCurve() {
   })
 }
 
-watch(() => props.history, () => renderCurve(), { deep: true })
+watch(() => history.value, () => renderCurve(), { deep: true })
 onMounted(() => renderCurve())
 </script>
 

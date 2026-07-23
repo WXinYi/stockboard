@@ -1,11 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
+import { useRouter } from 'vue-router'
 
-const props = defineProps({
-  consensus: { type: Array, default: () => [] },
-  playerIds: { type: Object, default: () => ({}) },
-})
-const emit = defineEmits(['show-player'])
+const router = useRouter()
+const { tradeConsensus: consensus, playerNameMap: playerIds } = inject('stockData')
+function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
 const search = ref('')
 </script>
@@ -34,7 +33,7 @@ const search = ref('')
         <div v-if="c.buy_players.length" class="players">
           <template v-for="(p, idx) in c.buy_players" :key="'b'+p">
             <span v-if="idx > 0">、</span>
-            <span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span>
+            <span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span>
           </template>
         </div>
         <div v-if="c.sell_players.length" class="bar" style="margin-top:4px;">
@@ -43,7 +42,7 @@ const search = ref('')
         <div v-if="c.sell_players.length" class="players">
           <template v-for="(p, idx) in c.sell_players" :key="'s'+p">
             <span v-if="idx > 0">、</span>
-            <span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span>
+            <span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span>
           </template>
         </div>
       </div>

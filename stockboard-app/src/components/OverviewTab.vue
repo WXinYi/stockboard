@@ -1,16 +1,14 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Chart, DoughnutController, ArcElement, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js'
 
 Chart.register(DoughnutController, ArcElement, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
-const props = defineProps({
-  dist: { type: Object, default: () => ({}) },
-  players: { type: Object, default: () => ({ pinned: [], rest: [] }) },
-  tradedPlayerIds: { type: Set, default: () => new Set() },
-})
+const router = useRouter()
+const { sortedPlayers: players, positionDist: dist, tradedPlayerIds, stockStats, tradeConsensus, isQuality } = inject('stockData')
 
-const allPlayers = computed(() => [...props.players.pinned, ...props.players.rest])
+const allPlayers = computed(() => [...players.value.pinned, ...players.value.rest])
 
 const dailyTop = computed(() =>
   [...allPlayers.value].sort((a, b) => (b.daily_return || 0) - (a.daily_return || 0)).slice(0, 10)
@@ -35,7 +33,7 @@ function renderCharts() {
   if (distChart) distChart.destroy()
   if (profitChart) profitChart.destroy()
 
-  const d = props.dist
+  const d = dist.value
   const labels = ['9成以上','7-9成','5-7成','3-5成','1-3成','1成以下','空仓']
   const colors = ['#e74c3c','#e67e22','#f39c12','#f1c40f','#2ecc71','#3498db','#95a5a6']
   const data = labels.map(l => d[l] || 0)
@@ -84,10 +82,16 @@ function renderCharts() {
 onMounted(() => {
   if (distCanvas.value) renderCharts()
 })
-watch(() => props.dist, () => renderCharts(), { deep: true })
+watch(() => dist.value, () => renderCharts(), { deep: true })
 </script>
 
 <template>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-val">{{ allPlayers.length }}</div><div class="stat-lbl">选手总数</div></div>
+    <div class="stat-card"><div class="stat-val">{{ stockStats.reduce((s,x)=>s+x.count,0) }}</div><div class="stat-lbl">持仓记录</div></div>
+    <div class="stat-card"><div class="stat-val">{{ tradeConsensus.reduce((s,x)=>s+x.buy_count+x.sell_count,0) }}</div><div class="stat-lbl">调仓笔数</div></div>
+    <div class="stat-card"><div class="stat-val">{{ stockStats.length }}</div><div class="stat-lbl">涉及标的</div></div>
+  </div>
   <div class="grid-2">
     <div class="card">
       <h2>仓位分布</h2>
@@ -99,7 +103,7 @@ watch(() => props.dist, () => renderCharts(), { deep: true })
         <tbody>
           <tr v-for="(p, i) in dailyTop" :key="p.zh_id">
             <td>{{ i + 1 }}</td>
-            <td><a href="#" @click.prevent="$emit('showPlayer', p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}</a><span v-if="tradedPlayerIds && tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
+            <td><a href="#" @click.prevent="router.push('/player/' + p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></a><span v-if="tradedPlayerIds && tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
             <td v-html="pct(p.daily_return)"></td>
             <td v-html="pct(p.total_return)"></td>
           </tr>
@@ -118,7 +122,7 @@ watch(() => props.dist, () => renderCharts(), { deep: true })
         <tbody>
           <tr v-for="(p, i) in totalTop" :key="p.zh_id">
             <td>{{ i + 1 }}</td>
-            <td><a href="#" @click.prevent="$emit('showPlayer', p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}</a><span v-if="tradedPlayerIds && tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
+            <td><a href="#" @click.prevent="router.push('/player/' + p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></a><span v-if="tradedPlayerIds && tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
             <td v-html="pct(p.total_return)"></td>
             <td v-html="pct(p.daily_return)"></td>
             <td>{{ (p.net_value || 0).toFixed(3) }}</td>

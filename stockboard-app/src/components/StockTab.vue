@@ -1,20 +1,19 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, inject, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js'
 import { useTableSort } from '../composables/useTableSort.js'
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
-const props = defineProps({
-  stats: { type: Array, default: () => [] },
-  allPlayers: { type: Object, default: () => ({ pinned: [], rest: [] }) },
-})
-const emit = defineEmits(['show-player'])
+const router = useRouter()
+const { stockStats: stats, sortedPlayers: sp, isQuality } = inject('stockData')
+function navigateToPlayer(id) { router.push('/player/' + id) }
 
 const stockSearch = ref('')
 const lookedUpHolders = ref(null)
-const allPlayers = computed(() => [...props.allPlayers.pinned, ...props.allPlayers.rest])
+const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 
-const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(computed(() => props.stats), 'total_position')
+const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(computed(() => stats.value), 'total_position')
 
 function pct(v) {
   const n = parseFloat(v)
@@ -37,7 +36,7 @@ const chartCanvas = ref(null)
 let chart = null
 onMounted(() => {
   if (!chartCanvas.value) return
-  const top10 = props.stats.slice(0, 10)
+  const top10 = stats.value.slice(0, 10)
   chart = new Chart(chartCanvas.value, {
     type: 'bar', data: {
       labels: top10.map(s => s.name),
@@ -64,8 +63,8 @@ onMounted(() => {
       <div v-else>
         <p style="font-size:12px;color:#888;margin-bottom:8px;">{{ lookedUpHolders.length }} 人持有:</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <span v-for="p in lookedUpHolders" :key="p.zh_id" style="background:#f0f2f5;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;" @click="emit('show-player', p.zh_id)">
-            {{ p.name || p.zh_id }} <span style="color:#888;">{{ (p._total_position || 0).toFixed(0) }}%仓位</span>
+          <span v-for="p in lookedUpHolders" :key="p.zh_id" style="background:#f0f2f5;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;" @click="navigateToPlayer(p.zh_id)">
+            {{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span> <span style="color:#888;">{{ (p._total_position || 0).toFixed(0) }}%仓位</span>
           </span>
         </div>
       </div>

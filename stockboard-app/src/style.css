@@ -30,6 +30,22 @@ tr.clickable:hover td { background: #e8f4fd; }
 .trade-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e67e22; margin-left: 3px; vertical-align: middle; }
 .player-chip { color: #2980b9; cursor: pointer; }
 .player-chip:hover { text-decoration: underline; }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: #fff; border-radius: 10px; padding: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.stat-card .stat-val { font-size: 24px; font-weight: 700; color: #2980b9; }
+.stat-card .stat-lbl { font-size: 12px; color: #888; margin-top: 2px; }
+.main-content { padding-bottom: 70px; }
+@media (min-width: 768px) {
+  .main-content { padding-bottom: 0; }
+}
+@media (max-width: 767px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card { padding: 12px; }
+  .stat-card .stat-val { font-size: 20px; }
+  .header { padding: 16px 16px 10px; }
+  .header h1 { font-size: 20px; }
+  .subtitle { font-size: 11px; flex-wrap: wrap; gap: 6px; }
+}
 .positive { color: #e74c3c; font-weight: 600; }
 .negative { color: #27ae60; font-weight: 600; }
 .buy { color: #e74c3c; font-weight: 600; }

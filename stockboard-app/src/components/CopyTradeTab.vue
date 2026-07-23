@@ -1,14 +1,13 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 
-const props = defineProps({
-  signals: { type: Object, default: () => ({ buySignals: [], coreHoldings: [], sellWarnings: [], highQuality: [] }) },
-  playerIds: { type: Object, default: () => ({}) },
-})
-const emit = defineEmits(['show-player'])
+const router = useRouter()
+const { copyTradeSignals: signals, playerNameMap: playerIds } = inject('stockData')
+function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
-const coreData = computed(() => props.signals.coreHoldings)
+const coreData = computed(() => signals.value.coreHoldings)
 const { sorted: sortedCore, toggle: tog, indicator: ind } = useTableSort(coreData, 'totalPosition')
 
 function pct(v) {
@@ -24,8 +23,8 @@ function pct(v) {
     <h2 style="border:none;margin-bottom:8px;">💡 今日抄作业指南</h2>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
       <span style="background:#e8f4fd;color:#2980b9;padding:4px 12px;border-radius:8px;font-size:13px;font-weight:600;">🏅 高手定义</span>
-      <span style="font-size:12px;color:#666;">运行 <b>≥ 200天</b></span>
-      <span style="font-size:11px;color:#aaa;">（经过时间检验的选手，回撤需结合历史收益综合判断）</span>
+      <span style="font-size:12px;color:#666;">运营 <b>≥ 200天</b>，风险调整得分 ≥ 0.15</span>
+      <span style="font-size:11px;color:#aaa;">得分 =（年收益×0.6 + 近端×0.4）÷ 最大回撤，近端 = 月×0.5 + 周×0.3 + 日×0.2</span>
     </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
       <div><span style="font-size:28px;font-weight:700;color:#e74c3c;">{{ signals.buySignals.length }}</span><span style="font-size:13px;color:#888;"> 只股票有高手买入</span></div>
@@ -53,8 +52,8 @@ function pct(v) {
             <span style="color:#888;margin-left:8px;">仓位 {{ s.totalPosition.toFixed(0) }}%</span>
             <span style="color:#2980b9;margin-left:8px;font-weight:600;">信号 {{ s.score.toFixed(1) }}</span>
           </div>
-          <div style="font-size:11px;color:#888;margin-top:2px;">买入: <template v-for="(p, idx) in s.buyers" :key="'b'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
-          <div v-if="s.sellers.length" style="font-size:11px;color:#888;">卖出: <template v-for="(p, idx) in s.sellers" :key="'s'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">买入: <template v-for="(p, idx) in s.buyers" :key="'b'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
+          <div v-if="s.sellers.length" style="font-size:11px;color:#888;">卖出: <template v-for="(p, idx) in s.sellers" :key="'s'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
         </div>
       </div>
     </div>
@@ -74,7 +73,7 @@ function pct(v) {
             <span class="sell">🔴 {{ s.sellers.length }}人卖出</span>
             <span style="color:#888;margin-left:8px;">仓位 {{ s.totalPosition.toFixed(0) }}%</span>
           </div>
-          <div style="font-size:11px;color:#888;margin-top:2px;"><template v-for="(p, idx) in s.sellers" :key="'se'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
+          <div style="font-size:11px;color:#888;margin-top:2px;"><template v-for="(p, idx) in s.sellers" :key="'se'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
         </div>
       </div>
     </div>
@@ -113,7 +112,7 @@ function pct(v) {
           <div v-for="s in sortedCore.slice(0,10)" :key="'h'+s.code" style="padding:8px;border-bottom:1px solid #f0f0f0;">
             <strong style="font-size:13px;">{{ s.name }}</strong>
             <span style="font-size:10px;color:#999;margin-left:4px;">{{ s.code }}</span>
-            <div style="font-size:11px;color:#888;margin-top:2px;"><template v-for="(p, idx) in s.holders" :key="'h'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
+            <div style="font-size:11px;color:#888;margin-top:2px;"><template v-for="(p, idx) in s.holders" :key="'h'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
           </div>
         </div>
       </div>

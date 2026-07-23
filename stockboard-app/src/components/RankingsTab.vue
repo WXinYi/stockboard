@@ -1,23 +1,18 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 
-const props = defineProps({
-  sorted: { type: Object, required: true },
-  styles: { type: Object, default: () => ({}) },
-  tradedPlayerIds: { type: Set, default: () => new Set() },
-})
-const emit = defineEmits(['show-player'])
+const router = useRouter()
+const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality } = inject('stockData')
+
+function navigateToPlayer(id) { router.push('/player/' + id) }
 
 const qualityOn = ref(false)
 const search = ref('')
 const minRanks = ref(0)
 
-function isQuality(p) {
-  return (p.days || 0) >= 200 && (p.max_drawdown || 0) <= 30
-}
-
-const allPlayers = computed(() => [...props.sorted.pinned, ...props.sorted.rest])
+const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
 
 const { sorted: sortedList, toggle: tog, indicator: ind, sortKey } = useTableSort(allPlayers, 'total_return')
 
@@ -97,7 +92,7 @@ const sortHeaders = [
         <tbody>
           <tr v-for="p in displayList.pinned" :key="'p'+p.zh_id"
               :class="['clickable', 'pinned-row']"
-              @click="emit('show-player', p.zh_id)"
+              @click="navigateToPlayer(p.zh_id)"
               v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
             <td>{{ rankMap[p.zh_id] || 1 }}</td>
             <td><strong style="color:#e67e22;">{{ p.name || p.zh_id }} ⭐</strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
@@ -112,7 +107,7 @@ const sortHeaders = [
             <td>{{ p.days || 0 }}天</td>
           </tr>
           <tr v-for="p in displayList.rest" :key="p.zh_id"
-              class="clickable" @click="emit('show-player', p.zh_id)"
+              class="clickable" @click="navigateToPlayer(p.zh_id)"
               v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
             <td>{{ rankMap[p.zh_id] || 1 }}</td>
             <td><strong style="color:#2980b9;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>

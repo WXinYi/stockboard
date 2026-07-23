@@ -1,8 +1,10 @@
 <script setup>
-const props = defineProps({
-  changes: { type: Object, default: () => ({ hasHistory: false, changes: [], added: [], cleared: [], yesterday: '', today: '' }) },
-})
-const emit = defineEmits(['show-player'])
+import { inject } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const { positionChanges: changes } = inject('stockHistory')
+function goPlayer(id) { router.push('/player/' + id) }
 
 function pct(v) {
   const n = parseFloat(v)
@@ -39,7 +41,7 @@ function pct(v) {
           <tr v-for="c in changes.added" :key="c.zh_id+c.stock_code">
             <td><strong>{{ c.stock_name }}</strong></td>
             <td style="color:#999;">{{ c.stock_code }}</td>
-            <td><span class="player-chip" @click="emit('show-player', c.zh_id)">{{ c.player_name }}</span></td>
+            <td><span class="player-chip" @click="goPlayer(c.zh_id)">{{ c.player_name }}</span></td>
             <td><span class="positive">{{ c.todayRatio.toFixed(1) }}%</span></td>
           </tr>
         </tbody>
@@ -54,7 +56,7 @@ function pct(v) {
           <tr v-for="c in changes.cleared" :key="c.zh_id+c.stock_code">
             <td><strong>{{ c.stock_name }}</strong></td>
             <td style="color:#999;">{{ c.stock_code }}</td>
-            <td><span class="player-chip" @click="emit('show-player', c.zh_id)">{{ c.player_name }}</span></td>
+            <td><span class="player-chip" @click="goPlayer(c.zh_id)">{{ c.player_name }}</span></td>
             <td><span class="negative">{{ c.yesterdayRatio.toFixed(1) }}%</span></td>
           </tr>
         </tbody>
@@ -71,7 +73,7 @@ function pct(v) {
               <td>{{ c.emoji }} {{ c.type }}</td>
               <td><strong>{{ c.stock_name }}</strong></td>
               <td style="color:#999;">{{ c.stock_code }}</td>
-              <td><span class="player-chip" @click="emit('show-player', c.zh_id)">{{ c.player_name }}</span></td>
+              <td><span class="player-chip" @click="goPlayer(c.zh_id)">{{ c.player_name }}</span></td>
               <td>{{ c.yesterdayRatio.toFixed(1) }}% → {{ c.todayRatio.toFixed(1) }}%</td>
               <td v-html="pct(c.delta)"></td>
             </tr>

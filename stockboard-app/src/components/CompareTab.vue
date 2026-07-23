@@ -1,13 +1,11 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { useTableSort } from '../composables/useTableSort.js'
 
-const props = defineProps({
-  compare: { type: Object, default: () => ({ concentration: [], divergence: [], qualityCount: 0 }) },
-})
+const { stockCompare: compare } = inject('stockData')
 
-const concData = computed(() => props.compare.concentration)
-const divData = computed(() => props.compare.divergence)
+const concData = computed(() => compare.value.concentration)
+const divData = computed(() => compare.value.divergence)
 
 const { sorted: sortedConc, toggle: tc, indicator: ic } = useTableSort(concData, 'totalHolders')
 const { sorted: sortedDiv, toggle: td, indicator: id } = useTableSort(divData, 'gap')
@@ -16,7 +14,7 @@ const { sorted: sortedDiv, toggle: td, indicator: id } = useTableSort(divData, '
 <template>
   <div class="card" style="margin-bottom:20px;background:#f8f9fa;">
     <h2 style="border:none;margin-bottom:4px;">📊 多空对比</h2>
-    <p class="hint">只做客观数据并列展示，不做判断。高质量选手指运行≥200天 + 回撤≤30%（共 {{ compare.qualityCount }} 人）。点击表头排序。</p>
+    <p class="hint">只做客观数据并列展示，不做判断。高质量选手 × {{ compare.qualityCount }} 人（运营≥200天，风险调整得分≥0.15）。点击表头排序。</p>
   </div>
 
   <div class="card" style="margin-bottom:20px;">
