@@ -7,6 +7,7 @@ Chart.register(DoughnutController, ArcElement, BarController, BarElement, Catego
 const props = defineProps({
   dist: { type: Object, default: () => ({}) },
   players: { type: Object, default: () => ({ pinned: [], rest: [] }) },
+  tradedPlayerIds: { type: Set, default: () => new Set() },
 })
 
 const allPlayers = computed(() => [...props.players.pinned, ...props.players.rest])
@@ -98,7 +99,7 @@ watch(() => props.dist, () => renderCharts(), { deep: true })
         <tbody>
           <tr v-for="(p, i) in dailyTop" :key="p.zh_id">
             <td>{{ i + 1 }}</td>
-            <td><a href="#" @click.prevent="$emit('showPlayer', p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}</a></td>
+            <td><a href="#" @click.prevent="$emit('showPlayer', p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}</a><span v-if="tradedPlayerIds && tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
             <td v-html="pct(p.daily_return)"></td>
             <td v-html="pct(p.total_return)"></td>
           </tr>
@@ -117,7 +118,7 @@ watch(() => props.dist, () => renderCharts(), { deep: true })
         <tbody>
           <tr v-for="(p, i) in totalTop" :key="p.zh_id">
             <td>{{ i + 1 }}</td>
-            <td><a href="#" @click.prevent="$emit('showPlayer', p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}</a></td>
+            <td><a href="#" @click.prevent="$emit('showPlayer', p.zh_id)" style="color:#2980b9;text-decoration:none;">{{ p.name || p.zh_id }}</a><span v-if="tradedPlayerIds && tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
             <td v-html="pct(p.total_return)"></td>
             <td v-html="pct(p.daily_return)"></td>
             <td>{{ (p.net_value || 0).toFixed(3) }}</td>

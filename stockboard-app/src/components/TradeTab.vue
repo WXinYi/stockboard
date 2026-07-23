@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 const props = defineProps({
   consensus: { type: Array, default: () => [] },
+  playerIds: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['show-player'])
 
@@ -30,11 +31,21 @@ const search = ref('')
         <div v-if="c.buy_players.length" class="bar">
           <span class="buy">🟢 买入 {{ c.buy_players.length }}人</span>
         </div>
-        <div v-if="c.buy_players.length" class="players">{{ c.buy_players.join('、') }}</div>
+        <div v-if="c.buy_players.length" class="players">
+          <template v-for="(p, idx) in c.buy_players" :key="'b'+p">
+            <span v-if="idx > 0">、</span>
+            <span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span>
+          </template>
+        </div>
         <div v-if="c.sell_players.length" class="bar" style="margin-top:4px;">
           <span class="sell">🔴 卖出 {{ c.sell_players.length }}人</span>
         </div>
-        <div v-if="c.sell_players.length" class="players">{{ c.sell_players.join('、') }}</div>
+        <div v-if="c.sell_players.length" class="players">
+          <template v-for="(p, idx) in c.sell_players" :key="'s'+p">
+            <span v-if="idx > 0">、</span>
+            <span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span>
+          </template>
+        </div>
       </div>
     </div>
   </div>

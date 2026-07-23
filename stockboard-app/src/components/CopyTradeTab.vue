@@ -4,7 +4,9 @@ import { useTableSort } from '../composables/useTableSort.js'
 
 const props = defineProps({
   signals: { type: Object, default: () => ({ buySignals: [], coreHoldings: [], sellWarnings: [], highQuality: [] }) },
+  playerIds: { type: Object, default: () => ({}) },
 })
+const emit = defineEmits(['show-player'])
 
 const coreData = computed(() => props.signals.coreHoldings)
 const { sorted: sortedCore, toggle: tog, indicator: ind } = useTableSort(coreData, 'totalPosition')
@@ -51,8 +53,8 @@ function pct(v) {
             <span style="color:#888;margin-left:8px;">仓位 {{ s.totalPosition.toFixed(0) }}%</span>
             <span style="color:#2980b9;margin-left:8px;font-weight:600;">信号 {{ s.score.toFixed(1) }}</span>
           </div>
-          <div style="font-size:11px;color:#888;margin-top:2px;">买入: {{ s.buyers.join('、') }}</div>
-          <div v-if="s.sellers.length" style="font-size:11px;color:#888;">卖出: {{ s.sellers.join('、') }}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;">买入: <template v-for="(p, idx) in s.buyers" :key="'b'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
+          <div v-if="s.sellers.length" style="font-size:11px;color:#888;">卖出: <template v-for="(p, idx) in s.sellers" :key="'s'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
         </div>
       </div>
     </div>
@@ -72,7 +74,7 @@ function pct(v) {
             <span class="sell">🔴 {{ s.sellers.length }}人卖出</span>
             <span style="color:#888;margin-left:8px;">仓位 {{ s.totalPosition.toFixed(0) }}%</span>
           </div>
-          <div style="font-size:11px;color:#888;margin-top:2px;">{{ s.sellers.join('、') }}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px;"><template v-for="(p, idx) in s.sellers" :key="'se'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
         </div>
       </div>
     </div>
@@ -111,7 +113,7 @@ function pct(v) {
           <div v-for="s in sortedCore.slice(0,10)" :key="'h'+s.code" style="padding:8px;border-bottom:1px solid #f0f0f0;">
             <strong style="font-size:13px;">{{ s.name }}</strong>
             <span style="font-size:10px;color:#999;margin-left:4px;">{{ s.code }}</span>
-            <div style="font-size:11px;color:#888;margin-top:2px;">{{ s.holders.join('、') }}</div>
+            <div style="font-size:11px;color:#888;margin-top:2px;"><template v-for="(p, idx) in s.holders" :key="'h'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="emit('show-player', playerIds[p] || p)">{{ p }}</span></template></div>
           </div>
         </div>
       </div>

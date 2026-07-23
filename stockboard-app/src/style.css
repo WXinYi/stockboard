@@ -27,6 +27,9 @@ td { padding: 9px 10px; border-bottom: 1px solid #f0f0f0; }
 tr:hover td { background: #f8f9ff; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: #e8f4fd; }
+.trade-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e67e22; margin-left: 3px; vertical-align: middle; }
+.player-chip { color: #2980b9; cursor: pointer; }
+.player-chip:hover { text-decoration: underline; }
 .positive { color: #e74c3c; font-weight: 600; }
 .negative { color: #27ae60; font-weight: 600; }
 .buy { color: #e74c3c; font-weight: 600; }

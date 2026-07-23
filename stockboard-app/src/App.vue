@@ -13,7 +13,7 @@ import CompareTab from './components/CompareTab.vue'
 import PositionTracking from './components/PositionTracking.vue'
 import PlayerDetail from './components/PlayerDetail.vue'
 
-const { dates, currentDate, loading, sortedPlayers, stockStats, tradeConsensus, positionDist, playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare, loadDates, loadDate } = useData()
+const { dates, currentDate, loading, sortedPlayers, stockStats, tradeConsensus, positionDist, playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare, tradedPlayerIds, playerNameMap, loadDates, loadDate } = useData()
 const { positionChanges, getPlayerHistory, loadHistory } = useHistory()
 
 const tabs = [
@@ -78,14 +78,14 @@ onMounted(async () => {
       </div>
 
       <template v-else>
-        <CopyTradeTab v-if="activeTab === 'copy'" :signals="copyTradeSignals" />
-        <OverviewTab v-else-if="activeTab === 'overview'" :dist="positionDist" :players="sortedPlayers" />
-        <RankingsTab v-else-if="activeTab === 'rankings'" :sorted="sortedPlayers" :styles="playerStyles" @show-player="showPlayer" />
+        <CopyTradeTab v-if="activeTab === 'copy'" :signals="copyTradeSignals" :player-ids="playerNameMap" @show-player="showPlayer" />
+        <OverviewTab v-else-if="activeTab === 'overview'" :dist="positionDist" :players="sortedPlayers" :traded-player-ids="tradedPlayerIds" />
+        <RankingsTab v-else-if="activeTab === 'rankings'" :sorted="sortedPlayers" :styles="playerStyles" :traded-player-ids="tradedPlayerIds" @show-player="showPlayer" />
         <StockTab v-else-if="activeTab === 'stocks'" :stats="stockStats" :all-players="sortedPlayers" @show-player="showPlayer" />
         <SectorTab v-else-if="activeTab === 'sectors'" :sectors="sectorStats" />
-        <TradeTab v-else-if="activeTab === 'trades'" :consensus="tradeConsensus" @show-player="showPlayer" />
+        <TradeTab v-else-if="activeTab === 'trades'" :consensus="tradeConsensus" :player-ids="playerNameMap" @show-player="showPlayer" />
         <CompareTab v-else-if="activeTab === 'compare'" :compare="stockCompare" />
-        <PositionTracking v-else-if="activeTab === 'tracking'" :changes="positionChanges" />
+        <PositionTracking v-else-if="activeTab === 'tracking'" :changes="positionChanges" @show-player="showPlayer" />
       </template>
     </div>
 

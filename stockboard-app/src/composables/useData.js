@@ -239,6 +239,25 @@ export function useData() {
     }
   })
 
+  // 今日有调仓的选手 ID 集合
+  const tradedPlayerIds = computed(() => {
+    const ids = new Set()
+    for (const t of rawTrades.value) {
+      if (t.zh_id) ids.add(t.zh_id)
+    }
+    return ids
+  })
+
+  // 选手名 → zh_id 映射（用于 TradeTab/CopyTradeTab 名称反查）
+  const playerNameMap = computed(() => {
+    const map = {}
+    for (const p of rawPlayers.value) {
+      map[p.name || p.zh_id] = p.zh_id
+      map[p.zh_id] = p.zh_id
+    }
+    return map
+  })
+
   // 仓位分布
   const positionDist = computed(() => {
     const dist = { '9成以上': 0, '7-9成': 0, '5-7成': 0, '3-5成': 0, '1-3成': 0, '1成以下': 0, '空仓': 0 }
@@ -314,6 +333,7 @@ export function useData() {
     sortedPlayers, stockStats, tradeConsensus, positionDist,
     sortKey, qualityOnly,
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
+    tradedPlayerIds, playerNameMap,
     loadDates, loadDate,
   }
 }

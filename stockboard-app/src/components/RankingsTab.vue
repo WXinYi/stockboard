@@ -5,6 +5,7 @@ import { useTableSort } from '../composables/useTableSort.js'
 const props = defineProps({
   sorted: { type: Object, required: true },
   styles: { type: Object, default: () => ({}) },
+  tradedPlayerIds: { type: Set, default: () => new Set() },
 })
 const emit = defineEmits(['show-player'])
 
@@ -99,7 +100,7 @@ const sortHeaders = [
               @click="emit('show-player', p.zh_id)"
               v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
             <td>{{ rankMap[p.zh_id] || 1 }}</td>
-            <td><strong style="color:#e67e22;">{{ p.name || p.zh_id }} ⭐</strong></td>
+            <td><strong style="color:#e67e22;">{{ p.name || p.zh_id }} ⭐</strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
             <td style="color:#999;font-size:11px;">{{ p.zh_id }} <span v-if="p.ranks?.length" style="font-size:10px;color:#888;">({{ p.ranks.length }}榜)</span></td>
             <td v-for="h in sortHeaders" :key="h.key" v-html="pct(p[h.key])"></td>
             <td>{{ (p.max_drawdown || 0).toFixed(1) }}%</td>
@@ -114,7 +115,7 @@ const sortHeaders = [
               class="clickable" @click="emit('show-player', p.zh_id)"
               v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
             <td>{{ rankMap[p.zh_id] || 1 }}</td>
-            <td><strong style="color:#2980b9;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></strong></td>
+            <td><strong style="color:#2980b9;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
             <td style="color:#999;font-size:11px;">{{ p.zh_id }} <span v-if="p.ranks?.length" style="font-size:10px;color:#888;">({{ p.ranks.length }}榜)</span></td>
             <td v-for="h in sortHeaders" :key="h.key" v-html="pct(p[h.key])"></td>
             <td>{{ (p.max_drawdown || 0).toFixed(1) }}%</td>
