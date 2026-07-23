@@ -66,7 +66,7 @@ const sortHeaders = [
 <template>
   <div class="card">
     <div class="search-box">
-      <input type="text" v-model="search" placeholder="🔍 搜索选手名称或ID..." />
+      <input type="text" v-model="search" placeholder="🔍 搜索选手名称..." />
     </div>
     <div class="filter-row">
       <span style="font-size:12px;color:#888;">筛选:</span>
@@ -80,7 +80,7 @@ const sortHeaders = [
     <div style="max-height:600px;overflow:auto;">
       <table>
         <thead><tr>
-          <th>#</th><th>选手</th><th>ID</th>
+          <th>#</th><th>选手</th>
           <th v-for="h in sortHeaders" :key="h.key"
               style="cursor:pointer;user-select:none;"
               @click="tog(h.key)">{{ h.label }}{{ ind(h.key) }}</th>
@@ -96,7 +96,6 @@ const sortHeaders = [
               v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
             <td>{{ rankMap[p.zh_id] || 1 }}</td>
             <td><strong style="color:#e67e22;">{{ p.name || p.zh_id }} ⭐</strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
-            <td style="color:#999;font-size:11px;">{{ p.zh_id }} <span v-if="p.ranks?.length" style="font-size:10px;color:#888;">({{ p.ranks.length }}榜)</span></td>
             <td v-for="h in sortHeaders" :key="h.key" v-html="pct(p[h.key])"></td>
             <td>{{ (p.max_drawdown || 0).toFixed(1) }}%</td>
             <td><span style="font-size:11px;">{{ styles[p.zh_id]?.emoji || '—' }}</span></td>
@@ -111,7 +110,6 @@ const sortHeaders = [
               v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
             <td>{{ rankMap[p.zh_id] || 1 }}</td>
             <td><strong style="color:#2980b9;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
-            <td style="color:#999;font-size:11px;">{{ p.zh_id }} <span v-if="p.ranks?.length" style="font-size:10px;color:#888;">({{ p.ranks.length }}榜)</span></td>
             <td v-for="h in sortHeaders" :key="h.key" v-html="pct(p[h.key])"></td>
             <td>{{ (p.max_drawdown || 0).toFixed(1) }}%</td>
             <td><span style="font-size:11px;">{{ styles[p.zh_id]?.emoji || '—' }}</span></td>

@@ -36,6 +36,7 @@ function pct(v) {
     <!-- 新进 -->
     <div class="card" style="margin-bottom:20px;" v-if="changes.added.length">
       <h2>🆕 新进持仓 <span class="badge">{{ changes.added.length }}</span></h2>
+      <div style="max-height:300px;overflow-y:auto;">
       <table><thead><tr><th>股票</th><th>代码</th><th>选手</th><th>仓位</th></tr></thead>
         <tbody>
           <tr v-for="c in changes.added" :key="c.zh_id+c.stock_code">
@@ -46,11 +47,13 @@ function pct(v) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <!-- 清仓 -->
     <div class="card" style="margin-bottom:20px;" v-if="changes.cleared.length">
       <h2>🚫 清仓 <span class="badge">{{ changes.cleared.length }}</span></h2>
+      <div style="max-height:300px;overflow-y:auto;">
       <table><thead><tr><th>股票</th><th>代码</th><th>选手</th><th>原仓位</th></tr></thead>
         <tbody>
           <tr v-for="c in changes.cleared" :key="c.zh_id+c.stock_code">
@@ -61,6 +64,7 @@ function pct(v) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <!-- 全部变动 -->

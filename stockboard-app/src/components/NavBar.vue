@@ -29,17 +29,22 @@ function isActive(key) { return route.path === '/' + key }
     </router-link>
 
     <!-- More button (mobile) / Secondary tabs (PC) -->
-    <div class="more-wrap" @click="showMore = !showMore">
-      <button class="nav-item more-btn" :class="{ active: secondary.some(s => isActive(s.key)) }">
+    <div class="more-wrap">
+      <button class="nav-item more-btn" :class="{ active: secondary.some(s => isActive(s.key)) }"
+        @click.stop="showMore = !showMore">
         <span class="nav-label">⋯</span>
       </button>
-      <div class="more-menu" v-show="showMore" @click.stop>
-        <router-link v-for="t in secondary" :key="t.key" :to="'/' + t.key"
-          class="more-item" :class="{ active: isActive(t.key) }"
-          @click="showMore = false">
-          {{ t.label }}
-        </router-link>
-      </div>
+      <Teleport to="body">
+        <div v-if="showMore" class="more-overlay" @click="showMore = false">
+          <div class="more-menu" @click.stop>
+            <router-link v-for="t in secondary" :key="t.key" :to="'/' + t.key"
+              class="more-item" :class="{ active: isActive(t.key) }"
+              @click="showMore = false">
+              {{ t.label }}
+            </router-link>
+          </div>
+        </div>
+      </Teleport>
     </div>
 
     <!-- PC only: secondary tabs inline -->
@@ -59,9 +64,10 @@ function isActive(key) { return route.path === '/' + key }
 .nav-item.active { background: #2980b9; color: #fff; font-weight: 600; }
 .nav-label { pointer-events: none; }
 .nav-pc { display: none; }
-.more-wrap { position: relative; flex-shrink: 0; }
-.more-menu { position: absolute; bottom: 100%; right: 0; margin-bottom: 8px; background: #fff; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,.15); padding: 4px; min-width: 130px; z-index: 200; }
-.more-item { display: block; padding: 10px 14px; font-size: 13px; text-decoration: none; color: #333; border-radius: 8px; white-space: nowrap; }
+.more-wrap { flex-shrink: 0; }
+.more-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 999; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 60px; }
+.more-menu { background: #fff; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.15); padding: 8px 4px 20px; width: 100%; max-width: 400px; }
+.more-item { display: block; padding: 14px 20px; font-size: 15px; text-decoration: none; color: #333; border-radius: 8px; white-space: nowrap; text-align: center; }
 .more-item:hover { background: #f0f4ff; color: #2980b9; }
 .more-item.active { background: #e8f4fd; color: #2980b9; font-weight: 600; }
 
