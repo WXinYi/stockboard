@@ -40,3 +40,5 @@ uv.lock
 
 # Project doc (local only)
 CLAUDE.md
+*.db-shm
+*.db-wal
