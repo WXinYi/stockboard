@@ -8,7 +8,7 @@ Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearS
 const route = useRoute()
 const router = useRouter()
 const { sortedPlayers } = inject('stockData')
-const { getPlayerHistory } = inject('stockHistory')
+const { historyLoaded, dateList, getPlayerHistory, getPlayerAllTrades, getInferredPositions } = inject('stockHistory')
 
 const player = computed(() => {
   const all = [...sortedPlayers.value.pinned, ...sortedPlayers.value.rest]
@@ -17,7 +17,19 @@ const player = computed(() => {
 const history = computed(() => getPlayerHistory(route.params.zh_id))
 
 const posData = computed(() => player.value?._positions || [])
-const tradeData = computed(() => player.value?._trades || [])
+const tradeData = computed(() => {
+  const zhId = route.params.zh_id
+  return zhId ? getPlayerAllTrades(zhId) : []
+})
+const inferredPositions = computed(() => {
+  const zhId = route.params.zh_id
+  if (!zhId) return []
+  // Touch reactive deps explicitly so vue tracks them
+  void historyLoaded.value
+  void dateList.value
+  const confirmedCodes = new Set((player.value?._positions || []).map(p => p.stock_code))
+  return getInferredPositions(zhId, confirmedCodes)
+})
 const { sorted: sortedPos, toggle: tp, indicator: ip } = useTableSort(posData, 'position_ratio')
 const { sorted: sortedTrades, toggle: tt, indicator: it } = useTableSort(tradeData, 'trade_date')
 
@@ -71,15 +83,15 @@ onMounted(() => renderCurve())
 
 <template>
   <div v-if="player">
-    <button class="back-btn" @click="router.back()">← 返回</button>
-    <div class="player-meta" style="margin-bottom:8px;">
-      <div class="player-meta-item" style="grid-column:span 3;"><div class="val" style="color:#2980b9;font-size:22px;">{{ player.name || player.zh_id }}</div><div class="lbl">选手</div></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:22px;font-weight:520;color:#111;">{{ player.name || player.zh_id }}</span>
+      <span v-for="r in player.ranks" :key="r" style="font-size:11px;color:#5b6daa;background:rgba(91,109,170,.08);padding:2px 10px;border-radius:100px;">{{ r }}</span>
     </div>
 
 
     <div class="grid-2">
       <div class="card">
-        <h2>📦 当前持仓</h2>
+        <h2>📦 当前持仓 <span class="badge">{{ sortedPos.length }}</span></h2>
         <div v-if="!sortedPos.length" class="empty-state">📭 暂无持仓数据</div>
         <table v-else>
           <thead><tr>
@@ -104,8 +116,27 @@ onMounted(() => renderCurve())
           </tbody>
         </table>
       </div>
+    <!-- 推测持仓 -->
+    <div v-if="inferredPositions.length" class="card" style="margin-bottom:14px;">
+      <h2>📎 推测持仓 <span class="badge">{{ inferredPositions.length }}</span></h2>
+      <p class="hint">根据买卖记录推算，仅供参考，非 API 原始数据</p>
+      <div style="max-height:300px;overflow-y:auto;">
+        <table><thead><tr><th>股票</th><th>代码</th><th>估算仓位</th><th>状态</th><th>买入</th><th>卖出</th></tr></thead>
+          <tbody>
+            <tr v-for="s in inferredPositions" :key="s.stock_code">
+              <td><strong>{{ s.stock_name }}</strong></td>
+              <td style="color:#666;">{{ s.stock_code }}</td>
+              <td style="color:#666;">{{ s.level_estimate }}</td>
+              <td><span :style="{ color: s.confidence === 'mid' ? '#5b6daa' : '#999', fontSize:'12px' }">{{ s.status }}</span></td>
+              <td>{{ s.buy_count }}笔</td>
+              <td>{{ s.sell_count }}笔</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
       <div class="card">
-        <h2>🔄 调仓记录</h2>
+        <h2>🔄 调仓记录 <span class="badge">{{ sortedTrades.length }}</span></h2>
         <div v-if="!sortedTrades.length" class="empty-state">📭 暂无调仓记录</div>
         <table v-else>
           <thead><tr>
@@ -129,8 +160,9 @@ onMounted(() => renderCurve())
       </div>
 
     </div>
+
   </div>
-    <div class="player-meta" style="margin-top:20px;">
+    <div v-if="player" class="player-meta" style="margin-top:20px;">
       <div class="player-meta-item"><div class="val" :style="{ color: player.total_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>
       <div class="player-meta-item"><div class="val" :style="{ color: player.daily_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.daily_return) }}</div><div class="lbl">日收益</div></div>
       <div class="player-meta-item"><div class="val">{{ (player.net_value || 0).toFixed(3) }}</div><div class="lbl">净值</div></div>
