@@ -38,6 +38,11 @@ const pageTitle = computed(() => {
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
 const initialLoading = computed(() => loading.value && !isPlayerDetail.value)
 
+function goBack() {
+  if (window.history.length > 2) router.back()
+  else router.push('/copy')
+}
+
 const { updateAvailable, initCheck, dismiss: dismissUpdate } = useDataRefresh()
 
 onMounted(async () => {
@@ -52,7 +57,7 @@ onMounted(async () => {
     <header class="header">
       <div class="header-row">
         <div class="header-left">
-          <button v-if="isPlayerDetail" class="back-btn" @click="router.push('/copy')">←</button>
+          <button v-if="isPlayerDetail" class="back-btn" @click="goBack()">←</button>
           <span class="header-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
