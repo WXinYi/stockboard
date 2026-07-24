@@ -1,9 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js'
 import { useTableSort } from '../composables/useTableSort.js'
-Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
 const router = useRouter()
 const { stockStats: stats, sortedPlayers: sp, isQuality } = inject('stockData')
@@ -25,18 +23,18 @@ function lookupStock() {
   const q = stockSearch.value.trim()
   if (!q) { lookedUpHolders.value = null; return }
   const holders = allPlayers.value.filter(p => {
-    return (p._positions || []).some(pos =>
-      (pos.stock_code || '').includes(q) || (pos.stock_name || '').includes(q)
-    )
+    return (p.stocks || []).some(code => code.includes(q))
   })
   lookedUpHolders.value = holders.sort((a, b) => (b._total_position || 0) - (a._total_position || 0))
 }
 
 const chartCanvas = ref(null)
 let chart = null
-onMounted(() => {
+onMounted(async () => {
   if (!chartCanvas.value) return
   const top10 = stats.value.slice(0, 10)
+  const { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } = await import('chart.js')
+  Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
   chart = new Chart(chartCanvas.value, {
     type: 'bar', data: {
       labels: top10.map(s => s.name),

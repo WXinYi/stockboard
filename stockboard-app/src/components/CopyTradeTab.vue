@@ -6,7 +6,7 @@ import { useTableSort } from '../composables/useTableSort.js'
 const showAlerts = ref(false)
 const showSuspects = ref(false)
 const router = useRouter()
-const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears } = inject('stockData')
+const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears, qualityPlayerCount } = inject('stockData')
 const { positionChanges: posCh } = inject('stockHistory')
 function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
@@ -59,7 +59,7 @@ function pct(v) {
   <div class="hero-card">
     <h2 style="border:none;margin-bottom:8px;font-size:18px;">今日抄作业指南</h2>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-      <span class="badge-pill">高手 = 运营≥200天 · 风险调整得分≥0.15</span>
+      <span class="badge-pill">高手（{{ qualityPlayerCount }}个）= 运营≥200天 · 风险调整得分≥0.15</span>
     </div>
     <div class="kpi-row">
       <div class="kpi-item"><span class="kpi-num buy">{{ signals.buySignals.length }}</span><span class="kpi-label">高手买入</span></div>
@@ -123,7 +123,7 @@ function pct(v) {
         <table><thead><tr>
           <th>#</th><th>股票</th><th>代码</th>
           <th style="cursor:pointer;" @click="tog('holderCount')">高手数{{ ind('holderCount') }}</th>
-          <th style="cursor:pointer;" @click="tog('totalPosition')">总仓位{{ ind('totalPosition') }}</th>
+          <th style="cursor:pointer;" @click="tog('totalPosition')">平均仓位{{ ind('totalPosition') }}</th>
           <th style="cursor:pointer;" @click="tog('score')">信号分{{ ind('score') }}</th>
         </tr></thead>
           <tbody>
@@ -134,7 +134,7 @@ function pct(v) {
               <td>{{ s.holderCount }}人</td>
               <td>
                 <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.totalPosition/s.holderCount) + '%' }"></span></span>
-                {{ s.totalPosition.toFixed(0) }}%
+                {{ (s.totalPosition / s.holderCount).toFixed(0) }}%
               </td>
               <td><span :style="{ color: s.score >= 0 ? '#e74c3c' : '#27ae60', fontWeight: 600 }">{{ s.score.toFixed(1) }}</span></td>
             </tr>

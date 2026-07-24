@@ -1,12 +1,10 @@
 <script setup>
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Chart, DoughnutController, ArcElement, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js'
 
-Chart.register(DoughnutController, ArcElement, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
 const router = useRouter()
-const { sortedPlayers: players, positionDist: dist, tradedPlayerIds, stockStats, tradeConsensus, isQuality } = inject('stockData')
+const { sortedPlayers: players, positionDist: dist, profitDist, tradedPlayerIds, stockStats, tradeConsensus, isQuality } = inject('stockData')
 
 const allPlayers = computed(() => [...players.value.pinned, ...players.value.rest])
 
@@ -29,7 +27,7 @@ function pct(v) {
   return `<span class="${cls}">${sign}${n.toFixed(2)}%</span>`
 }
 
-function renderCharts() {
+async function renderCharts() {
   if (distChart) distChart.destroy()
   if (profitChart) profitChart.destroy()
 
@@ -39,7 +37,9 @@ function renderCharts() {
   const data = labels.map(l => d[l] || 0)
   const total = data.reduce((a, b) => a + b, 0)
 
-  distChart = new Chart(distCanvas.value, {
+  const { Chart: C, DoughnutController, ArcElement } = await import('chart.js')
+  C.register(DoughnutController, ArcElement)
+  distChart = new C(distCanvas.value, {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: colors }] },
     options: {
@@ -61,18 +61,11 @@ function renderCharts() {
     }
   })
 
-  // 盈亏分布 - 从 positions 生成
-  const allPositions = allPlayers.value.flatMap(p => p._positions || [])
-  const bins = { '<-10%': 0, '-10~0%': 0, '0~10%': 0, '10~20%': 0, '>20%': 0 }
-  allPositions.forEach(x => {
-    const r = x.profit_ratio || 0
-    if (r < -10) bins['<-10%']++
-    else if (r < 0) bins['-10~0%']++
-    else if (r < 10) bins['0~10%']++
-    else if (r < 20) bins['10~20%']++
-    else bins['>20%']++
-  })
-  profitChart = new Chart(profitCanvas.value, {
+  // 盈亏分布 - 来自 summary 预计算
+  const bins = profitDist.value || {}
+  const { BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } = await import('chart.js')
+  C.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
+  profitChart = new C(profitCanvas.value, {
     type: 'bar',
     data: { labels: Object.keys(bins), datasets: [{ label: '持仓数量', data: Object.values(bins), backgroundColor: '#2980b9', borderRadius: 6 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }

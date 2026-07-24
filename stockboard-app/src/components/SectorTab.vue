@@ -1,8 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, ref } from 'vue'
-import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js'
 import { useTableSort } from '../composables/useTableSort.js'
-Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
 const { sectorStats: sectors } = inject('stockData')
 
@@ -16,9 +14,11 @@ function pct(v) {
 }
 
 const chartCanvas = ref(null)
-onMounted(() => {
+onMounted(async () => {
   if (!chartCanvas.value || !sectors.value.length) return
   const top12 = sectors.value.slice(0, 12)
+  const { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend } = await import('chart.js')
+  Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
   new Chart(chartCanvas.value, {
     type: 'bar', data: {
       labels: top12.map(s => s.name),

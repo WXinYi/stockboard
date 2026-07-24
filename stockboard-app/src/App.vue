@@ -11,7 +11,7 @@ const stockHistory = useHistory()
 provide('stockData', stockData)
 provide('stockHistory', stockHistory)
 
-const { dates, currentDate, loading, fullRankPlayers, crawlTime, loadDates, loadDate } = stockData
+const { currentDate, loading, fullRankPlayers, crawlTime, loadData } = stockData
 const { loadHistory } = stockHistory
 
 const route = useRoute()
@@ -32,10 +32,11 @@ const pageTitle = computed(() => {
   return pageTitles[route.path.slice(1)] || ''
 })
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
+const initialLoading = computed(() => loading.value)
 
 onMounted(async () => {
-  await loadDates()
-  await loadHistory()
+  await loadData()
+  loadHistory()
 })
 </script>
 
@@ -50,9 +51,6 @@ onMounted(async () => {
         <div class="header-right">
           <span v-if="crawlTime" class="header-time-label">采集</span>
           <span v-if="crawlTime" class="header-time">{{ crawlTime }}</span>
-          <select class="date-select" v-model="currentDate" @change="loadDate(currentDate)">
-            <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
-          </select>
           <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }}人五榜</span>
           <span v-if="loading" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
         </div>
@@ -62,7 +60,12 @@ onMounted(async () => {
     <NavBar />
 
     <main class="main-content">
-      <router-view v-slot="{ Component }">
+      <div v-if="initialLoading" class="loading-view">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">正在加载数据…</p>
+        <p class="loading-sub">从服务器获取最新行情</p>
+      </div>
+      <router-view v-else v-slot="{ Component }">
         <KeepAlive :exclude="['PlayerDetail']">
           <component :is="Component" />
         </KeepAlive>
