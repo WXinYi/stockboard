@@ -97,11 +97,11 @@ jobs:
               else:
                   watched_lines.append(f"{link}: —")
 
-          # 周榜前5中有调仓的，名字加链接
-          weekly_top = sorted(s["players"], key=lambda p: p.get("weekly_return") or 0, reverse=True)[:5]
-          top_traded = [p for p in weekly_top if p["id"] in traded_set]
+          # 周榜前5中有调仓的，名字加链接（短键名: i=id, n=name, w=weekly_return）
+          weekly_top = sorted(s["players"], key=lambda p: p.get("w") or 0, reverse=True)[:5]
+          top_traded = [p for p in weekly_top if p["i"] in traded_set]
           if top_traded:
-              top_links = ["、".join(f"[{p['name']}]({BASE_URL}/#/player/{p['id']})" for p in top_traded)]
+              top_links = ["、".join(f"[{p['n']}]({BASE_URL}/#/player/{p['i']})" for p in top_traded)]
               top5_text = "".join(top_links) + " 有调仓"
           else:
               top5_text = "今日均无调仓"

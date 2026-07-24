@@ -3,6 +3,8 @@ import { computed, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useData } from './composables/useData.js'
 import { useHistory } from './composables/useHistory.js'
+import { useRelativeTime } from './composables/useRelativeTime.js'
+import { useDataRefresh } from './composables/useUX.js'
 import NavBar from './components/NavBar.vue'
 
 const stockData = useData()
@@ -13,6 +15,8 @@ provide('stockHistory', stockHistory)
 
 const { currentDate, loading, fullRankPlayers, crawlTime, loadData } = stockData
 const { loadHistory } = stockHistory
+const { relativeTime } = useRelativeTime()
+const crawlTimeRelative = computed(() => relativeTime(crawlTime.value))
 
 const route = useRoute()
 const router = useRouter()
@@ -34,9 +38,12 @@ const pageTitle = computed(() => {
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
 const initialLoading = computed(() => loading.value && !isPlayerDetail.value)
 
+const { updateAvailable, initCheck, dismiss: dismissUpdate } = useDataRefresh()
+
 onMounted(async () => {
   await loadData()
   loadHistory()
+  initCheck()
 })
 </script>
 
@@ -50,7 +57,7 @@ onMounted(async () => {
         </div>
         <div class="header-right">
           <span v-if="crawlTime" class="header-time-label">采集</span>
-          <span v-if="crawlTime" class="header-time">{{ crawlTime }}</span>
+          <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeRelative }}</span>
           <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }}人五榜</span>
           <span v-if="loading" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
         </div>
@@ -58,6 +65,10 @@ onMounted(async () => {
     </header>
 
     <NavBar />
+
+    <div v-if="updateAvailable" class="update-banner" @click="dismissUpdate(); loadData(); loadHistory();">
+      📊 数据已更新 · 点击刷新
+    </div>
 
     <main class="main-content">
       <div v-if="initialLoading" class="loading-view">

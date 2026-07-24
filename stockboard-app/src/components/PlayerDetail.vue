@@ -95,7 +95,14 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 </script>
 
 <template>
-  <div v-if="player">
+  <div v-if="loadingDetail" class="loading-view" style="min-height:40vh;">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">加载选手数据…</p>
+  </div>
+  <div v-else-if="!player && !loadingDetail" class="card">
+    <div class="empty-state">📭 选手数据加载失败</div>
+  </div>
+  <div v-else-if="player">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
       <span style="font-size:22px;font-weight:520;color:#111;">{{ player.name || player.id || player.zh_id }}</span>
       <span v-for="r in player.ranks" :key="r" style="font-size:11px;color:#5b6daa;background:rgba(91,109,170,.08);padding:2px 10px;border-radius:100px;">{{ r }}</span>

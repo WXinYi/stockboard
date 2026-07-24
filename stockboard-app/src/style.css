@@ -299,6 +299,15 @@ tr.pinned-row td { background: rgba(107,125,179,.025); }
   background: rgba(107,125,179,.03);
 }
 
+/* Update Banner */
+.update-banner {
+  text-align: center; padding: 10px 16px; font-size: 13px; font-weight: 420;
+  background: rgba(91,109,170,.08); color: #5b6daa; cursor: pointer;
+  border-bottom: 0.5px solid rgba(91,109,170,.1);
+  animation: slideDown .3s ease;
+}
+@keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+
 /* ---- Chips ---- */
 .player-chip { color: #5b6daa; cursor: pointer; transition: color .2s; }
 .player-chip:hover { color: #3f5290; text-decoration: underline; }
