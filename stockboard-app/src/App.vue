@@ -52,7 +52,7 @@ onMounted(async () => {
     <header class="header">
       <div class="header-row">
         <div class="header-left">
-          <button v-if="isPlayerDetail" class="back-btn" @click="window.history.length > 1 ? router.back() : router.push('/copy')">←</button>
+          <button v-if="isPlayerDetail" class="back-btn" @click="router.push('/copy')">←</button>
           <span class="header-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
