@@ -72,8 +72,14 @@ function isActive(key) { return route.path === '/' + key }
 .more-item.active { background: #e8f4fd; color: #2980b9; font-weight: 600; }
 
 @media (max-width: 767px) {
-  .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; border-bottom: none; border-top: 1px solid #e8e8e8; padding: 2px 4px 4px; justify-content: space-around; gap: 0; }
-  .nav-item { padding: 6px 10px; font-size: 11px; border-radius: 6px; }
+  .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; border-bottom: none; border-top: 1px solid #e0e0e0; padding: 6px 8px; padding-bottom: max(6px, env(safe-area-inset-bottom)); justify-content: space-around; gap: 0; background: #fafafa; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 4px 8px; font-size: 12px; border-radius: 10px; min-height: 50px; }
+  .nav-item.active { background: transparent; color: #2980b9; font-weight: 700; }
+  .nav-pc { display: none !important; }
+  .nav-label { font-size: 12px; line-height: 1; }
+  .more-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50px; }
+  .more-overlay { padding-bottom: 80px; }
+  .more-menu { padding-bottom: 30px; }
 }
 @media (min-width: 768px) {
   .nav-pc { display: block; }

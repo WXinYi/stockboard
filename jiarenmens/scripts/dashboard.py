@@ -241,7 +241,7 @@ tr.clickable:hover td { background: #e8f4fd; }
 
 <div class="header">
     <h1>📊 数据看板</h1>
-    <div class="subtitle">更新日期: __CRAWL_DATE__ · 数据来源: 东方财富</div>
+    <div class="subtitle">更新日期: __CRAWL_DATE__ · 数据来源: 公开平台</div>
 </div>
 
 <div class="stats-row">

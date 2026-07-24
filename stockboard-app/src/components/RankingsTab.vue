@@ -9,19 +9,21 @@ const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 
 const qualityOn = ref(false)
+const todayOnly = ref(true)
 const search = ref('')
 const minRanks = ref(0)
 
 const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
 
-const { sorted: sortedList, toggle: tog, indicator: ind, sortKey } = useTableSort(allPlayers, 'total_return')
+const { sorted: sortedList, toggle: tog, indicator: ind, sortKey } = useTableSort(allPlayers, 'weekly_return')
 
 // 应用筛选
 const displayList = computed(() => {
-  const watched = new Set(['900240956'])
+  const watched = new Set(['900240956', '900354116'])
   let list = [...sortedList.value]
   let filtered = list.filter(p => !watched.has(p.zh_id))
   if (qualityOn.value) filtered = filtered.filter(isQuality)
+  if (todayOnly.value) filtered = filtered.filter(p => tradedPlayerIds.value.has(p.zh_id))
   if (minRanks.value > 0) filtered = filtered.filter(p => (p.ranks || []).length >= minRanks.value)
   // 置顶选手独立
   const pinned = list.filter(p => watched.has(p.zh_id))
@@ -52,15 +54,25 @@ function posLabel(total) {
   return '9成以上'
 }
 
-const sortHeaders = [
-  { key: 'total_return', label: '总收益' },
-  { key: 'yearly_return', label: '年收益' },
-  { key: 'monthly_return', label: '月收益' },
-  { key: 'weekly_return', label: '周收益' },
-  { key: 'daily_return', label: '日收益' },
-  { key: 'net_value', label: '净值' },
-  { key: 'followers', label: '关注' },
+const sortPeriods = [
+  { key: 'daily_return', label: '日' },
+  { key: 'weekly_return', label: '周' },
+  { key: 'monthly_return', label: '月' },
+  { key: 'yearly_return', label: '年' },
+  { key: 'total_return', label: '总' },
 ]
+const activePeriod = ref('weekly_return')
+function setPeriod(key) {
+  if (activePeriod.value === key) { activePeriod.value = null }
+  else { activePeriod.value = key; tog(key) }
+}
+const sortHeaders = computed(() => {
+  const base = activePeriod.value
+    ? [{ key: activePeriod.value, label: sortPeriods.find(s => s.key === activePeriod.value).label + '收益' }]
+    : sortPeriods.map(s => ({ key: s.key, label: s.label + '收益' }))
+  base.push({ key: 'net_value', label: '净值' }, { key: 'followers', label: '关注' })
+  return base
+})
 </script>
 
 <template>
@@ -68,9 +80,17 @@ const sortHeaders = [
     <div class="search-box">
       <input type="text" v-model="search" placeholder="🔍 搜索选手名称..." />
     </div>
+    <div class="sort-row">
+      <span style="font-size:12px;color:#888;margin-right:6px;">排序:</span>
+      <button v-for="s in sortPeriods" :key="s.key"
+        :class="['filter-btn', { active: activePeriod === s.key }]"
+        @click="setPeriod(s.key)">{{ s.label }}</button>
+      <button v-if="activePeriod" class="filter-btn" @click="activePeriod = null">全部</button>
+    </div>
     <div class="filter-row">
       <span style="font-size:12px;color:#888;">筛选:</span>
       <button :class="['filter-btn', { active: qualityOn }]" @click="qualityOn = !qualityOn">高质量</button>
+      <button :class="['filter-btn', { active: todayOnly }]" @click="todayOnly = !todayOnly">今日操作</button>
       <span style="font-size:12px;color:#888;">上榜≥</span>
       <button v-for="n in [1,3,5]" :key="n"
               :class="['filter-btn', { active: minRanks === n }]"

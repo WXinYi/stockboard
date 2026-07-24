@@ -111,14 +111,19 @@ export function useHistory() {
   // 异常检测：清仓 + 大幅减仓
   const alerts = computed(() => {
     const ch = positionChanges.value
-    if (!ch || !ch.changes) return { high: [], mid: [] }
-    const high = []
+    if (!ch || !ch.changes) return { highByStock: [], mid: [] }
+    const stockMap = {}
     const mid = []
     for (const c of ch.changes) {
-      if (c.type === '清除') high.push({ player_name: c.player_name, zh_id: c.zh_id, stock_name: c.stock_name, stock_code: c.stock_code, msg: `${c.player_name} 清仓 ${c.stock_name}`, delta: c.delta })
-      else if (c.delta < -30) mid.push({ player_name: c.player_name, zh_id: c.zh_id, stock_name: c.stock_name, stock_code: c.stock_code, msg: `${c.player_name} 减仓 ${c.stock_name} ${Math.abs(c.delta).toFixed(0)}%`, delta: c.delta })
+      if (c.type === '清仓') {
+        if (!stockMap[c.stock_code]) stockMap[c.stock_code] = { stock_name: c.stock_name, stock_code: c.stock_code, players: [] }
+        stockMap[c.stock_code].players.push({ name: c.player_name, zh_id: c.zh_id })
+      } else if (c.delta < -30) {
+        mid.push({ player_name: c.player_name, zh_id: c.zh_id, stock_name: c.stock_name, stock_code: c.stock_code })
+      }
     }
-    return { high, mid }
+    const highByStock = Object.values(stockMap).sort((a, b) => b.players.length - a.players.length)
+    return { highByStock, mid, totalClear: highByStock.reduce((s, x) => s + x.players.length, 0) }
   })
 
   return { historyLoaded, dateList, positionChanges, alerts, getPlayerHistory, loadHistory }

@@ -37,3 +37,6 @@ uv.lock
 .env
 .env.local
 .env.*.local
+
+# Project doc (local only)
+CLAUDE.md

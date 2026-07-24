@@ -26,7 +26,7 @@ function pct(v) {
   <template v-else>
     <div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,#f0f7ff 0%,#fff 100%);border:1px solid #b8d4f0;">
       <h2 style="border:none;margin-bottom:4px;">📅 持仓变化追踪</h2>
-      <p class="hint">{{ changes.yesterday }} → {{ changes.today }}，共 {{ changes.changes.length }} 笔变动</p>
+      <p class="hint">{{ changes.yesterday }} → {{ changes.today }}，共 {{ changes.changes.length }} 笔变动 · <span style="color:#e67e22;">⚠️ 仅基于前2大持仓，仅供参考</span></p>
       <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:8px;">
         <div><span style="font-size:24px;font-weight:700;color:#2980b9;">{{ changes.added.length }}</span><span style="font-size:13px;color:#888;"> 只新进</span></div>
         <div><span style="font-size:24px;font-weight:700;color:#e74c3c;">{{ changes.cleared.length }}</span><span style="font-size:13px;color:#888;"> 只清仓</span></div>

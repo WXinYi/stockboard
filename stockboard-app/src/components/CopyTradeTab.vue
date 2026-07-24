@@ -1,11 +1,13 @@
 <script setup>
-import { computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 
+const showAlerts = ref(false)
+const showSuspects = ref(false)
 const router = useRouter()
-const { copyTradeSignals: signals, playerNameMap: playerIds } = inject('stockData')
-const { alerts, positionChanges: posCh } = inject('stockHistory')
+const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears } = inject('stockData')
+const { positionChanges: posCh } = inject('stockHistory')
 function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
 const coreData = computed(() => signals.value.coreHoldings)
@@ -19,10 +21,32 @@ function pct(v) {
 </script>
 
 <template>
-  <!-- 异常预警 -->
-  <div v-if="alerts.high.length" class="alert-banner">
-    ⚠️ <strong>异常预警</strong>：
-    <span v-for="a in alerts.high" :key="a.zh_id+a.stock_code" style="margin-right:12px;cursor:pointer;" @click="goPlayer(a.zh_id)">{{ a.msg }}</span>
+  <!-- 今日卖出预警 -->
+  <div v-if="tradeAlerts.length" class="alert-banner" @click="showAlerts = !showAlerts" style="cursor:pointer;">
+    📉 <strong>{{ tradeAlerts.length }}只股票 · {{ tradeAlerts.reduce((s,x)=>s+x.players.length,0) }}人卖出</strong>
+    <span style="font-size:11px;color:#999;margin-left:4px;">{{ showAlerts ? '收起' : '展开' }}</span>
+    <div v-if="showAlerts" style="margin-top:6px;">
+      <div v-for="s in tradeAlerts" :key="s.stock_code" style="margin-bottom:4px;font-size:12px;">
+        <strong>{{ s.stock_name }}</strong>：
+        <template v-for="(p, i) in s.players" :key="p.zh_id">
+          <span v-if="i>0">、</span>
+          <span class="player-chip" @click.stop="goPlayer(p.zh_id)">{{ p.name }}</span>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- 疑似清仓 -->
+  <div v-if="suspectedClears.length" class="alert-banner" style="background:#fff8e1;border-color:#f0d060;color:#b8860b;cursor:pointer;" @click="showSuspects = !showSuspects">
+    🔍 <strong>疑似清仓 · {{ suspectedClears.length }}条</strong>
+    <span style="font-size:11px;color:#999;margin-left:4px;">{{ showSuspects ? '收起' : '展开' }}</span>
+    <div v-if="showSuspects" style="margin-top:6px;font-size:12px;">
+      <div v-for="s in suspectedClears" :key="s.zh_id+s.stock_code" style="margin-bottom:3px;">
+        <span class="player-chip" @click.stop="goPlayer(s.zh_id)">{{ s.player_name }}</span>
+        → {{ s.stock_name }}
+        <span style="color:#999;">({{ s.buyDate }} 买{{ s.level }} → {{ s.sellDate }} 卖{{ s.level }})</span>
+      </div>
+    </div>
   </div>
 
   <!-- 持仓变更摘要 -->

@@ -65,7 +65,7 @@ class AsyncPlaywrightPool:
 
         self._initialized = False
 
-    # 反检测 + 伪造东方财富 APP webview 桥接对象
+    # 反检测 + 伪造目标平台 APP webview 桥接对象
     # 站点 JS 检测 window.emh5 / window.EMProjJs / window.EMRead 是否存在来判定"在 APP 内"
     # 我们注入空壳对象，并把可能被调用的方法 stub 成无害实现
     _STEALTH_SCRIPT = """

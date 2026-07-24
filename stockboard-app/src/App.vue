@@ -29,7 +29,7 @@ onMounted(async () => {
           <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
         </select>
         <span v-if="crawlTime" style="font-size:11px;color:#aaa;">抓取时间: {{ crawlTime }}</span>
-        数据来源: 东方财富
+        数据来源: 公开平台
         <span v-if="fullRankPlayers.length" style="font-size:11px;color:#f1c40f;">{{ fullRankPlayers.length }}人五榜全上</span>
         <span v-if="loading" class="skeleton" style="width:60px;height:14px;display:inline-block;vertical-align:middle;"></span>
       </div>
@@ -38,11 +38,10 @@ onMounted(async () => {
     <NavBar />
 
     <main class="main-content">
-      <router-view v-slot="{ Component, route: r }">
-        <KeepAlive v-if="r.meta.keepAlive">
+      <router-view v-slot="{ Component }">
+        <KeepAlive :exclude="['PlayerDetail']">
           <component :is="Component" />
         </KeepAlive>
-        <component v-else :is="Component" />
       </router-view>
     </main>
 

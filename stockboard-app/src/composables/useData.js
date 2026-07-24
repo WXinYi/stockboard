@@ -2,7 +2,7 @@ import { ref, computed, watch } from 'vue'
 import { fetchIndex, fetchDateData } from '../data/loader.js'
 
 // 置顶关注的选手
-const WATCHED_IDS = new Set(['900240956'])
+const WATCHED_IDS = new Set(['900240956', '900354116'])
 
 export function useData() {
   const dates = ref([])
@@ -222,9 +222,9 @@ export function useData() {
     const all = Object.values(stockSignals)
     return {
       // 买入信号：有高手在买 + 得分高
-      buySignals: all.filter(s => s.buyers.length > 0).sort((a, b) => b.score - a.score),
+      buySignals: all.filter(s => s.buyers.length > 0).sort((a, b) => b.buyers.length - a.buyers.length),
       // 核心重仓：高手集中持有
-      coreHoldings: all.filter(s => s.holderCount >= 2).sort((a, b) => b.totalPosition - a.totalPosition),
+      coreHoldings: all.filter(s => s.holderCount >= 2).sort((a, b) => b.holderCount - a.holderCount),
       // 卖出预警：高手在卖出
       sellWarnings: all.filter(s => s.sellers.length > 0 && s.buyers.length === 0).sort((a, b) => b.sellers.length - a.sellers.length),
       highQuality: all.filter(s => s.score >= 3).sort((a, b) => b.score - a.score),
@@ -273,6 +273,64 @@ export function useData() {
       }).filter(s => s.totalHolders >= 3).sort((a, b) => b.gap - a.gap).slice(0, 20),
       qualityCount: Object.keys(qualitySet).length,
     }
+  })
+
+  // 今日卖出预警（基于真实调仓记录，非持仓对比）
+  const tradeAlerts = computed(() => {
+    const map = {}
+    const today = currentDate.value
+    for (const t of rawTrades.value) {
+      if (t.trade_date !== today || t.direction !== '卖出') continue
+      const code = t.stock_code
+      if (!code) continue
+      if (!map[code]) map[code] = { stock_name: t.stock_name, stock_code: code, players: [] }
+      const pn = t.player_name || t.zh_id || ''
+      if (!map[code].players.find(p => p.zh_id === t.zh_id)) {
+        map[code].players.push({ name: pn, zh_id: t.zh_id })
+      }
+    }
+    return Object.values(map).sort((a, b) => b.players.length - a.players.length)
+  })
+
+  // 疑似清仓：今天卖出 + 7天内买过同只票 + 仓位标签一致
+  const suspectedClears = computed(() => {
+    const today = currentDate.value
+    const result = []
+    // 按 zh_id+stock_code 索引最近的买入记录
+    const buyHistory = {}
+    for (const t of rawTrades.value) {
+      if (t.direction !== '买入') continue
+      const key = `${t.zh_id}_${t.stock_code}`
+      if (!buyHistory[key] || t.trade_date > buyHistory[key].trade_date) {
+        buyHistory[key] = t
+      }
+    }
+    // 检查今天的卖出
+    for (const t of rawTrades.value) {
+      if (t.trade_date !== today || t.direction !== '卖出') continue
+      const key = `${t.zh_id}_${t.stock_code}`
+      const buy = buyHistory[key]
+      if (!buy) continue
+      // 7天内买过
+      const buyDate = new Date(buy.trade_date)
+      const sellDate = new Date(t.trade_date)
+      const diffDays = (sellDate - buyDate) / (1000 * 60 * 60 * 24)
+      if (diffDays < 0 || diffDays > 7) continue
+      // 仓位标签一致（只有操作方向才有值）
+      const buyLevel = buy.position_ratio || ''
+      const sellLevel = t.position_ratio || ''
+      if (!buyLevel || !sellLevel || buyLevel !== sellLevel) continue
+      result.push({
+        player_name: t.player_name || t.zh_id,
+        zh_id: t.zh_id,
+        stock_name: t.stock_name,
+        stock_code: t.stock_code,
+        level: buyLevel,
+        buyDate: buy.trade_date,
+        sellDate: t.trade_date,
+      })
+    }
+    return result
   })
 
   // 今日有调仓的选手 ID 集合（按 trade_date 过滤，非 crawl_date）
@@ -371,7 +429,7 @@ export function useData() {
     sortedPlayers, stockStats, tradeConsensus, positionDist,
     sortKey, qualityOnly, isQuality,
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
-    tradedPlayerIds, playerNameMap,
+    tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
     crawlTime, loadDates, loadDate,
   }
 }

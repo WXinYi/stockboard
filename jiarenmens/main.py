@@ -30,7 +30,7 @@ CHECKPOINT_FILE = Path(__file__).parent / "data" / "checkpoint.json"
 BATCH_SIZE = 50
 
 # 始终抓取的关注选手（不跳过检查点）
-WATCHED_ZH_IDS = {"900240956"}  # 股得猫咛
+WATCHED_ZH_IDS = {"900240956", "900354116"}  # 股得猫咛, 不服输不认命MG
 
 
 # =============================================================================
@@ -313,6 +313,7 @@ def main():
     # 确保关注选手始终在列表中（去重后插入最前）
     WATCHED_PLAYERS = [
         {"zh_id": "900240956", "name": "股得猫咛"},
+        {"zh_id": "900354116", "name": "不服输不认命MG"},
     ]
     existing_ids = {p.get("zh_id") for p in players}
     for wp in reversed(WATCHED_PLAYERS):

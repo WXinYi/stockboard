@@ -72,36 +72,10 @@ onMounted(() => renderCurve())
 <template>
   <div v-if="player">
     <button class="back-btn" @click="router.back()">← 返回</button>
-    <div class="player-meta">
-      <div class="player-meta-item"><div class="val" style="color:#2980b9;">{{ player.name || player.zh_id }}</div><div class="lbl">选手</div></div>
-      <div class="player-meta-item"><div class="val" :style="{ color: player.total_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>
-      <div class="player-meta-item"><div class="val" :style="{ color: player.daily_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.daily_return) }}</div><div class="lbl">日收益</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.net_value || 0).toFixed(3) }}</div><div class="lbl">净值</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.max_drawdown || 0).toFixed(1) }}%</div><div class="lbl">最大回撤</div></div>
-      <div class="player-meta-item"><div class="val">{{ posLabel(player._total_position) }}</div><div class="lbl">当前仓位</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.win_rate || 0).toFixed(1) }}%</div><div class="lbl">胜率</div></div>
-      <div class="player-meta-item"><div class="val">{{ player.days || 0 }}天</div><div class="lbl">运行天数</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.followers || 0).toLocaleString() }}</div><div class="lbl">关注人数</div></div>
-      <div class="player-meta-item" style="grid-column:span 3;">
-        <div style="font-size:13px;color:#666;text-align:left;">{{ player.intro || player.concept || '暂无简介' }}</div>
-        <div class="lbl">简介</div>
-      </div>
-      <div v-if="player.manager_name" class="player-meta-item">
-        <div class="val" style="font-size:16px;">{{ player.manager_name }}</div><div class="lbl">管理人</div>
-      </div>
-      <div v-if="player.ranks?.length" class="player-meta-item" style="grid-column:span 3;">
-        <div style="font-size:12px;color:#666;text-align:left;">
-          上榜: <span v-for="r in player.ranks" :key="r" class="rank-tag">{{ r }}</span>
-        </div>
-        <div class="lbl">榜单</div>
-      </div>
+    <div class="player-meta" style="margin-bottom:8px;">
+      <div class="player-meta-item" style="grid-column:span 3;"><div class="val" style="color:#2980b9;font-size:22px;">{{ player.name || player.zh_id }}</div><div class="lbl">选手</div></div>
     </div>
 
-    <div class="card" style="margin-bottom:20px;">
-      <h2>📈 收益走势 <span v-if="history.length < 2" style="font-size:11px;color:#999;font-weight:400;">（需要至少2天数据）</span></h2>
-      <div v-if="history.length >= 2" class="chart-wrap tall"><canvas ref="curveCanvas"></canvas></div>
-      <div v-else class="empty-state"><p>📭 每天运行数据采集，积累多天后自动生成收益曲线</p><p style="font-size:11px;color:#aaa;">当前仅 {{ history.length }} 天数据</p></div>
-    </div>
 
     <div class="grid-2">
       <div class="card">
@@ -139,6 +113,7 @@ onMounted(() => renderCurve())
             <th style="cursor:pointer;" @click="tt('direction')">方向{{ it('direction') }}</th>
             <th>股票</th><th>代码</th>
             <th style="cursor:pointer;" @click="tt('trades_count')">笔数{{ it('trades_count') }}</th>
+            <th>仓位</th>
           </tr></thead>
           <tbody>
             <tr v-for="x in sortedTrades" :key="x.id || x.trade_date + x.stock_code">
@@ -147,10 +122,40 @@ onMounted(() => renderCurve())
               <td><strong>{{ x.stock_name }}</strong></td>
               <td style="color:#999;">{{ x.stock_code }}</td>
               <td>{{ x.trades_count || 1 }}笔</td>
+              <td style="font-size:12px;color:#888;">{{ x.position_ratio || '—' }}</td>
             </tr>
           </tbody>
         </table>
       </div>
+
     </div>
   </div>
+    <div class="player-meta" style="margin-top:20px;">
+      <div class="player-meta-item"><div class="val" :style="{ color: player.total_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: player.daily_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.daily_return) }}</div><div class="lbl">日收益</div></div>
+      <div class="player-meta-item"><div class="val">{{ (player.net_value || 0).toFixed(3) }}</div><div class="lbl">净值</div></div>
+      <div class="player-meta-item"><div class="val">{{ (player.max_drawdown || 0).toFixed(1) }}%</div><div class="lbl">最大回撤</div></div>
+      <div class="player-meta-item"><div class="val">{{ posLabel(player._total_position) }}</div><div class="lbl">当前仓位</div></div>
+      <div class="player-meta-item"><div class="val">{{ (player.win_rate || 0).toFixed(1) }}%</div><div class="lbl">胜率</div></div>
+      <div class="player-meta-item"><div class="val">{{ player.days || 0 }}天</div><div class="lbl">运行天数</div></div>
+      <div class="player-meta-item"><div class="val">{{ (player.followers || 0).toLocaleString() }}</div><div class="lbl">关注人数</div></div>
+      <div class="player-meta-item" style="grid-column:span 3;">
+        <div style="font-size:13px;color:#666;text-align:left;">{{ player.intro || player.concept || '暂无简介' }}</div>
+        <div class="lbl">简介</div>
+      </div>
+      <div v-if="player.manager_name" class="player-meta-item">
+        <div class="val" style="font-size:16px;">{{ player.manager_name }}</div><div class="lbl">管理人</div>
+      </div>
+      <div v-if="player.ranks?.length" class="player-meta-item" style="grid-column:span 3;">
+        <div style="font-size:12px;color:#666;text-align:left;">
+          上榜: <span v-for="r in player.ranks" :key="r" class="rank-tag">{{ r }}</span>
+        </div>
+        <div class="lbl">榜单</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:20px;">
+      <h2>📈 收益走势 <span v-if="history.length < 2" style="font-size:11px;color:#999;font-weight:400;">（需要至少2天数据）</span></h2>
+      <div v-if="history.length >= 2" class="chart-wrap tall"><canvas ref="curveCanvas"></canvas></div>
+      <div v-else class="empty-state"><p>📭 每天运行数据采集，积累多天后自动生成收益曲线</p><p style="font-size:11px;color:#aaa;">当前仅 {{ history.length }} 天数据</p></div>
+    </div>
 </template>
