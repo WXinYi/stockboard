@@ -107,15 +107,15 @@ jobs:
               top5_text = "今日均无调仓"
 
           text = (
-              f"## 📊 东财实盘排行榜已更新\\n\\n"
-              f"> 采集时间: {crawl_time}\\n\\n"
-              f"---\\n\\n"
-              f"### ⭐ 特别关注\\n\\n"
-              + "\\n\\n".join(watched_lines) +
-              f"\\n\\n---\\n\\n"
-              f"### 🏆 周榜前5\\n\\n"
-              f"{top5_text}\\n\\n"
-              f"---\\n\\n"
+              f"## 📊 东财实盘排行榜已更新\n\n"
+              f"> 采集时间: {crawl_time}\n\n"
+              f"---\n\n"
+              f"### ⭐ 特别关注\n\n"
+              + "\n\n".join(watched_lines) +
+              f"\n\n---\n\n"
+              f"### 🏆 周榜前5\n\n"
+              f"{top5_text}\n\n"
+              f"---\n\n"
               f"📈 [打开看板](https://WXinYi.github.io/stockboard/)"
           )
 

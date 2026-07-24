@@ -652,15 +652,15 @@ def export(db_path, crawl_date, out_dir):
         "date": crawl_date,
         "crawl_time": "",  # 下面填入
         "players": [
-            {"id": p["id"], "name": p["name"],
-             "followers": p["followers"],
-             "total_return": p["total_return"], "daily_return": p["daily_return"],
-             "weekly_return": p["weekly_return"], "monthly_return": p["monthly_return"],
-             "yearly_return": p["yearly_return"], "net_value": p["net_value"],
-             "max_drawdown": p["max_drawdown"], "win_rate": p["win_rate"],
-             "days": p["days"], "labels": p["labels"], "ranks": p["ranks"],
-             "total_position": p["total_position"], "quality": p["quality"],
-             "stocks": p["stocks"]}
+            {"i": p["id"], "n": p["name"],
+             "f": p["followers"],
+             "T": p["total_return"], "d": p["daily_return"],
+             "w": p["weekly_return"], "m": p["monthly_return"],
+             "y": p["yearly_return"], "v": p["net_value"],
+             "dd": p["max_drawdown"], "wr": p["win_rate"],
+             "dy": p["days"], "lb": p["labels"], "rk": p["ranks"],
+             "tp": p["total_position"], "q": p["quality"],
+             "ss": p["stocks"]}
             for p in players_flat
         ],
         "qualityPlayerCount": len(quality_ids),

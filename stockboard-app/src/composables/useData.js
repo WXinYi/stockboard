@@ -41,8 +41,27 @@ export function useData() {
   function normalize(p) {
     return {
       ...p,
-      zh_id: p.id || p.zh_id,
-      _total_position: p.total_position ?? p._total_position ?? 0,
+      // 短键名 → 长字段名
+      id: p.i ?? p.id,
+      name: p.n ?? p.name,
+      followers: p.f ?? p.followers,
+      total_return: p.T ?? p.total_return,
+      daily_return: p.d ?? p.daily_return,
+      weekly_return: p.w ?? p.weekly_return,
+      monthly_return: p.m ?? p.monthly_return,
+      yearly_return: p.y ?? p.yearly_return,
+      net_value: p.v ?? p.net_value,
+      max_drawdown: p.dd ?? p.max_drawdown,
+      win_rate: p.wr ?? p.win_rate,
+      days: p.dy ?? p.days,
+      labels: p.lb ?? p.labels,
+      ranks: p.rk ?? p.ranks,
+      total_position: p.tp ?? p.total_position ?? 0,
+      quality: p.q ?? p.quality,
+      stocks: p.ss ?? p.stocks,
+      // 兼容旧格式
+      zh_id: p.i ?? p.id ?? p.zh_id,
+      _total_position: p.tp ?? p.total_position ?? p._total_position ?? 0,
     }
   }
 
