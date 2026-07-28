@@ -19,7 +19,7 @@ const { sorted: sortedList, toggle: tog, indicator: ind, sortKey } = useTableSor
 
 // 应用筛选
 const displayList = computed(() => {
-  const watched = new Set(['900240956', '900354116'])
+  const watched = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900321280'])
   let list = [...sortedList.value]
   let filtered = list.filter(p => !watched.has(p.zh_id))
   if (qualityOn.value) filtered = filtered.filter(isQuality)

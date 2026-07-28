@@ -18,7 +18,7 @@ from collections import defaultdict
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "crawl_data.db"
 
-WATCHED_IDS = {"900240956", "900354116"}
+WATCHED_IDS = {"900240956", "900354116", "900438148", "900376763", "900013608", "900321280"}
 
 
 # ═══════════════════════════════════════════════
