@@ -88,7 +88,14 @@ jobs:
           BASE_URL = "https://WXinYi.github.io/stockboard"
 
           # 关注选手调仓详情（读选手详情文件）
-          watched = {"900240956": "股得猫咛", "900354116": "不服输不认命MG"}
+          watched = {
+            "900240956": "股得猫咛",
+            "900354116": "不服输不认命MG",
+            "900438148": "我嘚财富",
+            "900376763": "东之福气娟子",
+            "900013608": "wxm1988蒙",
+            "900321280": "a神棍",
+          }
           watched_lines = []
           for wid, wname in watched.items():
               detail_path = f"stockboard-app/public/data/latest/players/{wid}.json"
