@@ -9,6 +9,15 @@ export async function fetchSummary() {
   return _summaryCache
 }
 
+let _playersCache = null
+
+export async function fetchPlayersIndex() {
+  if (_playersCache) return _playersCache
+  const resp = await fetch(`${BASE}data/latest/players_index.json`)
+  _playersCache = await resp.json()
+  return _playersCache
+}
+
 export async function fetchPlayerDetail(zhId) {
   const resp = await fetch(`${BASE}data/latest/players/${zhId}.json`)
   return resp.json()

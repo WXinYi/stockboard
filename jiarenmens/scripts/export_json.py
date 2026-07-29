@@ -108,7 +108,7 @@ def export(db_path, crawl_date, out_dir):
     all_trades = [dict(r) for r in conn.execute(
         """SELECT t.*, pl.name as player_name
            FROM trades t LEFT JOIN players pl ON t.zh_id = pl.zh_id
-           ORDER BY t.crawl_date, t.trade_date"""
+           ORDER BY t.crawl_date DESC, t.trade_date DESC"""
     ).fetchall()]
 
     # 所有日期的持仓（用于变动追踪）
@@ -199,11 +199,11 @@ def export(db_path, crawl_date, out_dir):
         s["total_profit"] += safe_float(p.get("profit_ratio"))
         s["count"] += 1
     stock_stats = sorted(
-        [{"code": s["code"], "name": s["name"],
-          "holders": s["holders"], "total_position": round(s["total_position"], 1),
-          "avg_profit": round(s["total_profit"] / s["count"], 2) if s["count"] else 0}
+        [{"c": s["code"], "n": s["name"],
+          "h": s["holders"], "tp": round(s["total_position"], 1),
+          "ap": round(s["total_profit"] / s["count"], 2) if s["count"] else 0}
          for s in stock_stats_map.values()],
-        key=lambda s: s["total_position"], reverse=True
+        key=lambda s: s["tp"], reverse=True
     )
 
     # ── 4. 抄作业信号 → copyTradeSignals ────
@@ -298,22 +298,19 @@ def export(db_path, crawl_date, out_dir):
     )
 
     copy_trade_signals = {
-        "buySignals": [{"code": s["code"], "name": s["name"], "score": s["score"],
-                         "totalPosition": s["totalPosition"], "holderCount": s["holderCount"],
-                         "buyers": s["buyer_names"], "sellers": s["seller_names"]}
-                        for s in buy_signals],
-        "coreHoldings": [{"code": s["code"], "name": s["name"], "score": s["score"],
-                           "totalPosition": s["totalPosition"], "holderCount": s["holderCount"],
-                           "holders": s["holders"]}
-                          for s in core_holdings],
-        "sellWarnings": [{"code": s["code"], "name": s["name"], "score": s["score"],
-                           "totalPosition": s["totalPosition"], "holderCount": s["holderCount"],
-                           "sellers": s["seller_names"]}
-                          for s in sell_warnings],
-        "highQuality": [{"code": s["code"], "name": s["name"], "score": s["score"],
-                          "totalPosition": s["totalPosition"], "holderCount": s["holderCount"],
-                          "buyers": s["buyer_names"]}
-                         for s in high_quality_signals],
+        "bs": [{"c": s["code"], "n": s["name"], "s": s["score"],
+                "tp": s["totalPosition"], "h": s["holderCount"],
+                "b": s["buyer_names"], "sl": s["seller_names"]}
+               for s in buy_signals],
+        "ch": [{"c": s["code"], "n": s["name"], "s": s["score"],
+                "tp": s["totalPosition"], "h": s["holderCount"],
+                "hd": s["holders"]}
+               for s in core_holdings],
+        "sw": [{"c": s["code"], "n": s["name"], "s": s["score"],
+                "tp": s["totalPosition"], "h": s["holderCount"],
+                "sl": s["seller_names"]}
+               for s in sell_warnings],
+        "hq": []  # highQuality 数据前端只用 .length, 不需要具体内容
     }
 
     # ── 5. 调仓共识 → tradeConsensus ────────
@@ -354,7 +351,12 @@ def export(db_path, crawl_date, out_dir):
             strength, color = "💡 微弱", "#2980b9"
         else:
             strength, color = "单一", "#999"
-        trade_consensus.append({**tc, "strength": strength, "strengthColor": color})
+        trade_consensus.append({
+            "c": tc["code"], "n": tc["name"],
+            "bp": tc["buy_players"], "sp": tc["sell_players"],
+            "bc": tc["buy_count"], "sc": tc["sell_count"],
+            "st": strength, "cl": color,
+        })
 
     # ── 6. 行业板块 → sectorStats ────────────
     sector_map = {}
@@ -375,11 +377,12 @@ def export(db_path, crawl_date, out_dir):
             if p["quality"]:
                 sm["qualityCount"] += 1
     sector_stats = sorted([
-        {**v, "avg_return": round(v["total_return"] / v["count"], 2),
-         "avg_daily": round(v["daily_return"] / v["count"], 2),
-         "avg_position": round(v["total_position"] / v["count"], 1)}
+        {"n": v["name"], "c": v["count"], "qc": v["qualityCount"],
+         "ar": round(v["total_return"] / v["count"], 2),
+         "ad": round(v["daily_return"] / v["count"], 2),
+         "ap": round(v["total_position"] / v["count"], 1)}
         for v in sector_map.values()
-    ], key=lambda s: s["count"], reverse=True)
+    ], key=lambda s: s["c"], reverse=True)
 
     # ── 7. 仓位分布 → positionDist ───────────
     position_dist = {"9成以上": 0, "7-9成": 0, "5-7成": 0, "3-5成": 0,
@@ -647,17 +650,6 @@ def export(db_path, crawl_date, out_dir):
     summary = {
         "date": crawl_date,
         "crawl_time": "",  # 下面填入
-        "players": [
-            [p["id"], p["name"], p["followers"],
-             p["total_return"], p["daily_return"],
-             p["weekly_return"], p["monthly_return"],
-             p["yearly_return"], p["net_value"],
-             p["max_drawdown"], p["win_rate"],
-             p["days"], p["labels"], p["ranks"],
-             p["total_position"], p["quality"],
-             p["stocks"]]
-            for p in players_flat
-        ],
         "qualityPlayerCount": len(quality_ids),
         "copyTradeSignals": copy_trade_signals,
         "stockStats": stock_stats,
@@ -680,29 +672,40 @@ def export(db_path, crawl_date, out_dir):
     pos_by_pid = defaultdict(list)
     for p in positions_raw:
         pos_by_pid[p["zh_id"]].append({
-            "stock_name": p.get("stock_name", ""),
-            "stock_code": p.get("stock_code", ""),
-            "cost_price": safe_float(p.get("cost_price")),
-            "current_price": safe_float(p.get("current_price")),
-            "profit_ratio": safe_float(p.get("profit_ratio")),
-            "position_ratio": safe_float(p.get("position_ratio")),
+            "sn": p.get("stock_name", ""),
+            "sc": p.get("stock_code", ""),
+            "cp": safe_float(p.get("cost_price")),
+            "np": safe_float(p.get("current_price")),
+            "pr": safe_float(p.get("profit_ratio")),
+            "rr": safe_float(p.get("position_ratio")),
         })
 
+    # 导出全部历史调仓（all_trades 含所有 crawl_date），按唯一交易去重
     trades_by_pid = defaultdict(list)
-    for t in trades_raw:
+    seen = set()
+    for t in all_trades:
+        key = (t["zh_id"], t.get("stock_code",""), t.get("trade_date",""), t.get("direction",""))
+        if key in seen:
+            continue
+        seen.add(key)
         trades_by_pid[t["zh_id"]].append({
-            "trade_date": t.get("trade_date", ""),
-            "direction": t.get("direction", ""),
-            "stock_name": t.get("stock_name", ""),
-            "stock_code": t.get("stock_code", ""),
-            "trades_count": safe_int(t.get("trades_count"), 1),
-            "position_ratio": t.get("position_ratio", ""),
+            "td": t.get("trade_date", ""),
+            "dr": t.get("direction", ""),
+            "sn": t.get("stock_name", ""),
+            "sc": t.get("stock_code", ""),
+            "tc": safe_int(t.get("trades_count"), 1),
+            "rr": t.get("position_ratio", ""),
+            "pr": safe_float(t.get("price")),
         })
+
+    # 调仓按日期倒序
+    for pid in trades_by_pid:
+        trades_by_pid[pid].sort(key=lambda x: x.get("td", ""), reverse=True)
 
     # 推测持仓
     def compute_inferred_positions(zh_id, confirmed_codes):
-        stock_state = defaultdict(lambda: {"stock_name": "", "stock_code": "",
-                                            "buys": [], "sells": []})
+        # 缩写键名: sn=stock_name, sc=stock_code, b=buys, s=sells, l=level, d=date
+        stock_state = defaultdict(lambda: {"sn": "", "sc": "", "b": [], "s": []})
         for t in all_trades:
             if t.get("zh_id") != zh_id:
                 continue
@@ -710,42 +713,39 @@ def export(db_path, crawl_date, out_dir):
             if not code or code in confirmed_codes:
                 continue
             ss = stock_state[code]
-            ss["stock_name"] = t.get("stock_name", "")
-            ss["stock_code"] = code
-            level = t.get("position_ratio") or "?"
+            ss["sn"] = t.get("stock_name", "")
+            ss["sc"] = code
+            lv = t.get("position_ratio") or "?"
             if t.get("direction") == "买入":
-                ss["buys"].append({"level": level, "date": t.get("trade_date", "")})
+                ss["b"].append({"l": lv, "d": t.get("trade_date", "")})
             else:
-                ss["sells"].append({"level": level, "date": t.get("trade_date", "")})
+                ss["s"].append({"l": lv, "d": t.get("trade_date", "")})
 
         result = []
         for code, ss in stock_state.items():
-            if not ss["buys"]:
+            if not ss["b"]:
                 continue
-            buys_sorted = sorted(ss["buys"], key=lambda b: b["date"], reverse=True)
-            sells_sorted = sorted(ss["sells"], key=lambda s: s["date"], reverse=True)
-            latest_buy = buys_sorted[0]
-            has_sells = len(sells_sorted) > 0
+            b_sorted = sorted(ss["b"], key=lambda x: x["d"], reverse=True)
+            s_sorted = sorted(ss["s"], key=lambda x: x["d"], reverse=True)
+            latest_buy = b_sorted[0]
+            has_sells = len(s_sorted) > 0
 
             if not has_sells:
-                status = "持续买入"
-                confidence = "mid" if len(ss["buys"]) >= 2 else "low"
-            elif latest_buy["date"] > sells_sorted[0]["date"]:
-                status = "近期加仓"
-                confidence = "mid"
-            elif sells_sorted[0]["date"] > latest_buy["date"] and latest_buy["level"] == sells_sorted[0]["level"]:
+                st, cf = "持续买入", "mid" if len(ss["b"]) >= 2 else "low"
+            elif latest_buy["d"] > s_sorted[0]["d"]:
+                st, cf = "近期加仓", "mid"
+            elif s_sorted[0]["d"] > latest_buy["d"] and latest_buy["l"] == s_sorted[0]["l"]:
                 continue  # skip — likely cleared
             else:
-                status = "可能减持"
-                confidence = "low"
+                st, cf = "可能减持", "low"
 
             result.append({
-                "stock_name": ss["stock_name"], "stock_code": code,
-                "level_estimate": latest_buy["level"],
-                "status": status, "confidence": confidence,
-                "buy_count": len(ss["buys"]), "sell_count": len(ss["sells"]),
+                "sn": ss["sn"], "cd": code,
+                "le": latest_buy["l"],
+                "st": st, "cf": cf,
+                "bc": len(ss["b"]), "sc": len(ss["s"]),
             })
-        return sorted(result, key=lambda r: 0 if r["confidence"] == "mid" else 1)
+        return sorted(result, key=lambda r: 0 if r["cf"] == "mid" else 1)
 
     # ── 14. 构建历史时间序列 ──────────────────
     # Per-player: [{date, daily_return, total_return, net_value}, ...]
@@ -810,6 +810,21 @@ def export(db_path, crawl_date, out_dir):
     latest_dir.mkdir(parents=True, exist_ok=True)
 
     # summary.json
+    # players_index.json (独立文件，前端并行加载)
+    players_list = [
+        [p["id"], p["name"], p["followers"],
+         p["total_return"], p["daily_return"],
+         p["weekly_return"], p["monthly_return"],
+         p["yearly_return"], p["net_value"],
+         p["max_drawdown"], p["win_rate"],
+         p["days"], p["labels"], p["ranks"],
+         p["total_position"], p["quality"],
+         p["stocks"]]
+        for p in players_flat
+    ]
+    with open(latest_dir / "players_index.json", "w", encoding="utf-8") as f:
+        json.dump(players_list, f, ensure_ascii=False, separators=(",", ":"))
+
     with open(latest_dir / "summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, separators=(",", ":"))
 
@@ -818,29 +833,14 @@ def export(db_path, crawl_date, out_dir):
     players_out_dir.mkdir(parents=True, exist_ok=True)
     for p in players_flat:
         pid = p["id"]
+        # 仅保留 id+name 用于识别，持仓/调仓/推测使用缩写键名
         detail = {
             "id": pid,
             "name": p["name"],
-            "followers": p["followers"],
-            "total_return": p["total_return"],
-            "daily_return": p["daily_return"],
-            "weekly_return": p["weekly_return"],
-            "monthly_return": p["monthly_return"],
-            "yearly_return": p["yearly_return"],
-            "net_value": p["net_value"],
-            "max_drawdown": p["max_drawdown"],
-            "win_rate": p["win_rate"],
-            "days": p["days"],
-            "concept": p["concept"],
-            "intro": p["intro"],
-            "labels": p["labels"],
-            "ranks": p["ranks"],
-            "total_position": p["total_position"],
-            "quality": p["quality"],
-            "positions": pos_by_pid.get(pid, []),
-            "trades": trades_by_pid.get(pid, []),
-            "inferred": compute_inferred_positions(pid, set(
-                pp.get("stock_code", "") for pp in pos_by_pid.get(pid, [])
+            "p": pos_by_pid.get(pid, []),
+            "t": trades_by_pid.get(pid, []),
+            "i": compute_inferred_positions(pid, set(
+                pp.get("cd", pp.get("sc", "")) for pp in pos_by_pid.get(pid, [])
             )),
         }
         with open(players_out_dir / f"{pid}.json", "w", encoding="utf-8") as f:

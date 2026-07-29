@@ -7,22 +7,28 @@ import { useTableSort } from '../composables/useTableSort.js'
 const route = useRoute()
 const router = useRouter()
 const { loadPlayerHistory } = inject('stockHistory')
+const { playerLookup } = inject('stockData')
 
 const playerData = ref(null)
 const loadingDetail = ref(false)
 
-const player = computed(() => playerData.value)
+// 合并：player文件(pos/trades/inferred) + stockData(基本字段如ranks/returns)
+const player = computed(() => {
+  if (!playerData.value) return null
+  const info = playerLookup.value[playerData.value.id] || {}
+  return { ...playerData.value, ...info }
+})
 const history = ref([])
 
 async function loadHistoryData(zhId) {
   history.value = await loadPlayerHistory(zhId)
 }
 
-const posData = computed(() => playerData.value?.positions || [])
-const tradeData = computed(() => playerData.value?.trades || [])
-const inferredPositions = computed(() => playerData.value?.inferred || [])
-const { sorted: sortedPos, toggle: tp, indicator: ip } = useTableSort(posData, 'position_ratio')
-const { sorted: sortedTrades, toggle: tt, indicator: it } = useTableSort(tradeData, 'trade_date')
+const posData = computed(() => playerData.value?.p || [])
+const tradeData = computed(() => playerData.value?.t || [])
+const inferredPositions = computed(() => playerData.value?.i || [])
+const { sorted: sortedPos, toggle: tp, indicator: ip } = useTableSort(posData, 'rr')
+const { sorted: sortedTrades, toggle: tt, indicator: it } = useTableSort(tradeData, 'td')
 
 function pct(v) {
   const n = parseFloat(v)
@@ -117,21 +123,21 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
         <table>
           <thead><tr>
             <th>股票</th><th>代码</th>
-            <th style="cursor:pointer;" @click="tp('cost_price')">成本价{{ ip('cost_price') }}</th>
-            <th style="cursor:pointer;" @click="tp('current_price')">现价{{ ip('current_price') }}</th>
-            <th style="cursor:pointer;" @click="tp('profit_ratio')">盈亏{{ ip('profit_ratio') }}</th>
-            <th style="cursor:pointer;" @click="tp('position_ratio')">仓位{{ ip('position_ratio') }}</th>
+            <th style="cursor:pointer;" @click="tp('cp')">成本价{{ ip('cp') }}</th>
+            <th style="cursor:pointer;" @click="tp('np')">现价{{ ip('np') }}</th>
+            <th style="cursor:pointer;" @click="tp('pr')">盈亏{{ ip('pr') }}</th>
+            <th style="cursor:pointer;" @click="tp('rr')">仓位{{ ip('rr') }}</th>
           </tr></thead>
           <tbody>
-            <tr v-for="x in sortedPos" :key="x.stock_code">
-              <td class="nowrap"><strong>{{ x.stock_name }}</strong></td>
-              <td class="nowrap" style="color:#999;">{{ x.stock_code }}</td>
-              <td>{{ (x.cost_price || 0).toFixed(3) }}</td>
-              <td>{{ (x.current_price || 0).toFixed(3) }}</td>
-              <td v-html="pct(x.profit_ratio)"></td>
+            <tr v-for="x in sortedPos" :key="x.sc">
+              <td class="nowrap"><strong>{{ x.sn }}</strong></td>
+              <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
+              <td>{{ (x.cp || 0).toFixed(3) }}</td>
+              <td>{{ (x.np || 0).toFixed(3) }}</td>
+              <td v-html="pct(x.pr)"></td>
               <td>
-                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, x.position_ratio || 0) + '%' }"></span></span>
-                {{ (x.position_ratio || 0).toFixed(1) }}%
+                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, x.rr || 0) + '%' }"></span></span>
+                {{ (x.rr || 0).toFixed(1) }}%
               </td>
             </tr>
           </tbody>
@@ -145,13 +151,13 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
       <div style="max-height:300px;overflow-y:auto;">
         <div class="table-wrap"><table><thead><tr><th>股票</th><th>代码</th><th>估算仓位</th><th>状态</th><th>买入</th><th>卖出</th></tr></thead>
           <tbody>
-            <tr v-for="s in inferredPositions" :key="s.stock_code">
-              <td class="nowrap"><strong>{{ s.stock_name }}</strong></td>
-              <td class="nowrap" style="color:#666;">{{ s.stock_code }}</td>
-              <td style="color:#666;">{{ s.level_estimate }}</td>
-              <td><span :style="{ color: s.confidence === 'mid' ? '#5b6daa' : '#999', fontSize:'12px' }">{{ s.status }}</span></td>
-              <td>{{ s.buy_count }}笔</td>
-              <td>{{ s.sell_count }}笔</td>
+            <tr v-for="s in inferredPositions" :key="s.cd">
+              <td class="nowrap"><strong>{{ s.sn }}</strong></td>
+              <td class="nowrap" style="color:#666;">{{ s.cd }}</td>
+              <td style="color:#666;">{{ s.le }}</td>
+              <td><span :style="{ color: s.cf === 'mid' ? '#5b6daa' : '#999', fontSize:'12px' }">{{ s.st }}</span></td>
+              <td>{{ s.bc }}笔</td>
+              <td>{{ s.sc }}笔</td>
             </tr>
           </tbody>
         </table>
@@ -161,23 +167,25 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
       <div class="card">
         <h2>🔄 调仓记录 <span class="badge">{{ sortedTrades.length }}</span></h2>
         <div v-if="!sortedTrades.length" class="empty-state">📭 暂无调仓记录</div>
-        <div class="table-wrap" v-else>
+        <div class="table-wrap" v-else style="max-height:400px;overflow-y:auto;">
         <table>
           <thead><tr>
-            <th style="cursor:pointer;" @click="tt('trade_date')">日期{{ it('trade_date') }}</th>
-            <th style="cursor:pointer;" @click="tt('direction')">方向{{ it('direction') }}</th>
+            <th style="cursor:pointer;" @click="tt('td')">日期{{ it('td') }}</th>
+            <th style="cursor:pointer;" @click="tt('dr')">方向{{ it('dr') }}</th>
             <th>股票</th><th>代码</th>
-            <th style="cursor:pointer;" @click="tt('trades_count')">笔数{{ it('trades_count') }}</th>
+            <th style="cursor:pointer;" @click="tt('tc')">笔数{{ it('trades_count') }}</th>
+            <th style="cursor:pointer;" @click="tt('pr')">价格{{ it('price') }}</th>
             <th>仓位</th>
           </tr></thead>
           <tbody>
-            <tr v-for="x in sortedTrades" :key="x.id || x.trade_date + x.stock_code">
-              <td>{{ x.trade_date }}</td>
-              <td><span :class="x.direction === '买入' ? 'buy' : 'sell'">{{ x.direction }}</span></td>
-              <td class="nowrap"><strong>{{ x.stock_name }}</strong></td>
-              <td class="nowrap" style="color:#999;">{{ x.stock_code }}</td>
-              <td>{{ x.trades_count || 1 }}笔</td>
-              <td style="font-size:12px;color:#888;">{{ x.position_ratio || '—' }}</td>
+            <tr v-for="x in sortedTrades" :key="x.id || x.td + x.sc">
+              <td>{{ x.td }}</td>
+              <td><span :class="x.dr === '买入' ? 'buy' : 'sell'">{{ x.dr }}</span></td>
+              <td class="nowrap"><strong>{{ x.sn }}</strong></td>
+              <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
+              <td>{{ x.tc || 1 }}笔</td>
+              <td style="font-size:12px;color:#888;">{{ (x.pr && x.pr > 0) ? '¥' + x.pr.toFixed(2) : '—' }}</td>
+              <td style="font-size:12px;color:#888;">{{ x.rr || '—' }}</td>
             </tr>
           </tbody>
         </table>

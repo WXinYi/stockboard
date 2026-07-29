@@ -10,8 +10,8 @@ const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspec
 const { positionChanges: posCh } = inject('stockHistory')
 function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
-const coreData = computed(() => signals.value.coreHoldings)
-const { sorted: sortedCore, toggle: tog, indicator: ind } = useTableSort(coreData, 'totalPosition')
+const coreData = computed(() => signals.value.ch)
+const { sorted: sortedCore, toggle: tog, indicator: ind } = useTableSort(coreData, 'tp')
 
 function pct(v) {
   const n = parseFloat(v)
@@ -62,53 +62,53 @@ function pct(v) {
       <span class="badge-pill">高手（{{ qualityPlayerCount }}个）= 运营≥200天 · 风险调整得分≥0.15</span>
     </div>
     <div class="kpi-row">
-      <div class="kpi-item"><span class="kpi-num buy">{{ signals.buySignals.length }}</span><span class="kpi-label">高手买入</span></div>
-      <div class="kpi-item"><span class="kpi-num" style="color:#5b6daa;">{{ signals.coreHoldings.length }}</span><span class="kpi-label">高手重仓</span></div>
-      <div class="kpi-item"><span class="kpi-num sell">{{ signals.sellWarnings.length }}</span><span class="kpi-label">高手卖出</span></div>
-      <div class="kpi-item"><span class="kpi-num" style="color:#7b6db3;">{{ signals.highQuality.length }}</span><span class="kpi-label">综合高分</span></div>
+      <div class="kpi-item"><span class="kpi-num buy">{{ signals.bs.length }}</span><span class="kpi-label">高手买入</span></div>
+      <div class="kpi-item"><span class="kpi-num" style="color:#5b6daa;">{{ signals.ch.length }}</span><span class="kpi-label">高手重仓</span></div>
+      <div class="kpi-item"><span class="kpi-num sell">{{ signals.sw.length }}</span><span class="kpi-label">高手卖出</span></div>
+      <div class="kpi-item"><span class="kpi-num" style="color:#7b6db3;">{{ signals.hq.length }}</span><span class="kpi-label">综合高分</span></div>
     </div>
   </div>
 
   <div class="grid-2">
     <!-- 高手买入信号 -->
     <div class="card">
-      <h2>◆ 高手正在买入 <span class="badge">{{ signals.buySignals.length }}</span></h2>
+      <h2>◆ 高手正在买入 <span class="badge">{{ signals.bs.length }}</span></h2>
       <p class="hint">有高质量选手今日买入的股票，按信号强度排序</p>
       <div style="max-height:500px;overflow-y:auto;">
-        <div v-if="!signals.buySignals.length" class="empty-state">今日暂无高手买入信号</div>
-        <div v-for="s in signals.buySignals" :key="s.code" class="signal-card" :class="{ strong: s.buyers.length >= 5 }">
+        <div v-if="!signals.bs.length" class="empty-state">今日暂无高手买入信号</div>
+        <div v-for="s in signals.bs" :key="s.c" class="signal-card" :class="{ strong: s.b.length >= 5 }">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <strong>{{ s.name }}</strong>
-            <span style="font-size:11px;color:#666;">{{ s.code }}</span>
+            <strong>{{ s.n }}</strong>
+            <span style="font-size:11px;color:#666;">{{ s.c }}</span>
           </div>
           <div style="margin-top:4px;font-size:12px;">
-            <span class="buy">{{ s.buyers.length }}人买入</span>
-            <span v-if="s.sellers.length" class="sell" style="margin-left:8px;">{{ s.sellers.length }}人卖出</span>
-            <span style="color:#555;margin-left:8px;">仓位 {{ s.totalPosition.toFixed(0) }}%</span>
-            <span style="color:#5b6daa;margin-left:8px;font-weight:600;">信号 {{ s.score.toFixed(1) }}</span>
+            <span class="buy">{{ s.b.length }}人买入</span>
+            <span v-if="s.sl.length" class="sell" style="margin-left:8px;">{{ s.sl.length }}人卖出</span>
+            <span style="color:#555;margin-left:8px;">仓位 {{ s.tp.toFixed(0) }}%</span>
+            <span style="color:#5b6daa;margin-left:8px;font-weight:600;">信号 {{ s.s.toFixed(1) }}</span>
           </div>
-          <div style="font-size:11px;color:#555;margin-top:2px;">买入: <template v-for="(p, idx) in s.buyers" :key="'b'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
-          <div v-if="s.sellers.length" style="font-size:11px;color:#555;">卖出: <template v-for="(p, idx) in s.sellers" :key="'s'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
+          <div style="font-size:11px;color:#555;margin-top:2px;">买入: <template v-for="(p, idx) in s.b" :key="'b'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
+          <div v-if="s.sl.length" style="font-size:11px;color:#555;">卖出: <template v-for="(p, idx) in s.sl" :key="'s'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
         </div>
       </div>
     </div>
 
     <!-- 卖出预警 -->
     <div class="card">
-      <h2>◇ 高手正在卖出 <span class="badge">{{ signals.sellWarnings.length }}</span></h2>
+      <h2>◇ 高手正在卖出 <span class="badge">{{ signals.sw.length }}</span></h2>
       <p class="hint">高质量选手正在出货的股票，如果你持有建议关注风险</p>
       <div style="max-height:500px;overflow-y:auto;">
-        <div v-if="!signals.sellWarnings.length" class="empty-state">今日暂无高手集中卖出</div>
-        <div v-for="s in signals.sellWarnings" :key="s.code" class="signal-card warn">
+        <div v-if="!signals.sw.length" class="empty-state">今日暂无高手集中卖出</div>
+        <div v-for="s in signals.sw" :key="s.c" class="signal-card warn">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <strong>{{ s.name }}</strong>
-            <span style="font-size:11px;color:#666;">{{ s.code }}</span>
+            <strong>{{ s.n }}</strong>
+            <span style="font-size:11px;color:#666;">{{ s.c }}</span>
           </div>
           <div style="margin-top:4px;font-size:12px;">
-            <span class="sell">{{ s.sellers.length }}人卖出</span>
-            <span style="color:#555;margin-left:8px;">仓位 {{ s.totalPosition.toFixed(0) }}%</span>
+            <span class="sell">{{ s.sl.length }}人卖出</span>
+            <span style="color:#555;margin-left:8px;">仓位 {{ s.tp.toFixed(0) }}%</span>
           </div>
-          <div style="font-size:11px;color:#555;margin-top:2px;"><template v-for="(p, idx) in s.sellers" :key="'se'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
+          <div style="font-size:11px;color:#555;margin-top:2px;"><template v-for="(p, idx) in s.sl" :key="'se'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
         </div>
       </div>
     </div>
@@ -122,21 +122,21 @@ function pct(v) {
       <div style="max-height:500px;overflow-y:auto;">
         <table><thead><tr>
           <th>#</th><th>股票</th><th>代码</th>
-          <th style="cursor:pointer;" @click="tog('holderCount')">高手数{{ ind('holderCount') }}</th>
-          <th style="cursor:pointer;" @click="tog('totalPosition')">平均仓位{{ ind('totalPosition') }}</th>
-          <th style="cursor:pointer;" @click="tog('score')">信号分{{ ind('score') }}</th>
+          <th style="cursor:pointer;" @click="tog('h')">高手数{{ ind('h') }}</th>
+          <th style="cursor:pointer;" @click="tog('tp')">平均仓位{{ ind('tp') }}</th>
+          <th style="cursor:pointer;" @click="tog('s')">信号分{{ ind('s') }}</th>
         </tr></thead>
           <tbody>
-            <tr v-for="(s, i) in sortedCore.slice(0,20)" :key="s.code">
+            <tr v-for="(s, i) in sortedCore.slice(0,20)" :key="s.c">
               <td>{{ i + 1 }}</td>
-              <td><strong>{{ s.name }}</strong></td>
-              <td style="color:#666;">{{ s.code }}</td>
-              <td>{{ s.holderCount }}人</td>
+              <td><strong>{{ s.n }}</strong></td>
+              <td style="color:#666;">{{ s.c }}</td>
+              <td>{{ s.h }}人</td>
               <td>
-                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.totalPosition/s.holderCount) + '%' }"></span></span>
-                {{ (s.totalPosition / s.holderCount).toFixed(0) }}%
+                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp/s.h) + '%' }"></span></span>
+                {{ (s.tp / s.h).toFixed(0) }}%
               </td>
-              <td><span :style="{ color: s.score >= 0 ? '#e74c3c' : '#27ae60', fontWeight: 600 }">{{ s.score.toFixed(1) }}</span></td>
+              <td><span :style="{ color: s.s >= 0 ? '#e74c3c' : '#27ae60', fontWeight: 600 }">{{ s.s.toFixed(1) }}</span></td>
             </tr>
           </tbody>
         </table>
@@ -144,10 +144,10 @@ function pct(v) {
       <div>
         <p style="font-size:13px;color:#666;margin-bottom:10px;">持有这些股票的高手:</p>
         <div style="max-height:500px;overflow-y:auto;">
-          <div v-for="s in sortedCore.slice(0,10)" :key="'h'+s.code" style="padding:8px;border-bottom:1px solid #f0f0f0;">
-            <strong style="font-size:13px;">{{ s.name }}</strong>
-            <span style="font-size:10px;color:#666;margin-left:4px;">{{ s.code }}</span>
-            <div style="font-size:11px;color:#555;margin-top:2px;"><template v-for="(p, idx) in s.holders" :key="'h'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
+          <div v-for="s in sortedCore.slice(0,10)" :key="'h'+s.c" style="padding:8px;border-bottom:1px solid #f0f0f0;">
+            <strong style="font-size:13px;">{{ s.n }}</strong>
+            <span style="font-size:10px;color:#666;margin-left:4px;">{{ s.c }}</span>
+            <div style="font-size:11px;color:#555;margin-top:2px;"><template v-for="(p, idx) in s.hd" :key="'h'+p"><span v-if="idx>0">、</span><span class="player-chip" @click.stop="goPlayer(p)">{{ p }}</span></template></div>
           </div>
         </div>
       </div>

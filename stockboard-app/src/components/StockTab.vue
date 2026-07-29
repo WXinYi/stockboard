@@ -11,7 +11,7 @@ const stockSearch = ref('')
 const lookedUpHolders = ref(null)
 const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 
-const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(computed(() => stats.value), 'total_position')
+const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(computed(() => stats.value), 'tp')
 
 function pct(v) {
   const n = parseFloat(v)
@@ -37,8 +37,8 @@ onMounted(async () => {
   Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
   chart = new Chart(chartCanvas.value, {
     type: 'bar', data: {
-      labels: top10.map(s => s.name),
-      datasets: [{ label: '持有人数', data: top10.map(s => s.holders), backgroundColor: '#8e44ad', borderRadius: 6 }]
+      labels: top10.map(s => s.n),
+      datasets: [{ label: '持有人数', data: top10.map(s => s.h), backgroundColor: '#8e44ad', borderRadius: 6 }]
     },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
@@ -62,7 +62,7 @@ onMounted(async () => {
         <p style="font-size:12px;color:#888;margin-bottom:8px;">{{ lookedUpHolders.length }} 人持有:</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
           <span v-for="p in lookedUpHolders" :key="p.zh_id" style="background:#f0f2f5;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;" @click="navigateToPlayer(p.zh_id)">
-            {{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span> <span style="color:#888;">{{ (p._total_position || 0).toFixed(0) }}%仓位</span>
+            {{ p.n || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span> <span style="color:#888;">{{ (p._total_position || 0).toFixed(0) }}%仓位</span>
           </span>
         </div>
       </div>
@@ -76,21 +76,21 @@ onMounted(async () => {
       <div style="max-height:500px;overflow-y:auto;">
         <table><thead><tr>
           <th>#</th><th>股票</th><th>代码</th>
-          <th style="cursor:pointer;" @click="tog('holders')">持有人{{ ind('holders') }}</th>
-          <th style="cursor:pointer;" @click="tog('total_position')">总仓位{{ ind('total_position') }}</th>
-          <th style="cursor:pointer;" @click="tog('avg_profit')">平均盈亏{{ ind('avg_profit') }}</th>
+          <th style="cursor:pointer;" @click="tog('h')">持有人{{ ind('h') }}</th>
+          <th style="cursor:pointer;" @click="tog('tp')">总仓位{{ ind('tp') }}</th>
+          <th style="cursor:pointer;" @click="tog('ap')">平均盈亏{{ ind('ap') }}</th>
         </tr></thead>
           <tbody>
-            <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.code">
+            <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.c">
               <td>{{ i + 1 }}</td>
-              <td><strong>{{ s.name }}</strong></td>
-              <td style="color:#999;">{{ s.code }}</td>
-              <td>{{ s.holders }}人</td>
+              <td><strong>{{ s.n }}</strong></td>
+              <td style="color:#999;">{{ s.c }}</td>
+              <td>{{ s.h }}人</td>
               <td>
-                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.total_position/s.count) + '%' }"></span></span>
-                {{ s.total_position.toFixed(0) }}%
+                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp/s.h) + '%' }"></span></span>
+                {{ s.tp.toFixed(0) }}%
               </td>
-              <td v-html="pct(s.total_profit/s.count)"></td>
+              <td v-html="pct(s.ap/s.h)"></td>
             </tr>
           </tbody>
         </table>

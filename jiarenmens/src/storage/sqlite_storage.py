@@ -108,6 +108,7 @@ class SQLiteStorage(StorageInterface):
                     trades_count INTEGER DEFAULT 1,
                     position_ratio TEXT DEFAULT '',
                     position_value REAL DEFAULT 0.0,
+                    price REAL DEFAULT 0.0,
                     trade_date TEXT DEFAULT '',
                     direction TEXT DEFAULT '',
                     position_change REAL DEFAULT 0.0,
@@ -117,6 +118,11 @@ class SQLiteStorage(StorageInterface):
                 )
             """)
 
+            # 存量数据库迁移：添加 price 列
+            try:
+                conn.execute("ALTER TABLE trades ADD COLUMN price REAL DEFAULT 0.0")
+            except Exception:
+                pass  # 列已存在
             conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_zh_id ON positions(zh_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_stock ON positions(stock_code)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_positions_crawl_date ON positions(crawl_date)")
@@ -310,8 +316,8 @@ class SQLiteStorage(StorageInterface):
     _TRADE_INSERT_SQL = """
         INSERT INTO trades (
             zh_id, stock_name, stock_code, trades_count, position_ratio,
-            position_value, trade_date, direction, position_change, crawl_date, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            position_value, price, trade_date, direction, position_change, crawl_date, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """
 
     def save_trades(self, zh_id: str, trades: List[Dict[str, Any]], crawl_date: str | None = None) -> None:
@@ -329,6 +335,7 @@ class SQLiteStorage(StorageInterface):
                         trade.get('trades', trade.get('trades_count', 1)),
                         trade.get('position_ratio', ''),
                         trade.get('position_value', 0.0),
+                        trade.get('price', 0.0),
                         trade.get('trade_date', ''),
                         trade.get('direction', ''),
                         trade.get('position_change', 0.0),
@@ -361,6 +368,7 @@ class SQLiteStorage(StorageInterface):
                             trade.get('trades', trade.get('trades_count', 1)),
                             trade.get('position_ratio', ''),
                             trade.get('position_value', 0.0),
+                            trade.get('price', 0.0),
                             trade.get('trade_date', ''),
                             trade.get('direction', ''),
                             trade.get('position_change', 0.0),

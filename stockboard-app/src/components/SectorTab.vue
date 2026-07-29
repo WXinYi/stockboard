@@ -5,7 +5,7 @@ import { useTableSort } from '../composables/useTableSort.js'
 const { sectorStats: sectors } = inject('stockData')
 
 const secData = computed(() => sectors.value)
-const { sorted, toggle: tog, indicator: ind } = useTableSort(secData, 'count')
+const { sorted, toggle: tog, indicator: ind } = useTableSort(secData, 'c')
 
 function pct(v) {
   const n = parseFloat(v)
@@ -21,10 +21,10 @@ onMounted(async () => {
   Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
   new Chart(chartCanvas.value, {
     type: 'bar', data: {
-      labels: top12.map(s => s.name),
+      labels: top12.map(s => s.n),
       datasets: [
-        { label: '选手数', data: top12.map(s => s.count), backgroundColor: '#2980b9', borderRadius: 6 },
-        { label: '高手数', data: top12.map(s => s.qualityCount), backgroundColor: '#27ae60', borderRadius: 6 },
+        { label: '选手数', data: top12.map(s => s.c), backgroundColor: '#2980b9', borderRadius: 6 },
+        { label: '高手数', data: top12.map(s => s.qc), backgroundColor: '#27ae60', borderRadius: 6 },
       ]
     },
     options: {
@@ -48,21 +48,21 @@ onMounted(async () => {
       <div style="max-height:500px;overflow-y:auto;">
         <table><thead><tr>
           <th>#</th><th>板块</th>
-          <th style="cursor:pointer;" @click="tog('count')">选手{{ ind('count') }}</th>
-          <th style="cursor:pointer;" @click="tog('qualityCount')">高手{{ ind('qualityCount') }}</th>
-          <th style="cursor:pointer;" @click="tog('avg_position')">平均仓位{{ ind('avg_position') }}</th>
-          <th style="cursor:pointer;" @click="tog('avg_return')">平均总收益{{ ind('avg_return') }}</th>
-          <th style="cursor:pointer;" @click="tog('avg_daily')">今日平均{{ ind('avg_daily') }}</th>
+          <th style="cursor:pointer;" @click="tog('c')">选手{{ ind('c') }}</th>
+          <th style="cursor:pointer;" @click="tog('qc')">高手{{ ind('qc') }}</th>
+          <th style="cursor:pointer;" @click="tog('ap')">平均仓位{{ ind('ap') }}</th>
+          <th style="cursor:pointer;" @click="tog('ar')">平均总收益{{ ind('ar') }}</th>
+          <th style="cursor:pointer;" @click="tog('ad')">今日平均{{ ind('ad') }}</th>
         </tr></thead>
           <tbody>
-            <tr v-for="(s, i) in sorted.slice(0,20)" :key="s.name">
+            <tr v-for="(s, i) in sorted.slice(0,20)" :key="s.n">
               <td>{{ i + 1 }}</td>
-              <td><strong>{{ s.name }}</strong></td>
-              <td>{{ s.count }}人</td>
-              <td style="color:#27ae60;">{{ s.qualityCount }}人</td>
-              <td>{{ s.avg_position.toFixed(0) }}%</td>
-              <td v-html="pct(s.avg_return)"></td>
-              <td v-html="pct(s.avg_daily)"></td>
+              <td><strong>{{ s.n }}</strong></td>
+              <td>{{ s.c }}人</td>
+              <td style="color:#27ae60;">{{ s.qc }}人</td>
+              <td>{{ s.ap.toFixed(0) }}%</td>
+              <td v-html="pct(s.ar)"></td>
+              <td v-html="pct(s.ad)"></td>
             </tr>
           </tbody>
         </table>

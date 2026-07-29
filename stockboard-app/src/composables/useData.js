@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { fetchSummary } from '../data/loader.js'
+import { fetchSummary, fetchPlayersIndex } from '../data/loader.js'
 
 const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
 
@@ -7,6 +7,7 @@ export function useData() {
   const crawlTime = ref('')
   const loading = ref(false)
   const _summary = ref(null)
+  const _playersIndex = ref(null)
 
   // 筛选状态
   const sortKey = ref('total_return')
@@ -56,8 +57,8 @@ export function useData() {
   // 选手列表 + 排序
   // ═══════════════════════════════════════
   const allPlayers = computed(() => {
-    if (!_summary.value) return []
-    return _summary.value.players.map(normalize)
+    if (!_playersIndex.value) return []
+    return _playersIndex.value.map(normalize)
   })
 
   const sortedPlayers = computed(() => {
@@ -81,7 +82,7 @@ export function useData() {
   const positionDist = computed(() => _summary.value?.positionDist || {})
   const profitDist = computed(() => _summary.value?.profitDist || {})
   const copyTradeSignals = computed(() => _summary.value?.copyTradeSignals || {
-    buySignals: [], coreHoldings: [], sellWarnings: [], highQuality: [],
+    bs: [], ch: [], sw: [], hq: [],
   })
   const stockCompare = computed(() => _summary.value?.stockCompare || {
     concentration: [], divergence: [], qualityCount: 0,
@@ -100,8 +101,15 @@ export function useData() {
   })
 
   const playerNameMap = computed(() => {
+    // name→id 从 summary；id→id 从 players_index 补充
     if (!_summary.value) return {}
-    return { ..._summary.value.playerNameMap }
+    const map = { ..._summary.value.playerNameMap }
+    if (_playersIndex.value) {
+      for (const p of _playersIndex.value) {
+        map[p[0]] = p[0]  // p[0]=id, for id-based lookups
+      }
+    }
+    return map
   })
 
   // ═══════════════════════════════════════
@@ -131,8 +139,9 @@ export function useData() {
   async function loadData() {
     loading.value = true
     try {
-      const s = await fetchSummary()
+      const [s, pi] = await Promise.all([fetchSummary(), fetchPlayersIndex()])
       _summary.value = s
+      _playersIndex.value = pi
       crawlTime.value = s.crawl_time || ''
     } catch (e) {
       console.error('加载数据失败:', e)
@@ -141,12 +150,25 @@ export function useData() {
     }
   }
 
+  // ═══════════════════════════════════════
+  // 选手详情辅助：按 zh_id 快速查询基本信息
+  // ═══════════════════════════════════════
+  const playerLookup = computed(() => {
+    const map = {}
+    if (!_playersIndex.value) return map
+    for (const p of allPlayers.value) {
+      map[p.zh_id] = p
+    }
+    return map
+  })
+
   return {
     currentDate, loading, crawlTime,
     sortedPlayers, stockStats, tradeConsensus, positionDist, profitDist,
     sortKey, qualityOnly, isQuality,
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
+    playerLookup,
     loadData,
   }
 }
