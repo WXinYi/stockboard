@@ -119,8 +119,10 @@ jobs:
               else:
                   watched_lines.append(f"{link}: —")
 
-          # 周榜前5中有调仓的（players 为数组: [id,name,followers,T,d,w,m,y,v,dd,wr,dy,lb,rk,tp,q,ss]）
-          weekly_top = sorted(s["players"], key=lambda p: p[6] or 0, reverse=True)[:5]  # p[6]=weekly_return
+          # 周榜前5中有调仓的（players_index.json: [id,name,followers,T,d,w,m,y,v,dd,wr,dy,lb,rk,tp,q,ss]）
+          with open("stockboard-app/public/data/latest/players_index.json") as f:
+              players_idx = json.load(f)
+          weekly_top = sorted(players_idx, key=lambda p: p[6] or 0, reverse=True)[:5]  # p[6]=weekly_return
           top_traded = [p for p in weekly_top if p[0] in traded_set]  # p[0]=id
           if top_traded:
               top_links = ["、".join(f"[{p[1]}]({BASE_URL}/#/player/{p[0]})" for p in top_traded)]  # p[1]=name
