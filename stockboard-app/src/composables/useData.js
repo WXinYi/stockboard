@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { fetchSummary } from '../data/loader.js'
 
-const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900321280'])
+const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
 
 export function useData() {
   const crawlTime = ref('')
