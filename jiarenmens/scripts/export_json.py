@@ -414,8 +414,8 @@ def export(db_path, crawl_date, out_dir):
                                        "stock_code": code, "players": []}
         pn = t.get("player_name") or t.get("zh_id", "")
         pid = t.get("zh_id", "")
-        if not any(p["zh_id"] == pid for p in trade_alerts_map[code]["players"]):
-            trade_alerts_map[code]["players"].append({"name": pn, "zh_id": pid})
+        if not any(p[1] == pid for p in trade_alerts_map[code]["players"]):
+            trade_alerts_map[code]["players"].append([pn, pid])    # [name, zh_id]
     trade_alerts = sorted(trade_alerts_map.values(),
                           key=lambda a: len(a["players"]), reverse=True)
 
@@ -598,44 +598,40 @@ def export(db_path, crawl_date, out_dir):
                 else:
                     change_type, emoji = "减仓", "📉"
                 ref = t or y
-                changes.append({
-                    "zh_id": pid,
-                    "player_name": (player_names.get(pid) or pid),
-                    "stock_code": code,
-                    "stock_name": (ref.get("stock_name") or "") if ref else "",
-                    "type": change_type,
-                    "emoji": emoji,
-                    "delta": round(delta, 1),
-                    "yesterdayRatio": round(yesterday_ratio, 1),
-                    "todayRatio": round(today_ratio, 1),
-                })
-        changes.sort(key=lambda c: abs(c["delta"]), reverse=True)
+                # [zh_id, player_name, stock_code, stock_name, type, emoji, delta, yesterdayRatio, todayRatio]
+                changes.append([
+                    pid,
+                    (player_names.get(pid) or pid),
+                    code,
+                    (ref.get("stock_name") or "") if ref else "",
+                    change_type,
+                    emoji,
+                    round(delta, 1),
+                    round(yesterday_ratio, 1),
+                    round(today_ratio, 1),
+                ])
+        changes.sort(key=lambda c: abs(c[6]), reverse=True)  # sort by delta
         changes_data = {
             "hasHistory": True,
             "yesterday": yesterday,
             "today": today,
             "changes": changes,
-            "added": [c for c in changes if c["type"] == "新进"],
-            "cleared": [c for c in changes if c["type"] == "清仓"],
+            "added": [c for c in changes if c[4] == "新进"],
+            "cleared": [c for c in changes if c[4] == "清仓"],
         }
 
         # alerts
         stock_alert_map = {}
         mid_alerts = []
         for c in changes:
-            if c["type"] == "清仓":
-                code = c["stock_code"]
+            if c[4] == "清仓":   # type
+                code = c[2]      # stock_code
                 if code not in stock_alert_map:
-                    stock_alert_map[code] = {"stock_name": c["stock_name"],
+                    stock_alert_map[code] = {"stock_name": c[3],  # stock_name
                                               "stock_code": code, "players": []}
-                stock_alert_map[code]["players"].append(
-                    {"name": c["player_name"], "zh_id": c["zh_id"]}
-                )
-            elif c["delta"] < -30:
-                mid_alerts.append({
-                    "player_name": c["player_name"], "zh_id": c["zh_id"],
-                    "stock_name": c["stock_name"], "stock_code": c["stock_code"],
-                })
+                stock_alert_map[code]["players"].append([c[1], c[0]])  # [player_name, zh_id]
+            elif c[4] == "减仓" and c[6] < -30:   # type=="减仓", delta<-30
+                mid_alerts.append([c[1], c[0], c[3], c[2]])  # [player_name, zh_id, stock_name, stock_code]
         high_by_stock = sorted(stock_alert_map.values(),
                                key=lambda a: len(a["players"]), reverse=True)
         total_clear = sum(len(a["players"]) for a in high_by_stock)
@@ -652,15 +648,14 @@ def export(db_path, crawl_date, out_dir):
         "date": crawl_date,
         "crawl_time": "",  # 下面填入
         "players": [
-            {"i": p["id"], "n": p["name"],
-             "f": p["followers"],
-             "T": p["total_return"], "d": p["daily_return"],
-             "w": p["weekly_return"], "m": p["monthly_return"],
-             "y": p["yearly_return"], "v": p["net_value"],
-             "dd": p["max_drawdown"], "wr": p["win_rate"],
-             "dy": p["days"], "lb": p["labels"], "rk": p["ranks"],
-             "tp": p["total_position"], "q": p["quality"],
-             "ss": p["stocks"]}
+            [p["id"], p["name"], p["followers"],
+             p["total_return"], p["daily_return"],
+             p["weekly_return"], p["monthly_return"],
+             p["yearly_return"], p["net_value"],
+             p["max_drawdown"], p["win_rate"],
+             p["days"], p["labels"], p["ranks"],
+             p["total_position"], p["quality"],
+             p["stocks"]]
             for p in players_flat
         ],
         "qualityPlayerCount": len(quality_ids),
@@ -675,13 +670,10 @@ def export(db_path, crawl_date, out_dir):
         "suspectedClears": suspected_clears,
         "tradedPlayerIds": traded_player_ids,
         "fullRankCount": sum(1 for p in players_flat if len(p.get("ranks") or []) >= 5),
-        # 选手名 → zh_id 映射（name→id + id→id）
-        "playerNameMap": {},  # 将在下面填充
+        "playerNameMap": {},
     }
-    name_map = {p["name"]: p["id"] for p in players_flat if p["name"]}
-    for p in players_flat:
-        name_map[p["id"]] = p["id"]  # id → id 映射
-    summary["playerNameMap"] = name_map
+    # 仅保留 name→id 映射（不再冗余存 id→id）
+    summary["playerNameMap"] = {p["name"]: p["id"] for p in players_flat if p["name"]}
 
     # ── 13. 构建选手详情文件 ──────────────────
     # positions/trades by player

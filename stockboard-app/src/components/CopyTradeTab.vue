@@ -28,9 +28,9 @@ function pct(v) {
     <div v-if="showAlerts" style="margin-top:6px;">
       <div v-for="s in tradeAlerts" :key="s.stock_code" style="margin-bottom:4px;font-size:12px;">
         <strong>{{ s.stock_name }}</strong>：
-        <template v-for="(p, i) in s.players" :key="p.zh_id">
+        <template v-for="(p, i) in s.players" :key="p[1]">  <!-- p: [name, zh_id] -->
           <span v-if="i>0">、</span>
-          <span class="player-chip" @click.stop="goPlayer(p.zh_id)">{{ p.name }}</span>
+          <span class="player-chip" @click.stop="goPlayer(p[1])">{{ p[0] }}</span>
         </template>
       </div>
     </div>

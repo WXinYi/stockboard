@@ -39,11 +39,11 @@ function pct(v) {
       <div style="max-height:300px;overflow-y:auto;">
       <table><thead><tr><th>股票</th><th>代码</th><th>选手</th><th>仓位</th></tr></thead>
         <tbody>
-          <tr v-for="c in changes.added" :key="c.zh_id+c.stock_code">
-            <td><strong>{{ c.stock_name }}</strong></td>
-            <td style="color:#999;">{{ c.stock_code }}</td>
-            <td><span class="player-chip" @click="goPlayer(c.zh_id)">{{ c.player_name }}</span></td>
-            <td><span class="positive">{{ c.todayRatio.toFixed(1) }}%</span></td>
+          <tr v-for="c in changes.added" :key="c[0]+c[2]">   <!-- zh_id+stock_code -->
+            <td><strong>{{ c[3] }}</strong></td>              <!-- stock_name -->
+            <td style="color:#999;">{{ c[2] }}</td>           <!-- stock_code -->
+            <td><span class="player-chip" @click="goPlayer(c[0])">{{ c[1] }}</span></td>  <!-- zh_id, player_name -->
+            <td><span class="positive">{{ c[8].toFixed(1) }}%</span></td>  <!-- todayRatio -->
           </tr>
         </tbody>
       </table>
@@ -56,11 +56,11 @@ function pct(v) {
       <div style="max-height:300px;overflow-y:auto;">
       <table><thead><tr><th>股票</th><th>代码</th><th>选手</th><th>原仓位</th></tr></thead>
         <tbody>
-          <tr v-for="c in changes.cleared" :key="c.zh_id+c.stock_code">
-            <td><strong>{{ c.stock_name }}</strong></td>
-            <td style="color:#999;">{{ c.stock_code }}</td>
-            <td><span class="player-chip" @click="goPlayer(c.zh_id)">{{ c.player_name }}</span></td>
-            <td><span class="negative">{{ c.yesterdayRatio.toFixed(1) }}%</span></td>
+          <tr v-for="c in changes.cleared" :key="c[0]+c[2]">
+            <td><strong>{{ c[3] }}</strong></td>
+            <td style="color:#999;">{{ c[2] }}</td>
+            <td><span class="player-chip" @click="goPlayer(c[0])">{{ c[1] }}</span></td>
+            <td><span class="negative">{{ c[7].toFixed(1) }}%</span></td>  <!-- yesterdayRatio -->
           </tr>
         </tbody>
       </table>
@@ -73,13 +73,13 @@ function pct(v) {
       <div style="max-height:500px;overflow-y:auto;">
         <table><thead><tr><th>类型</th><th>股票</th><th>代码</th><th>选手</th><th>变动</th><th>变化</th></tr></thead>
           <tbody>
-            <tr v-for="c in changes.changes" :key="c.zh_id+c.stock_code+c.type">
-              <td>{{ c.emoji }} {{ c.type }}</td>
-              <td><strong>{{ c.stock_name }}</strong></td>
-              <td style="color:#999;">{{ c.stock_code }}</td>
-              <td><span class="player-chip" @click="goPlayer(c.zh_id)">{{ c.player_name }}</span></td>
-              <td>{{ c.yesterdayRatio.toFixed(1) }}% → {{ c.todayRatio.toFixed(1) }}%</td>
-              <td v-html="pct(c.delta)"></td>
+            <tr v-for="c in changes.changes" :key="c[0]+c[2]+c[4]">  <!-- zh_id+stock_code+type -->
+              <td>{{ c[5] }} {{ c[4] }}</td>                     <!-- emoji + type -->
+              <td><strong>{{ c[3] }}</strong></td>               <!-- stock_name -->
+              <td style="color:#999;">{{ c[2] }}</td>            <!-- stock_code -->
+              <td><span class="player-chip" @click="goPlayer(c[0])">{{ c[1] }}</span></td>  <!-- zh_id + player_name -->
+              <td>{{ c[7].toFixed(1) }}% → {{ c[8].toFixed(1) }}%</td>  <!-- yesterdayRatio → todayRatio -->
+              <td v-html="pct(c[6])"></td>                       <!-- delta -->
             </tr>
           </tbody>
         </table>

@@ -39,29 +39,16 @@ export function useData() {
   // 字段归一化：id → zh_id, total_position → _total_position
   // ═══════════════════════════════════════
   function normalize(p) {
+    const [i, n, f, T, d, w, m, y, v, dd, wr, dy, lb, rk, tp, q, ss] = p
     return {
-      ...p,
-      // 短键名 → 长字段名
-      id: p.i ?? p.id,
-      name: p.n ?? p.name,
-      followers: p.f ?? p.followers,
-      total_return: p.T ?? p.total_return,
-      daily_return: p.d ?? p.daily_return,
-      weekly_return: p.w ?? p.weekly_return,
-      monthly_return: p.m ?? p.monthly_return,
-      yearly_return: p.y ?? p.yearly_return,
-      net_value: p.v ?? p.net_value,
-      max_drawdown: p.dd ?? p.max_drawdown,
-      win_rate: p.wr ?? p.win_rate,
-      days: p.dy ?? p.days,
-      labels: p.lb ?? p.labels,
-      ranks: p.rk ?? p.ranks,
-      total_position: p.tp ?? p.total_position ?? 0,
-      quality: p.q ?? p.quality,
-      stocks: p.ss ?? p.stocks,
-      // 兼容旧格式
-      zh_id: p.i ?? p.id ?? p.zh_id,
-      _total_position: p.tp ?? p.total_position ?? p._total_position ?? 0,
+      id: i, name: n, followers: f,
+      total_return: T, daily_return: d,
+      weekly_return: w, monthly_return: m, yearly_return: y,
+      net_value: v, max_drawdown: dd, win_rate: wr,
+      days: dy, labels: lb, ranks: rk,
+      total_position: tp, quality: q, stocks: ss,
+      zh_id: i,
+      _total_position: tp ?? 0,
     }
   }
 
@@ -114,11 +101,7 @@ export function useData() {
 
   const playerNameMap = computed(() => {
     if (!_summary.value) return {}
-    const map = { ..._summary.value.playerNameMap }
-    for (const p of _summary.value.players) {
-      map[p.id] = p.id
-    }
-    return map
+    return { ..._summary.value.playerNameMap }
   })
 
   // ═══════════════════════════════════════

@@ -21,15 +21,16 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,json,png,svg,ico}'],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,  // summary.json ~2.5MB
+        globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /\/data\/.*\.json$/,
-            handler: 'StaleWhileRevalidate',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'stock-data',
-              expiration: { maxAgeSeconds: 60 * 30 }
+              networkTimeoutSeconds: 10,
+              expiration: { maxAgeSeconds: 60 * 60 * 24 }
             }
           }
         ]
