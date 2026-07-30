@@ -33,10 +33,7 @@ export function useTableSort(dataRef, defaultKey = '') {
         const nb = typeof vb === 'number' ? vb : (parseFloat(vb) || 0)
         cmp = na - nb
       }
-      // 二级排序: 同值用 _id 保证稳定
-      if (cmp === 0 && a._id !== undefined && b._id !== undefined) {
-        cmp = a._id - b._id
-      }
+      // 同值保持原始顺序（导出已排序）
       return sortDir.value === 'desc' ? -cmp : cmp
     })
     return list

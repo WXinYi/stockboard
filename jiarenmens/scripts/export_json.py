@@ -699,9 +699,10 @@ def export(db_path, crawl_date, out_dir):
             "_id": t["id"],  # 用于二级排序（不渲染）
         })
 
-    # 调仓按日期倒序
+    # 调仓按日期倒序，同日内按 API 原始顺序（先买后卖，_id 升序）
     for pid in trades_by_pid:
-        trades_by_pid[pid].sort(key=lambda x: (x.get("td", ""), x.get("_id", 0)), reverse=True)
+        trades_by_pid[pid].sort(key=lambda x: x.get("_id", 0))
+        trades_by_pid[pid].sort(key=lambda x: x.get("td", ""), reverse=True)
 
     # 推测持仓
     def compute_inferred_positions(zh_id, confirmed_codes):
