@@ -25,9 +25,18 @@ export function useTableSort(dataRef, defaultKey = '') {
     list.sort((a, b) => {
       const va = a[sortKey.value]
       const vb = b[sortKey.value]
-      const na = typeof va === 'number' ? va : (parseFloat(va) || 0)
-      const nb = typeof vb === 'number' ? vb : (parseFloat(vb) || 0)
-      const cmp = na - nb
+      let cmp
+      if (typeof va === 'string' && typeof vb === 'string') {
+        cmp = va.localeCompare(vb)
+      } else {
+        const na = typeof va === 'number' ? va : (parseFloat(va) || 0)
+        const nb = typeof vb === 'number' ? vb : (parseFloat(vb) || 0)
+        cmp = na - nb
+      }
+      // 二级排序: 同值用 _id 保证稳定
+      if (cmp === 0 && a._id !== undefined && b._id !== undefined) {
+        cmp = a._id - b._id
+      }
       return sortDir.value === 'desc' ? -cmp : cmp
     })
     return list
