@@ -105,8 +105,8 @@ jobs:
               if os.path.exists(detail_path):
                   with open(detail_path) as f:
                       d = json.load(f)
-                  buys = [t["stock_name"] for t in d.get("trades", []) if t.get("direction") == "买入"]
-                  sells = [t["stock_name"] for t in d.get("trades", []) if t.get("direction") == "卖出"]
+                  buys = [t["sn"] for t in d.get("t", []) if t.get("dr") == "买入"]
+                  sells = [t["sn"] for t in d.get("t", []) if t.get("dr") == "卖出"]
                   parts = []
                   if buys:
                       parts.append(f"买入 {', '.join(buys)}")
