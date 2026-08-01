@@ -1,10 +1,11 @@
 import { ref, computed } from 'vue'
-import { fetchChanges, fetchPlayerHistory } from '../data/loader.js'
+import { fetchChanges, fetchChangesSummary, fetchPlayerHistory } from '../data/loader.js'
 
 export function useHistory() {
   const historyLoaded = ref(false)
   const dateList = ref([])
-  const changesData = ref(null)
+  const changesData = ref(null)      // 完整 changes（/tracking）
+  const changesSummary = ref(null)   // 摘要 counts（/copy）
   const alerts = ref({ highByStock: [], mid: [], totalClear: 0 })
 
   // ═══════════════════════════════════════
@@ -44,24 +45,29 @@ export function useHistory() {
   // ═══════════════════════════════════════
   // 数据加载
   // ═══════════════════════════════════════
-  async function loadHistory() {
-    try {
-      const data = await fetchChanges()
-      changesData.value = data.changes
-      alerts.value = data.alerts || { highByStock: [], mid: [], totalClear: 0 }
-      if (data.changes && data.changes.today) {
-        dateList.value = [data.changes.yesterday, data.changes.today].filter(Boolean)
-      }
-      historyLoaded.value = true
-    } catch (e) {
-      console.warn('加载变动数据失败:', e.message)
-    }
+
+  // /copy 用：{ hasHistory, today, yesterday, addedCount, clearedCount, changeCount }
+  async function loadChangesSummary() {
+    const data = await fetchChangesSummary()
+    changesSummary.value = data
+    dateList.value = [data.yesterday, data.today].filter(Boolean)
   }
+
+  // /tracking 用：完整 { changes, alerts }
+  async function loadChanges() {
+    const data = await fetchChanges()
+    changesData.value = data.changes
+    alerts.value = data.alerts || { highByStock: [], mid: [], totalClear: 0 }
+    historyLoaded.value = true
+  }
+
+  // 兼容别名（Task 5 将 App.vue 切换到 loadChangesSummary/loadChanges）
+  const loadHistory = loadChanges
 
   return {
     historyLoaded, dateList,
-    positionChanges, alerts,
+    positionChanges, changesSummary, alerts,
     getPlayerHistory, loadPlayerHistory,
-    loadHistory,
+    loadChangesSummary, loadChanges, loadHistory,
   }
 }

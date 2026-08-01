@@ -7,7 +7,7 @@ const showAlerts = ref(false)
 const showSuspects = ref(false)
 const router = useRouter()
 const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears, qualityPlayerCount } = inject('stockData')
-const { positionChanges: posCh } = inject('stockHistory')
+const { changesSummary: posCh } = inject('stockHistory')
 function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
 const coreData = computed(() => signals.value.ch)
@@ -50,8 +50,8 @@ function pct(v) {
   </div>
 
   <!-- 持仓变更摘要 -->
-  <div v-if="posCh.hasHistory" class="summary-bar">
-    {{ posCh.today }} · +{{ posCh.added.length }}新进 -{{ posCh.cleared.length }}清仓 {{ posCh.changes.length }}笔变动
+  <div v-if="posCh && posCh.hasHistory" class="summary-bar">
+    {{ posCh.today }} · +{{ posCh.addedCount }}新进 -{{ posCh.clearedCount }}清仓 {{ posCh.changeCount }}笔变动
   </div>
   <div v-else class="summary-bar" style="color:#aaa;">需要至少2天数据 · 下个交易日 09:45 自动采集</div>
 
