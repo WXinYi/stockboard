@@ -15,6 +15,10 @@ const stockHistory = useHistory()
 provide('stockData', stockData)
 provide('stockHistory', stockHistory)
 
+// 刷新信号：refreshData() 递增，PlayerDetail watch 后重新拉取选手详情数据
+const refreshTick = ref(0)
+provide('refreshTick', refreshTick)
+
 const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices, clearSlices } = stockData
 const { loadChangesSummary, loadChanges } = stockHistory
 const { relativeTime } = useRelativeTime()
@@ -50,6 +54,7 @@ async function refreshData() {
   clearSlices()
   try {
     await Promise.all([loadData(), ensureRoute()])
+    refreshTick.value++
   } finally {
     refreshing.value = false
   }

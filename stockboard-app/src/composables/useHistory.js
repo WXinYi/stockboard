@@ -24,8 +24,8 @@ export function useHistory() {
     return playerHistoryCache.value[zhId] || []
   }
 
-  async function loadPlayerHistory(zhId) {
-    if (playerHistoryCache.value[zhId]) return playerHistoryCache.value[zhId]
+  async function loadPlayerHistory(zhId, force = false) {
+    if (!force && playerHistoryCache.value[zhId]) return playerHistoryCache.value[zhId]
     try {
       const entries = await fetchPlayerHistory(zhId)
       const converted = entries.map(e => ({

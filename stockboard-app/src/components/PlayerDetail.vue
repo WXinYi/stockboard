@@ -8,6 +8,7 @@ const route = useRoute()
 const router = useRouter()
 const { loadPlayerHistory } = inject('stockHistory')
 const { playerLookup } = inject('stockData')
+const refreshTick = inject('refreshTick', ref(0))
 
 const playerData = ref(null)
 const loadingDetail = ref(false)
@@ -20,8 +21,8 @@ const player = computed(() => {
 })
 const history = ref([])
 
-async function loadHistoryData(zhId) {
-  history.value = await loadPlayerHistory(zhId)
+async function loadHistoryData(zhId, force = false) {
+  history.value = await loadPlayerHistory(zhId, force)
 }
 
 const posData = computed(() => playerData.value?.p || [])
@@ -82,11 +83,11 @@ async function renderCurve() {
   }
 }
 
-async function loadPlayer(zhId) {
+async function loadPlayer(zhId, force = false) {
   loadingDetail.value = true
   try {
     playerData.value = await fetchPlayerDetail(zhId)
-    await loadHistoryData(zhId)
+    await loadHistoryData(zhId, force)
     renderCurve()
   } catch (e) {
     console.warn('选手详情加载失败:', e.message)
@@ -96,6 +97,9 @@ async function loadPlayer(zhId) {
 }
 
 watch(() => route.params.zh_id, (newId) => { if (newId) loadPlayer(newId) })
+
+// 全局刷新信号：App.vue 下拉刷新/顶栏刷新后重新拉取选手详情（force 绕过历史缓存）
+watch(refreshTick, () => { if (route.params.zh_id) loadPlayer(route.params.zh_id, true) })
 
 onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 </script>
