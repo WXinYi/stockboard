@@ -1,21 +1,12 @@
 <script setup>
-import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { icons } from '../icons.js'
 
 const primary = [
   { key: 'copy', label: '抄作业', icon: 'copy' },
   { key: 'rankings', label: '排行', icon: 'rankings' },
-  { key: 'trades', label: '调仓', icon: 'trades' },
-]
-const secondary = [
-  { key: 'overview', label: '总览', icon: 'overview' },
   { key: 'stocks', label: '重仓共识', icon: 'stocks' },
-  { key: 'sectors', label: '行业板块', icon: 'sectors' },
-  { key: 'compare', label: '多空对比', icon: 'compare' },
-  { key: 'tracking', label: '变动追踪', icon: 'tracking' },
 ]
-const showMore = ref(false)
 const route = useRoute()
 
 function isActive(key) { return route.path === '/' + key }
@@ -29,35 +20,6 @@ function isActive(key) { return route.path === '/' + key }
       <span class="nav-icon" v-html="icons[t.icon]"></span>
       <span class="nav-label">{{ t.label }}</span>
     </router-link>
-
-    <!-- More button (mobile) / Secondary tabs (PC) -->
-    <div class="more-wrap">
-      <button class="nav-item more-btn" :class="{ active: secondary.some(s => isActive(s.key)) }"
-        @click.stop="showMore = !showMore">
-        <span class="nav-icon" v-html="icons.more"></span>
-        <span class="nav-label">更多</span>
-      </button>
-      <Teleport to="body">
-        <div v-if="showMore" class="more-overlay" @click="showMore = false">
-          <div class="more-menu" @click.stop>
-            <router-link v-for="t in secondary" :key="t.key" :to="'/' + t.key"
-              class="more-item" :class="{ active: isActive(t.key) }"
-              @click="showMore = false">
-              {{ t.label }}
-            </router-link>
-          </div>
-        </div>
-      </Teleport>
-    </div>
-
-    <!-- PC only: secondary tabs inline -->
-    <template v-for="t in secondary" :key="'pc'+t.key">
-      <router-link :to="'/' + t.key" class="nav-item nav-pc"
-        :class="{ active: isActive(t.key) }">
-        <span class="nav-icon" v-html="icons[t.icon]"></span>
-        <span class="nav-label">{{ t.label }}</span>
-      </router-link>
-    </template>
   </nav>
 </template>
 
@@ -90,7 +52,6 @@ function isActive(key) { return route.path === '/' + key }
 .nav-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; opacity: .55; transition: opacity .3s; }
 .nav-item.active .nav-icon { opacity: 1; }
 .nav-label { pointer-events: none; font-size: 11px; }
-.nav-pc { display: none; }
 
 /* Active: glowing droplet */
 .nav-item.active {
@@ -99,14 +60,6 @@ function isActive(key) { return route.path === '/' + key }
   box-shadow: 0 -3px 14px rgba(107,125,179,.06), 0 4px 8px rgba(107,125,179,.03);
   transform: scale(1.04);
 }
-
-/* ---- More ---- */
-.more-wrap { flex-shrink: 0; }
-.more-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.15); backdrop-filter: blur(3px); z-index: 999; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 60px; }
-.more-menu { background: rgba(255,255,255,.82); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-radius: 22px 22px 0 0; box-shadow: 0 -10px 36px rgba(0,0,0,.06); padding: 8px 4px 28px; width: 100%; max-width: 400px; }
-.more-item { display: block; padding: 15px 20px; font-size: 15px; font-weight: 380; text-decoration: none; color: #1a1a2e; border-radius: 12px; white-space: nowrap; text-align: center; transition: background .2s; }
-.more-item:hover { background: rgba(107,125,179,.04); }
-.more-item.active { background: rgba(107,125,179,.08); color: #5b6daa; font-weight: 500; }
 
 /* ---- Mobile ---- */
 @media (max-width: 767px) {
@@ -135,13 +88,6 @@ function isActive(key) { return route.path === '/' + key }
     box-shadow: 0 -4px 16px rgba(107,125,179,.08), 0 6px 10px rgba(107,125,179,.03);
     transform: translateY(-2px) scale(1.05);
   }
-  .nav-pc { display: none !important; }
   .nav-label { font-size: 10px; line-height: 1; }
-  .more-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 48px; }
-  .more-overlay { padding-bottom: 80px; }
-}
-@media (min-width: 768px) {
-  .nav-pc { display: block; }
-  .more-wrap { display: none; }
 }
 </style>

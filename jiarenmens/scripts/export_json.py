@@ -6,14 +6,9 @@
   latest/core.json         — 日期/爬取时间/高手数/今日操作选手/上榜数 等核心元信息
   latest/copy.json         — 抄作业信号 (copyTradeSignals) + 卖出预警 + 疑似清仓
   latest/stocks.json       — 重仓共识 stockStats
-  latest/trades.json       — 调仓共识 tradeConsensus
-  latest/sectors.json      — 行业板块 sectorStats
-  latest/compare.json      — 多空对比 stockCompare
-  latest/overview.json     — 仓位分布 positionDist + 盈亏分布 profitDist
   latest/name_map.json     — 当日被引用选手 name→id 子集映射
   latest/changes_summary.json — 持仓变动计数摘要（无明细）
   latest/players/*.json    — 选手详情（按需加载）
-  latest/changes.json      — 持仓变动 + 预警（全量）
 
 用法:
     python scripts/export_json.py [--date 2026-07-24] [--out ../stockboard-app/public/data]
@@ -321,97 +316,6 @@ def export(db_path, crawl_date, out_dir):
         "hq": []  # highQuality 数据前端只用 .length, 不需要具体内容
     }
 
-    # ── 5. 调仓共识 → tradeConsensus ────────
-    trade_cons_map = {}
-    for t in trades_raw:
-        if t.get("trade_date", "") != crawl_date:
-            continue
-        code = t.get("stock_code", "")
-        if not code:
-            continue
-        if code not in trade_cons_map:
-            trade_cons_map[code] = {
-                "code": code, "name": t.get("stock_name", ""),
-                "buy_players": [], "sell_players": [],
-                "buy_count": 0, "sell_count": 0,
-            }
-        tc = trade_cons_map[code]
-        pn = t.get("player_name") or t.get("zh_id", "")
-        if t.get("direction") == "买入":
-            tc["buy_count"] += safe_int(t.get("trades_count"), 1)
-            if pn not in tc["buy_players"]:
-                tc["buy_players"].append(pn)
-        else:
-            tc["sell_count"] += safe_int(t.get("trades_count"), 1)
-            if pn not in tc["sell_players"]:
-                tc["sell_players"].append(pn)
-
-    trade_consensus = []
-    for tc in sorted(trade_cons_map.values(),
-                     key=lambda tc: len(tc["buy_players"]) + len(tc["sell_players"]),
-                     reverse=True):
-        n = len(tc["buy_players"]) + len(tc["sell_players"])
-        if n >= 10:
-            strength, color = "🔥 强烈", "#e74c3c"
-        elif n >= 5:
-            strength, color = "📈 一般", "#e67e22"
-        elif n >= 2:
-            strength, color = "💡 微弱", "#2980b9"
-        else:
-            strength, color = "单一", "#999"
-        trade_consensus.append({
-            "c": tc["code"], "n": tc["name"],
-            "bp": tc["buy_players"], "sp": tc["sell_players"],
-            "bc": tc["buy_count"], "sc": tc["sell_count"],
-            "st": strength, "cl": color,
-        })
-
-    # ── 6. 行业板块 → sectorStats ────────────
-    sector_map = {}
-    for p in players_flat:
-        labels = p.get("labels") or []
-        if not labels:
-            continue
-        for lb in labels:
-            if lb not in sector_map:
-                sector_map[lb] = {"name": lb, "count": 0, "total_return": 0.0,
-                                   "daily_return": 0.0, "total_position": 0.0,
-                                   "qualityCount": 0}
-            sm = sector_map[lb]
-            sm["count"] += 1
-            sm["total_return"] += p["total_return"]
-            sm["daily_return"] += p["daily_return"]
-            sm["total_position"] += p["total_position"]
-            if p["quality"]:
-                sm["qualityCount"] += 1
-    sector_stats = sorted([
-        {"n": v["name"], "c": v["count"], "qc": v["qualityCount"],
-         "ar": round(v["total_return"] / v["count"], 2),
-         "ad": round(v["daily_return"] / v["count"], 2),
-         "ap": round(v["total_position"] / v["count"], 1)}
-        for v in sector_map.values()
-    ], key=lambda s: s["c"], reverse=True)
-
-    # ── 7. 仓位分布 → positionDist ───────────
-    position_dist = {"9成以上": 0, "7-9成": 0, "5-7成": 0, "3-5成": 0,
-                      "1-3成": 0, "1成以下": 0, "空仓": 0}
-    for p in players_flat:
-        tp = p["total_position"]
-        if tp == 0:
-            position_dist["空仓"] += 1
-        elif tp < 10:
-            position_dist["1成以下"] += 1
-        elif tp < 30:
-            position_dist["1-3成"] += 1
-        elif tp < 50:
-            position_dist["3-5成"] += 1
-        elif tp < 70:
-            position_dist["5-7成"] += 1
-        elif tp < 90:
-            position_dist["7-9成"] += 1
-        else:
-            position_dist["9成以上"] += 1
-
     # ── 8. 今日卖出预警 + 疑似清仓 ──────────
     trade_alerts_map = {}
     for t in trades_raw:
@@ -471,100 +375,9 @@ def export(db_path, crawl_date, out_dir):
             "sellDate": t.get("trade_date", ""),
         })
 
-    # ── 8b. 盈亏分布 → profitDist ──────────
-    profit_bins = {"<-10%": 0, "-10%~-5%": 0, "-5%~0%": 0, "0%~5%": 0,
-                   "5%~10%": 0, "10%~20%": 0, ">20%": 0}
-    stock_profits = {}
-    for p in positions_raw:
-        code = p.get("stock_code", "")
-        if not code:
-            continue
-        if code not in stock_profits:
-            stock_profits[code] = []
-        stock_profits[code].append(safe_float(p.get("profit_ratio")))
-    for code, profits in stock_profits.items():
-        avg = sum(profits) / len(profits) if profits else 0
-        if avg < -10:
-            profit_bins["<-10%"] += 1
-        elif avg < -5:
-            profit_bins["-10%~-5%"] += 1
-        elif avg < 0:
-            profit_bins["-5%~0%"] += 1
-        elif avg < 5:
-            profit_bins["0%~5%"] += 1
-        elif avg < 10:
-            profit_bins["5%~10%"] += 1
-        elif avg < 20:
-            profit_bins["10%~20%"] += 1
-        else:
-            profit_bins[">20%"] += 1
-
-    # ── 9. 多空对比 → stockCompare ───────────
-    quality_set = quality_ids  # set of zh_id
-    compare_map = {}
-    for p in positions_raw:
-        code = p.get("stock_code", "")
-        if not code:
-            continue
-        if code not in compare_map:
-            compare_map[code] = {"code": code, "name": p.get("stock_name", ""),
-                                  "totalHolders": 0, "totalPosition": 0.0,
-                                  "qualityHolders": 0,
-                                  "allBuying": 0, "allSelling": 0,
-                                  "qualityBuying": 0, "qualitySelling": 0}
-        cm = compare_map[code]
-        cm["totalHolders"] += 1
-        cm["totalPosition"] += safe_float(p.get("position_ratio"))
-        if p.get("zh_id") in quality_set:
-            cm["qualityHolders"] += 1
-    for t in trades_raw:
-        if t.get("trade_date", "") != crawl_date:
-            continue
-        code = t.get("stock_code", "")
-        if not code or code not in compare_map:
-            continue
-        cm = compare_map[code]
-        if t.get("direction") == "买入":
-            cm["allBuying"] += 1
-            if t.get("zh_id") in quality_set:
-                cm["qualityBuying"] += 1
-        else:
-            cm["allSelling"] += 1
-            if t.get("zh_id") in quality_set:
-                cm["qualitySelling"] += 1
-
-    concentration = sorted(
-        [{"code": cm["code"], "name": cm["name"],
-          "totalHolders": cm["totalHolders"], "totalPosition": round(cm["totalPosition"], 1),
-          "qualityHolders": cm["qualityHolders"],
-          "allBuying": cm["allBuying"], "allSelling": cm["allSelling"],
-          "qualityBuying": cm["qualityBuying"], "qualitySelling": cm["qualitySelling"]}
-         for cm in compare_map.values()],
-        key=lambda c: c["totalHolders"], reverse=True
-    )[:30]
-
-    divergence_list = []
-    for cm in compare_map.values():
-        if cm["totalHolders"] < 3:
-            continue
-        all_net = cm["allBuying"] - cm["allSelling"]
-        quality_net = cm["qualityBuying"] - cm["qualitySelling"]
-        divergence_list.append({
-            "code": cm["code"], "name": cm["name"],
-            "totalHolders": cm["totalHolders"], "totalPosition": round(cm["totalPosition"], 1),
-            "qualityHolders": cm["qualityHolders"],
-            "allNet": all_net, "qualityNet": quality_net,
-            "gap": abs(all_net - quality_net),
-        })
-    divergence = sorted(divergence_list, key=lambda d: d["gap"], reverse=True)[:20]
-
-    stock_compare = {"concentration": concentration, "divergence": divergence,
-                     "qualityCount": len(quality_ids)}
-
-    # ── 10. 持仓变动 → positionChanges + alerts ──
+    # ── 10. 持仓变动 → changes_data（供 changes_summary.json）──
     # 需要最近两个日期的数据
     changes_data = None
-    alerts = {"highByStock": [], "mid": [], "totalClear": 0}
     if len(all_dates) >= 2:
         today = all_dates[-1]
         yesterday = all_dates[-2]
@@ -631,23 +444,6 @@ def export(db_path, crawl_date, out_dir):
             "cleared": [c for c in changes if c[4] == "清仓"],
         }
 
-        # alerts
-        stock_alert_map = {}
-        mid_alerts = []
-        for c in changes:
-            if c[4] == "清仓":   # type
-                code = c[2]      # stock_code
-                if code not in stock_alert_map:
-                    stock_alert_map[code] = {"stock_name": c[3],  # stock_name
-                                              "stock_code": code, "players": []}
-                stock_alert_map[code]["players"].append([c[1], c[0]])  # [player_name, zh_id]
-            elif c[4] == "减仓" and c[6] < -30:   # type=="减仓", delta<-30
-                mid_alerts.append([c[1], c[0], c[3], c[2]])  # [player_name, zh_id, stock_name, stock_code]
-        high_by_stock = sorted(stock_alert_map.values(),
-                               key=lambda a: len(a["players"]), reverse=True)
-        total_clear = sum(len(a["players"]) for a in high_by_stock)
-        alerts = {"highByStock": high_by_stock, "mid": mid_alerts, "totalClear": total_clear}
-
     # ── 11. 今日有调仓的选手 ID ──────────────
     traded_player_ids = list(set(
         t["zh_id"] for t in trades_raw
@@ -670,13 +466,9 @@ def export(db_path, crawl_date, out_dir):
             "suspectedClears": suspected_clears,
         },
         "stocks": {"stockStats": stock_stats},
-        "trades": {"tradeConsensus": trade_consensus},
-        "sectors": {"sectorStats": sector_stats},
-        "compare": {"stockCompare": stock_compare},
-        "overview": {"positionDist": position_dist, "profitDist": profit_bins},
     }
 
-    # name_map 只保留当日实际被引用的名字（copy 信号 + alerts + consensus 里出现的名字）
+    # name_map 只保留当日实际被引用的名字（copy 信号 + alerts 里出现的名字）
     referenced_names = set()
     for sig in all_signals:
         referenced_names.update(sig.get("holders") or [])
@@ -687,17 +479,12 @@ def export(db_path, crawl_date, out_dir):
             referenced_names.add(name)
     for sc in suspected_clears:
         referenced_names.add(sc["player_name"])
-    for tc in trade_consensus:
-        referenced_names.update(tc["bp"])
-        referenced_names.update(tc["sp"])
     name_map = {p["name"]: p["id"] for p in players_flat
                 if p["name"] and p["name"] in referenced_names}
 
     # 全量参照文件（字段=各分片并集 + 精简后的 name_map）
     summary = {**summary_slices["core"], **summary_slices["copy"],
-               **summary_slices["stocks"], **summary_slices["trades"],
-               **summary_slices["sectors"], **summary_slices["compare"],
-               **summary_slices["overview"], "playerNameMap": name_map}
+               **summary_slices["stocks"], "playerNameMap": name_map}
 
     # ── 13. 构建选手详情文件 ──────────────────
     # positions/trades by player
@@ -798,13 +585,14 @@ def export(db_path, crawl_date, out_dir):
 
     # summary.json
     # players_index.json (独立文件，前端并行加载)
+    # 体积优化：数字保留 2 位小数（net_value 保留 3 位）、labels 只存数量（前端仅用 .length）
     players_list = [
         [p["id"], p["name"], p["followers"],
-         p["total_return"], p["daily_return"],
-         p["weekly_return"], p["monthly_return"],
-         p["yearly_return"], p["net_value"],
-         p["max_drawdown"], p["win_rate"],
-         p["days"], p["labels"], p["ranks"],
+         round(p["total_return"], 2), round(p["daily_return"], 2),
+         round(p["weekly_return"], 2), round(p["monthly_return"], 2),
+         round(p["yearly_return"], 2), round(p["net_value"], 3),
+         round(p["max_drawdown"], 2), round(p["win_rate"], 2),
+         p["days"], len(p["labels"] or []), p["ranks"],
          p["total_position"], p["quality"],
          p["stocks"]]
         for p in players_flat
@@ -818,7 +606,7 @@ def export(db_path, crawl_date, out_dir):
     # 分片文件（前端按需加载）
     with open(latest_dir / "core.json", "w", encoding="utf-8") as f:
         json.dump(summary_slices["core"], f, ensure_ascii=False, separators=(",", ":"))
-    for slice_name in ("copy", "stocks", "trades", "sectors", "compare", "overview"):
+    for slice_name in ("copy", "stocks"):
         with open(latest_dir / f"{slice_name}.json", "w", encoding="utf-8") as f:
             json.dump(summary_slices[slice_name], f, ensure_ascii=False, separators=(",", ":"))
 
@@ -860,11 +648,6 @@ def export(db_path, crawl_date, out_dir):
         with open(players_out_dir / f"{pid}.json", "w", encoding="utf-8") as f:
             json.dump(detail, f, ensure_ascii=False, separators=(",", ":"))
 
-    # changes.json
-    with open(latest_dir / "changes.json", "w", encoding="utf-8") as f:
-        json.dump({"changes": changes_data, "alerts": alerts},
-                  f, ensure_ascii=False, separators=(",", ":"))
-
     # 15c. index.json（不变）
     index_path = out_dir / "index.json"
     existing_dates = []
@@ -884,13 +667,10 @@ def export(db_path, crawl_date, out_dir):
 
     n_players = len(list(players_out_dir.glob("*.json")))
     summary_size = (latest_dir / "summary.json").stat().st_size / 1024
-    changes_size = (latest_dir / "changes.json").stat().st_size / 1024 if changes_data else 0
 
     print(f"✅ 导出完成 ({crawl_date})")
     print(f"   summary.json → {summary_size:.0f}KB")
     print(f"   players/ → {n_players} 个选手详情文件")
-    if changes_data:
-        print(f"   changes.json → {changes_size:.0f}KB")
     print(f"   选手: {len(all_players_raw)} | 持仓: {len(positions_raw)} | 调仓: {len(trades_raw)} | 高手: {len(quality_ids)}")
 
 

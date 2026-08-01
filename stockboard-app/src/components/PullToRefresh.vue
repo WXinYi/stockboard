@@ -14,7 +14,14 @@ let startY = 0
 let pulling = false
 
 function onTouchStart(e) {
-  if (window.scrollY > 0 || props.refreshing) return   // 页面在顶部才接管
+  if (props.refreshing) return
+  // 手指落在某个可滚动容器上且内容已滚动 → 交给列表自己滚动，避免劫持列表手势
+  let el = e.target
+  while (el && el !== document.documentElement && el !== document.body) {
+    if (el.scrollTop > 0) return
+    el = el.parentElement
+  }
+  if (window.scrollY > 0) return   // 页面在顶部才接管
   startY = e.touches[0].clientY
   pulling = true
 }

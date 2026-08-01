@@ -1,32 +1,27 @@
 import { ref, computed } from 'vue'
 import {
-  fetchCore, fetchCopy, fetchStocks, fetchTrades, fetchSectors,
-  fetchCompare, fetchOverview, fetchNameMap, fetchPlayersIndex,
+  fetchCore, fetchCopy, fetchStocks, fetchNameMap, fetchPlayersIndex,
 } from '../data/loader.js'
 
 const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
 
 // 分片 ref 表 + 加载器表（ensureSlices 用）
 const SLICE_REF = {
-  core: 'core', copy: 'copy', stocks: 'stocks', trades: 'trades',
-  sectors: 'sectors', compare: 'compare', overview: 'overview',
+  core: 'core', copy: 'copy', stocks: 'stocks',
   nameMap: 'nameMap', playersIndex: 'playersIndex',
 }
 const SLICE_LOADER = {
-  core: fetchCore, copy: fetchCopy, stocks: fetchStocks, trades: fetchTrades,
-  sectors: fetchSectors, compare: fetchCompare, overview: fetchOverview,
+  core: fetchCore, copy: fetchCopy, stocks: fetchStocks,
   nameMap: fetchNameMap, playersIndex: fetchPlayersIndex,
 }
 
 export function useData() {
   const loading = ref({
-    core: false, copy: false, stocks: false, trades: false,
-    sectors: false, compare: false, overview: false,
+    core: false, copy: false, stocks: false,
     nameMap: false, playersIndex: false,
   })
   const slices = {
-    core: ref(null), copy: ref(null), stocks: ref(null), trades: ref(null),
-    sectors: ref(null), compare: ref(null), overview: ref(null),
+    core: ref(null), copy: ref(null), stocks: ref(null),
     nameMap: ref(null), playersIndex: ref(null),
   }
 
@@ -62,7 +57,10 @@ export function useData() {
       total_return: T, daily_return: d,
       weekly_return: w, monthly_return: m, yearly_return: y,
       net_value: v, max_drawdown: dd, win_rate: wr,
-      days: dy, labels: lb, ranks: rk,
+      days: dy,
+      // labels 已从数组瘦身为数量（兼容旧数据仍为数组）
+      labels: Array.isArray(lb) ? lb.length : (lb || 0),
+      ranks: rk,
       total_position: tp, quality: q, stocks: ss,
       zh_id: i,
       _total_position: tp ?? 0,
@@ -84,17 +82,8 @@ export function useData() {
   const tradeAlerts = computed(() => slices.copy.value?.tradeAlerts || [])
   const suspectedClears = computed(() => slices.copy.value?.suspectedClears || [])
 
-  // ══ 来自 stocks.json / trades.json / sectors.json ══
+  // ══ 来自 stocks.json ══
   const stockStats = computed(() => slices.stocks.value?.stockStats || [])
-  const tradeConsensus = computed(() => slices.trades.value?.tradeConsensus || [])
-  const sectorStats = computed(() => slices.sectors.value?.sectorStats || [])
-
-  // ══ 来自 compare.json ══
-  const stockCompare = computed(() => slices.compare.value?.stockCompare || { concentration: [], divergence: [], qualityCount: 0 })
-
-  // ══ 来自 overview.json ══
-  const positionDist = computed(() => slices.overview.value?.positionDist || {})
-  const profitDist = computed(() => slices.overview.value?.profitDist || {})
 
   // ══ 来自 name_map.json + players_index 兜底 ══
   const playerNameMap = computed(() => {
@@ -135,7 +124,7 @@ export function useData() {
     const map = {}
     for (const p of allPlayers.value) {
       const tradeCount = 0  // summary 不含调仓数，用 0
-      const posCount = (p.labels?.length || 0) + 1
+      const posCount = (p.labels || 0) + 1
       const freq = tradeCount > 5 ? '高频' : '低频'
       const conc = posCount <= 2 ? '集中' : '分散'
       let emoji, label
@@ -186,9 +175,9 @@ export function useData() {
 
   return {
     currentDate, loading, crawlTime,
-    sortedPlayers, stockStats, tradeConsensus, positionDist, profitDist,
+    sortedPlayers, stockStats,
     sortKey, qualityOnly, isQuality,
-    playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
+    playerStyles, fullRankPlayers, copyTradeSignals,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
     playerLookup,
     ensureSlices, loadData, clearSlices,

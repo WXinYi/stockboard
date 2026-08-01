@@ -8,7 +8,7 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['icons.svg'],
       manifest: {
         name: 'StockBoard - 股票数据看板',
         short_name: 'StockBoard',

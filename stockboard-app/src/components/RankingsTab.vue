@@ -1,10 +1,14 @@
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
+import { RecycleScroller } from 'vue3-virtual-scroller'
+import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 
 const router = useRouter()
 const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality } = inject('stockData')
+
+const WATCHED = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 
@@ -18,22 +22,29 @@ const hasTodayTrades = computed(() => tradedPlayerIds.value.size > 0)
 
 const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
 
-const { sorted: sortedList, toggle: tog, indicator: ind, sortKey } = useTableSort(allPlayers, 'weekly_return')
+const { sorted: sortedList, toggle: tog, indicator: ind, sortKey, sortDir } = useTableSort(allPlayers, 'weekly_return')
 
 // 应用筛选
 const displayList = computed(() => {
-  const watched = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
   let list = [...sortedList.value]
-  let filtered = list.filter(p => !watched.has(p.zh_id))
+  let filtered = list.filter(p => !WATCHED.has(p.zh_id))
   if (qualityOn.value) filtered = filtered.filter(isQuality)
   if (todayOnly.value && hasTodayTrades.value) filtered = filtered.filter(p => tradedPlayerIds.value.has(p.zh_id))
   if (minRanks.value > 0) filtered = filtered.filter(p => (p.ranks || []).length >= minRanks.value)
-  // 置顶选手独立
-  const pinned = list.filter(p => watched.has(p.zh_id))
+  // 置顶选手独立（渲染时放在最前）
+  const pinned = list.filter(p => WATCHED.has(p.zh_id))
   return { pinned, rest: filtered }
 })
 
 const filteredCount = computed(() => displayList.value.pinned.length + displayList.value.rest.length)
+
+// 搜索过滤（置顶在前）
+const searchList = computed(() => {
+  let l = [...displayList.value.pinned, ...displayList.value.rest]
+  const q = search.value.trim().toLowerCase()
+  if (q) l = l.filter(p => (p.name + '' + p.zh_id).toLowerCase().includes(q))
+  return l
+})
 
 // 排名映射
 const rankMap = computed(() => {
@@ -76,6 +87,42 @@ const sortHeaders = computed(() => {
   base.push({ key: 'net_value', label: '净值' }, { key: 'followers', label: '关注' })
   return base
 })
+
+// ── 虚拟滚动：RecycleScroller（固定行高）──
+const ROW_H = 40
+const rankScroller = ref(null)
+
+// 筛选/排序/搜索变化 → 回到顶部
+watch(
+  () => [search.value, qualityOn.value, todayOnly.value, minRanks.value, sortKey.value, sortDir.value],
+  () => {
+    rankScroller.value?.scrollToPosition(0)
+  }
+)
+
+// ── iOS/WebKit 列宽修正 ──
+// WebKit 对 flex 容器的 max-content 计算不可靠（实测把表头 570 算成 351），
+// 导致 .rank-cols/.rank-vscroll 过窄、行被 overflow-x:hidden 裁剪（右列空白）。
+// 用表头 scrollWidth 实测列总宽，直接设成 .rank-cols 的 min-width，绕开关键字计算。
+const rankWrap = ref(null)
+function syncColWidth() {
+  nextTick(() => {
+    const wrap = rankWrap.value
+    const cols = wrap?.querySelector('.rank-cols')
+    const head = wrap?.querySelector('.rank-head')
+    if (cols && head && head.scrollWidth > 0) {
+      const w = head.scrollWidth + 'px'
+      if (cols.style.minWidth !== w) cols.style.minWidth = w
+    }
+  })
+}
+watch(activePeriod, syncColWidth)  // 列数变化（如切"全部"）时重算
+function onWindowResize() { syncColWidth() }  // 断点切换（移动↔桌面）列宽变化
+onMounted(() => {
+  syncColWidth()
+  window.addEventListener('resize', onWindowResize)
+})
+onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 </script>
 
 <template>
@@ -101,50 +148,141 @@ const sortHeaders = computed(() => {
               @click="minRanks = minRanks === n ? 0 : n">{{ n }}榜</button>
       <span style="font-size:11px;color:#888;margin-left:auto;">{{ filteredCount }} 人</span>
     </div>
-    <div style="max-height:600px;overflow:auto;">
-      <table>
-        <thead><tr>
-          <th>#</th><th>选手</th>
-          <th v-for="h in sortHeaders" :key="h.key"
-              style="cursor:pointer;user-select:none;"
-              @click="tog(h.key)">{{ h.label }}{{ ind(h.key) }}</th>
-          <th style="cursor:pointer;user-select:none;" @click="tog('max_drawdown')">回撤{{ ind('max_drawdown') }}</th>
-          <th>风格</th>
-          <th>仓位</th>
-          <th style="cursor:pointer;user-select:none;" @click="tog('days')">运行{{ ind('days') }}</th>
-        </tr></thead>
-        <tbody>
-          <tr v-for="p in displayList.pinned" :key="'p'+p.zh_id"
-              :class="['clickable', 'pinned-row']"
-              @click="navigateToPlayer(p.zh_id)"
-              v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
-            <td>{{ rankMap[p.zh_id] || 1 }}</td>
-            <td><strong style="color:#e67e22;">{{ p.name || p.zh_id }} ⭐</strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
-            <td v-for="h in sortHeaders" :key="h.key" v-html="pct(p[h.key])"></td>
-            <td>{{ (p.max_drawdown || 0).toFixed(1) }}%</td>
-            <td><span style="font-size:11px;">{{ styles[p.zh_id]?.emoji || '—' }}</span></td>
-            <td>
-              <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, p._total_position || 0) + '%' }"></span></span>
-              {{ (p._total_position || 0).toFixed(0) }}%
-            </td>
-            <td>{{ p.days || 0 }}天</td>
-          </tr>
-          <tr v-for="p in displayList.rest" :key="p.zh_id"
-              class="clickable" @click="navigateToPlayer(p.zh_id)"
-              v-show="!search || (p.name+''+p.zh_id).toLowerCase().includes(search.toLowerCase())">
-            <td>{{ rankMap[p.zh_id] || 1 }}</td>
-            <td><strong style="color:#2980b9;">{{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span></strong><span v-if="tradedPlayerIds.has(p.zh_id)" class="trade-dot" title="今日有调仓"></span></td>
-            <td v-for="h in sortHeaders" :key="h.key" v-html="pct(p[h.key])"></td>
-            <td>{{ (p.max_drawdown || 0).toFixed(1) }}%</td>
-            <td><span style="font-size:11px;">{{ styles[p.zh_id]?.emoji || '—' }}</span></td>
-            <td>
-              <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, p._total_position || 0) + '%' }"></span></span>
-              {{ (p._total_position || 0).toFixed(0) }}%
-            </td>
-            <td>{{ p.days || 0 }}天</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="rank-wrap" ref="rankWrap">
+      <div class="rank-hscroll">
+        <div class="rank-cols">
+          <div class="rank-head">
+            <span class="c-rank">#</span>
+            <span class="c-name">选手</span>
+            <span v-for="h in sortHeaders" :key="'h'+h.key" class="c-num sortable" @click="tog(h.key)">{{ h.label }}{{ ind(h.key) }}</span>
+            <span class="c-num sortable" @click="tog('max_drawdown')">回撤{{ ind('max_drawdown') }}</span>
+            <span class="c-style">风格</span>
+            <span class="c-pos">仓位</span>
+            <span class="c-num sortable" @click="tog('days')">运行{{ ind('days') }}</span>
+          </div>
+          <RecycleScroller
+            ref="rankScroller"
+            class="rank-vscroll"
+            :items="searchList"
+            :item-size="ROW_H"
+            key-field="zh_id"
+            v-slot="{ item }"
+          >
+            <div class="rank-row" :class="{ pinned: WATCHED.has(item.zh_id) }" @click="navigateToPlayer(item.zh_id)">
+              <span class="c-rank">{{ rankMap[item.zh_id] || 1 }}</span>
+              <span class="c-name">
+                <strong :style="{ color: WATCHED.has(item.zh_id) ? '#e67e22' : '#2980b9' }">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template><template v-else-if="isQuality(item)"> 🏅</template></strong>
+                <span v-if="tradedPlayerIds.has(item.zh_id)" class="trade-dot" title="今日有调仓"></span>
+              </span>
+              <span v-for="h in sortHeaders" :key="'c'+h.key" class="c-num" v-html="pct(item[h.key])"></span>
+              <span class="c-num">{{ (item.max_drawdown || 0).toFixed(1) }}%</span>
+              <span class="c-style">{{ styles[item.zh_id]?.emoji || '—' }}</span>
+              <span class="c-pos">
+                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, item._total_position || 0) + '%' }"></span></span>
+                {{ (item._total_position || 0).toFixed(0) }}%
+              </span>
+              <span class="c-num">{{ item.days || 0 }}天</span>
+            </div>
+          </RecycleScroller>
+        </div>
+      </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.rank-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.rank-hscroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.rank-cols {
+  min-width: max-content;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.rank-head, .rank-row {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.rank-head {
+  flex: 0 0 auto;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 11px;
+  font-weight: 450;
+  color: #8e8e9a;
+  padding: 8px 0;
+  border-bottom: 0.5px solid rgba(0,0,0,.045);
+  letter-spacing: .02em;
+}
+/* 虚拟滚动容器必须自约束高度：RecycleScroller 内部 item-wrapper 高度=行数×行高（~39万px），
+   若靠父级 flex 撑出高度，clientHeight 会暴涨触发 "Rendered items limit reached"（>1000 行）。
+   overflow-y:auto + max-height 让它在内容超高时固定为视口高度、内容短时自适应。
+   overflow-x:hidden 关键：库 CSS 只设 overflow-y:auto，按规范 overflow-x 会被计算成 auto，
+   使本容器成为横向滚动候选。iOS 嵌套滚动时内层容器会抢走横向手势，导致行上左滑不滚动
+   .rank-hscroll（看起来右侧空白）。显式 hidden 让它只滚纵向，横向手势归外层容器。 */
+.rank-vscroll {
+  max-height: 600px;
+  min-height: 120px;
+  overflow-x: hidden;
+  /* iOS Safari 上 .rank-cols 的 min-width:max-content 未能按表头撑宽(实测行被裁在视口宽)。
+     直接在本容器下 min-width 下限,让行的列总宽决定滚动宽度,不依赖外层交叉轴撑宽。 */
+  min-width: max-content;
+}
+.rank-row {
+  height: 40px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #1C1C1E;
+  cursor: pointer;
+  border-bottom: 0.5px solid rgba(0,0,0,.04);
+  transition: background .15s;
+}
+.rank-row:hover { background: rgba(107,125,179,.04); }
+.rank-row.pinned { background: rgba(107,125,179,.025); }
+/* 固定宽度列一律 min-width:0，防止内容（如进度条+百分比文字）把列撑宽导致列与表头错位 */
+.c-rank { flex: 0 0 34px; min-width: 0; text-align: center; color: #8e8e9a; }
+.c-name {
+  flex: 1 1 180px;
+  min-width: 180px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.c-num { flex: 0 0 72px; min-width: 0; text-align: right; padding: 0 8px; }
+.c-style { flex: 0 0 44px; min-width: 0; text-align: center; }
+.c-pos {
+  flex: 0 0 108px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 8px;
+}
+/* 进度条改为弹性：占满剩余空间但不超过 60px，避免“100%”文本把列撑宽 */
+.c-pos .progress-bar {
+  flex: 1 1 0;
+  min-width: 24px;
+  max-width: 60px;
+  margin-right: 0;
+}
+.sortable { cursor: pointer; user-select: none; }
+@media (max-width: 767px) {
+  .rank-vscroll { max-height: min(600px, calc(100vh - 300px)); }
+  .rank-row { font-size: 12px; }
+  .c-rank { flex-basis: 28px; }
+  .c-name { flex-basis: 120px; min-width: 120px; }
+  .c-num { flex-basis: 58px; padding: 0 4px; }
+  .c-style { flex-basis: 36px; }
+  .c-pos { flex-basis: 96px; padding: 0 4px; }
+}
+</style>

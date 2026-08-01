@@ -20,7 +20,7 @@ const refreshTick = ref(0)
 provide('refreshTick', refreshTick)
 
 const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices, clearSlices } = stockData
-const { loadChangesSummary, loadChanges } = stockHistory
+const { loadChangesSummary } = stockHistory
 const { relativeTime } = useRelativeTime()
 const crawlTimeRelative = computed(() => relativeTime(crawlTime.value))
 
@@ -29,13 +29,8 @@ const router = useRouter()
 
 const pageTitles = {
   copy: '抄作业',
-  overview: '总览',
   rankings: '排行榜',
   stocks: '重仓共识',
-  sectors: '行业板块',
-  trades: '调仓共识',
-  compare: '多空对比',
-  tracking: '变动追踪',
 }
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
@@ -73,13 +68,8 @@ const { updateAvailable, initCheck, dismiss } = useDataRefresh()
 // 路由 → 需要的分片（data 来自 useData，history 来自 useHistory）
 const ROUTE_SLICES = {
   '/copy':     { data: ['copy', 'nameMap'],            history: 'summary' },
-  '/overview': { data: ['overview', 'stocks', 'trades', 'playersIndex'], history: null },
   '/rankings': { data: ['playersIndex'],               history: null },
   '/stocks':   { data: ['stocks', 'playersIndex'],     history: null },
-  '/sectors':  { data: ['sectors'],                    history: null },
-  '/trades':   { data: ['trades', 'nameMap'],          history: null },
-  '/compare':  { data: ['compare'],                    history: null },
-  '/tracking': { data: [],                             history: 'full' },
   '/player':   { data: ['playersIndex'],               history: null },
 }
 
@@ -89,8 +79,7 @@ async function ensureRoute() {
   const m = ROUTE_SLICES[key] || { data: [], history: null }
   await Promise.all([
     ensureSlices(m.data),
-    m.history === 'summary' ? loadChangesSummary().catch(() => {})
-      : m.history === 'full' ? loadChanges().catch(() => {}) : Promise.resolve(),
+    m.history === 'summary' ? loadChangesSummary().catch(() => {}) : Promise.resolve(),
   ])
 }
 

@@ -1,19 +1,9 @@
-import { ref, computed } from 'vue'
-import { fetchChanges, fetchChangesSummary } from '../data/loader.js'
+import { ref } from 'vue'
+import { fetchChangesSummary } from '../data/loader.js'
 
 export function useHistory() {
-  const historyLoaded = ref(false)
   const dateList = ref([])
-  const changesData = ref(null)      // 完整 changes（/tracking）
   const changesSummary = ref(null)   // 摘要 counts（/copy）
-  const alerts = ref({ highByStock: [], mid: [], totalClear: 0 })
-
-  // ═══════════════════════════════════════
-  // 持仓变动
-  // ═══════════════════════════════════════
-  const positionChanges = computed(() => {
-    return changesData.value || { hasHistory: false, changes: [] }
-  })
 
   // ═══════════════════════════════════════
   // 数据加载
@@ -26,17 +16,9 @@ export function useHistory() {
     dateList.value = [data.yesterday, data.today].filter(Boolean)
   }
 
-  // /tracking 用：完整 { changes, alerts }
-  async function loadChanges() {
-    const data = await fetchChanges()
-    changesData.value = data.changes
-    alerts.value = data.alerts || { highByStock: [], mid: [], totalClear: 0 }
-    historyLoaded.value = true
-  }
-
   return {
-    historyLoaded, dateList,
-    positionChanges, changesSummary, alerts,
-    loadChangesSummary, loadChanges,
+    dateList,
+    changesSummary,
+    loadChangesSummary,
   }
 }
