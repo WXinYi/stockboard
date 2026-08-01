@@ -389,3 +389,32 @@ tr.pinned-row td { background: rgba(107,125,179,.025); }
 /* ---- Misc ---- */
 .clickable { cursor: pointer; }
 .consensus-card { display: block; }
+
+/* ---- Pull-to-Refresh ---- */
+.ptr { position: relative; min-height: 100%; }
+.ptr-indicator {
+  position: absolute; top: 0; left: 0; right: 0; height: 44px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 12px; font-weight: 420; color: #5b6daa;
+  opacity: 0; transform: translateY(-44px); transition: all .25s ease;
+}
+.ptr-indicator.show { opacity: 1; transform: translateY(0); }
+.ptr-spinner {
+  width: 16px; height: 16px; border: 2px solid rgba(107,125,179,.15);
+  border-top-color: rgba(107,125,179,.5); border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+.ptr-content { transition: transform .25s ease; }
+@media (hover: none) {
+  /* 触屏设备：下拉时内容跟手，去掉过渡延迟 */
+  .ptr:active .ptr-content { transition: none; }
+}
+.refresh-btn {
+  width: 30px; height: 30px; padding: 0; line-height: 30px; text-align: center;
+  background: rgba(107,125,179,.06); color: #5b6daa;
+  border: none; border-radius: 100px; cursor: pointer; font-size: 15px;
+  flex-shrink: 0; transition: all .25s;
+}
+.refresh-btn:hover { background: rgba(107,125,179,.12); }
+.refresh-btn:disabled { opacity: .5; cursor: default; }
+.refresh-btn.spinning { animation: spin .9s linear infinite; }
