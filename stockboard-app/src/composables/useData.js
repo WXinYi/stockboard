@@ -179,6 +179,11 @@ export function useData() {
     await ensureSlices(['core'])
   }
 
+  // 清空所有分片（配合 refreshData：置 null 后 ensureSlices 才会真正重新拉取）
+  function clearSlices() {
+    for (const k in slices) slices[k].value = null
+  }
+
   return {
     currentDate, loading, crawlTime,
     sortedPlayers, stockStats, tradeConsensus, positionDist, profitDist,
@@ -186,6 +191,6 @@ export function useData() {
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
     playerLookup,
-    ensureSlices, loadData,
+    ensureSlices, loadData, clearSlices,
   }
 }

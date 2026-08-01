@@ -15,7 +15,7 @@ const stockHistory = useHistory()
 provide('stockData', stockData)
 provide('stockHistory', stockHistory)
 
-const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices } = stockData
+const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices, clearSlices } = stockData
 const { loadChangesSummary, loadChanges } = stockHistory
 const { relativeTime } = useRelativeTime()
 const crawlTimeRelative = computed(() => relativeTime(crawlTime.value))
@@ -47,6 +47,7 @@ async function refreshData() {
   refreshing.value = true
   dismiss()
   clearDataCache()
+  clearSlices()
   try {
     await Promise.all([loadData(), ensureRoute()])
   } finally {
@@ -96,12 +97,6 @@ onMounted(async () => {
   initCheck()
 })
 
-// 路由级骨架屏：分片加载中显示（分片缓存后再次进入不触发）
-const routeLoading = computed(() => {
-  const key = route.path.startsWith('/player/') ? '/player' : route.path
-  const m = ROUTE_SLICES[key] || { data: [] }
-  return m.data.some((k) => loading.value[k])
-})
 </script>
 
 <template>
@@ -117,7 +112,7 @@ const routeLoading = computed(() => {
           <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeRelative }}</span>
           <!-- 依赖 players_index 懒加载：首屏 /copy 不显示，进入榜单/重仓等页后出现 -->
           <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }}人五榜</span>
-          <span v-if="loading" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
+          <span v-if="loading.core" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
           <button class="refresh-btn" :class="{ spinning: refreshing }"
                   @click="refreshData()" :disabled="refreshing" title="刷新最新数据">⟳</button>
         </div>
