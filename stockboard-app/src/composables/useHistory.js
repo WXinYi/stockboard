@@ -61,13 +61,10 @@ export function useHistory() {
     historyLoaded.value = true
   }
 
-  // 兼容别名（Task 5 将 App.vue 切换到 loadChangesSummary/loadChanges）
-  const loadHistory = loadChanges
-
   return {
     historyLoaded, dateList,
     positionChanges, changesSummary, alerts,
     getPlayerHistory, loadPlayerHistory,
-    loadChangesSummary, loadChanges, loadHistory,
+    loadChangesSummary, loadChanges,
   }
 }
