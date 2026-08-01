@@ -2,10 +2,19 @@
 导出 SQLite 数据为 JSON，供 Vue 看板使用
 
 输出:
-  latest/summary.json      — 所有 Tab 聚合数据
+  latest/summary.json      — 全量聚合数据（调试参照 + verify 基准，前端不再 fetch）
+  latest/core.json         — 日期/爬取时间/高手数/今日操作选手/上榜数 等核心元信息
+  latest/copy.json         — 抄作业信号 (copyTradeSignals) + 卖出预警 + 疑似清仓
+  latest/stocks.json       — 重仓共识 stockStats
+  latest/trades.json       — 调仓共识 tradeConsensus
+  latest/sectors.json      — 行业板块 sectorStats
+  latest/compare.json      — 多空对比 stockCompare
+  latest/overview.json     — 仓位分布 positionDist + 盈亏分布 profitDist
+  latest/name_map.json     — 当日被引用选手 name→id 子集映射
+  latest/changes_summary.json — 持仓变动计数摘要（无明细）
   latest/players/*.json    — 选手详情（按需加载）
   history/*.json           — 选手历史时间序列
-  latest/changes.json      — 持仓变动 + 预警
+  latest/changes.json      — 持仓变动 + 预警（全量）
 
 用法:
     python scripts/export_json.py [--date 2026-07-24] [--out ../stockboard-app/public/data]
@@ -646,26 +655,50 @@ def export(db_path, crawl_date, out_dir):
         if t.get("trade_date", "") == crawl_date and t.get("zh_id")
     ))
 
-    # ── 12. 构建 summary.json ────────────────
-    summary = {
-        "date": crawl_date,
-        "crawl_time": "",  # 下面填入
-        "qualityPlayerCount": len(quality_ids),
-        "copyTradeSignals": copy_trade_signals,
-        "stockStats": stock_stats,
-        "tradeConsensus": trade_consensus,
-        "sectorStats": sector_stats,
-        "positionDist": position_dist,
-        "profitDist": profit_bins,
-        "stockCompare": stock_compare,
-        "tradeAlerts": trade_alerts,
-        "suspectedClears": suspected_clears,
-        "tradedPlayerIds": traded_player_ids,
-        "fullRankCount": sum(1 for p in players_flat if len(p.get("ranks") or []) >= 5),
-        "playerNameMap": {},
+    # ── 12. 构建 summary 分片（按页面切片，前端按需加载）──
+    # summary.json 仍全量输出作为调试参照 + verify 基准
+    summary_slices = {
+        "core": {
+            "date": crawl_date,
+            "crawl_time": "",  # 下面填入
+            "qualityPlayerCount": len(quality_ids),
+            "tradedPlayerIds": traded_player_ids,
+            "fullRankCount": sum(1 for p in players_flat if len(p.get("ranks") or []) >= 5),
+        },
+        "copy": {
+            "copyTradeSignals": copy_trade_signals,
+            "tradeAlerts": trade_alerts,
+            "suspectedClears": suspected_clears,
+        },
+        "stocks": {"stockStats": stock_stats},
+        "trades": {"tradeConsensus": trade_consensus},
+        "sectors": {"sectorStats": sector_stats},
+        "compare": {"stockCompare": stock_compare},
+        "overview": {"positionDist": position_dist, "profitDist": profit_bins},
     }
-    # 仅保留 name→id 映射（不再冗余存 id→id）
-    summary["playerNameMap"] = {p["name"]: p["id"] for p in players_flat if p["name"]}
+
+    # name_map 只保留当日实际被引用的名字（copy 信号 + alerts + consensus 里出现的名字）
+    referenced_names = set()
+    for sig in all_signals:
+        referenced_names.update(sig.get("holders") or [])
+        referenced_names.update(sig.get("buyer_names") or [])
+        referenced_names.update(sig.get("seller_names") or [])
+    for alert in trade_alerts:
+        for name, _pid in alert.get("players", []):
+            referenced_names.add(name)
+    for sc in suspected_clears:
+        referenced_names.add(sc["player_name"])
+    for tc in trade_consensus:
+        referenced_names.update(tc["bp"])
+        referenced_names.update(tc["sp"])
+    name_map = {p["name"]: p["id"] for p in players_flat
+                if p["name"] and p["name"] in referenced_names}
+
+    # 全量参照文件（字段=各分片并集 + 精简后的 name_map）
+    summary = {**summary_slices["core"], **summary_slices["copy"],
+               **summary_slices["stocks"], **summary_slices["trades"],
+               **summary_slices["sectors"], **summary_slices["compare"],
+               **summary_slices["overview"], "playerNameMap": name_map}
 
     # ── 13. 构建选手详情文件 ──────────────────
     # positions/trades by player
@@ -806,6 +839,7 @@ def export(db_path, crawl_date, out_dir):
     else:
         crawl_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
     summary["crawl_time"] = crawl_time
+    summary_slices["core"]["crawl_time"] = crawl_time
 
     # 15. 新格式输出
     latest_dir = out_dir / "latest"
@@ -829,6 +863,33 @@ def export(db_path, crawl_date, out_dir):
 
     with open(latest_dir / "summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, separators=(",", ":"))
+
+    # 分片文件（前端按需加载）
+    with open(latest_dir / "core.json", "w", encoding="utf-8") as f:
+        json.dump(summary_slices["core"], f, ensure_ascii=False, separators=(",", ":"))
+    for slice_name in ("copy", "stocks", "trades", "sectors", "compare", "overview"):
+        with open(latest_dir / f"{slice_name}.json", "w", encoding="utf-8") as f:
+            json.dump(summary_slices[slice_name], f, ensure_ascii=False, separators=(",", ":"))
+
+    # name_map.json（只含当日被引用名字）
+    with open(latest_dir / "name_map.json", "w", encoding="utf-8") as f:
+        json.dump(name_map, f, ensure_ascii=False, separators=(",", ":"))
+
+    # changes_summary.json（/copy 摘要栏用，不含明细）
+    if changes_data:
+        changes_summary = {
+            "hasHistory": True,
+            "yesterday": changes_data["yesterday"],
+            "today": changes_data["today"],
+            "addedCount": len(changes_data["added"]),
+            "clearedCount": len(changes_data["cleared"]),
+            "changeCount": len(changes_data["changes"]),
+        }
+    else:
+        changes_summary = {"hasHistory": False, "yesterday": "", "today": "",
+                           "addedCount": 0, "clearedCount": 0, "changeCount": 0}
+    with open(latest_dir / "changes_summary.json", "w", encoding="utf-8") as f:
+        json.dump(changes_summary, f, ensure_ascii=False, separators=(",", ":"))
 
     # players/{zh_id}.json
     players_out_dir = latest_dir / "players"
