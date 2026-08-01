@@ -1,22 +1,38 @@
 import { ref, computed } from 'vue'
-import { fetchSummary, fetchPlayersIndex } from '../data/loader.js'
+import {
+  fetchCore, fetchCopy, fetchStocks, fetchTrades, fetchSectors,
+  fetchCompare, fetchOverview, fetchNameMap, fetchPlayersIndex,
+} from '../data/loader.js'
 
 const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
 
+// 分片 ref 表 + 加载器表（ensureSlices 用）
+const SLICE_REF = {
+  core: 'core', copy: 'copy', stocks: 'stocks', trades: 'trades',
+  sectors: 'sectors', compare: 'compare', overview: 'overview',
+  nameMap: 'nameMap', playersIndex: 'playersIndex',
+}
+const SLICE_LOADER = {
+  core: fetchCore, copy: fetchCopy, stocks: fetchStocks, trades: fetchTrades,
+  sectors: fetchSectors, compare: fetchCompare, overview: fetchOverview,
+  nameMap: fetchNameMap, playersIndex: fetchPlayersIndex,
+}
+
 export function useData() {
-  const crawlTime = ref('')
-  const loading = ref(false)
-  const _summary = ref(null)
-  const _playersIndex = ref(null)
+  const loading = ref({
+    core: false, copy: false, stocks: false, trades: false,
+    sectors: false, compare: false, overview: false,
+    nameMap: false, playersIndex: false,
+  })
+  const slices = {
+    core: ref(null), copy: ref(null), stocks: ref(null), trades: ref(null),
+    sectors: ref(null), compare: ref(null), overview: ref(null),
+    nameMap: ref(null), playersIndex: ref(null),
+  }
 
   // 筛选状态
   const sortKey = ref('total_return')
   const qualityOnly = ref(false)
-
-  // ═══════════════════════════════════════
-  // 派生数据
-  // ═══════════════════════════════════════
-  const currentDate = computed(() => _summary.value?.date || '')
 
   // ═══════════════════════════════════════
   // 高手判定
@@ -54,11 +70,47 @@ export function useData() {
   }
 
   // ═══════════════════════════════════════
+  // 派生数据
+  // ═══════════════════════════════════════
+
+  // ══ 来自 core.json ══
+  const currentDate = computed(() => slices.core.value?.date || '')
+  const crawlTime = computed(() => slices.core.value?.crawl_time || '')
+  const qualityPlayerCount = computed(() => slices.core.value?.qualityPlayerCount || 0)
+  const tradedPlayerIds = computed(() => new Set(slices.core.value?.tradedPlayerIds || []))
+
+  // ══ 来自 copy.json ══
+  const copyTradeSignals = computed(() => slices.copy.value?.copyTradeSignals || { bs: [], ch: [], sw: [], hq: [] })
+  const tradeAlerts = computed(() => slices.copy.value?.tradeAlerts || [])
+  const suspectedClears = computed(() => slices.copy.value?.suspectedClears || [])
+
+  // ══ 来自 stocks.json / trades.json / sectors.json ══
+  const stockStats = computed(() => slices.stocks.value?.stockStats || [])
+  const tradeConsensus = computed(() => slices.trades.value?.tradeConsensus || [])
+  const sectorStats = computed(() => slices.sectors.value?.sectorStats || [])
+
+  // ══ 来自 compare.json ══
+  const stockCompare = computed(() => slices.compare.value?.stockCompare || { concentration: [], divergence: [], qualityCount: 0 })
+
+  // ══ 来自 overview.json ══
+  const positionDist = computed(() => slices.overview.value?.positionDist || {})
+  const profitDist = computed(() => slices.overview.value?.profitDist || {})
+
+  // ══ 来自 name_map.json + players_index 兜底 ══
+  const playerNameMap = computed(() => {
+    const map = { ...(slices.nameMap.value || {}) }
+    if (slices.playersIndex.value) {
+      for (const p of slices.playersIndex.value) map[p[0]] = p[0]
+    }
+    return map
+  })
+
+  // ═══════════════════════════════════════
   // 选手列表 + 排序
   // ═══════════════════════════════════════
   const allPlayers = computed(() => {
-    if (!_playersIndex.value) return []
-    return _playersIndex.value.map(normalize)
+    if (!slices.playersIndex.value) return []
+    return slices.playersIndex.value.map(normalize)
   })
 
   const sortedPlayers = computed(() => {
@@ -72,44 +124,8 @@ export function useData() {
     return { pinned, rest, rankMap }
   })
 
-  // ═══════════════════════════════════════
-  // 直接来自 summary 的计算
-  // ═══════════════════════════════════════
-
-  const stockStats = computed(() => _summary.value?.stockStats || [])
-  const tradeConsensus = computed(() => _summary.value?.tradeConsensus || [])
-  const sectorStats = computed(() => _summary.value?.sectorStats || [])
-  const positionDist = computed(() => _summary.value?.positionDist || {})
-  const profitDist = computed(() => _summary.value?.profitDist || {})
-  const copyTradeSignals = computed(() => _summary.value?.copyTradeSignals || {
-    bs: [], ch: [], sw: [], hq: [],
-  })
-  const stockCompare = computed(() => _summary.value?.stockCompare || {
-    concentration: [], divergence: [], qualityCount: 0,
-  })
-  const tradeAlerts = computed(() => _summary.value?.tradeAlerts || [])
-  const suspectedClears = computed(() => _summary.value?.suspectedClears || [])
-  const qualityPlayerCount = computed(() => _summary.value?.qualityPlayerCount || 0)
-
-  const tradedPlayerIds = computed(() => {
-    const ids = _summary.value?.tradedPlayerIds || []
-    return new Set(ids)
-  })
-
   const fullRankPlayers = computed(() => {
     return allPlayers.value.filter(p => (p.ranks || []).length >= 5)
-  })
-
-  const playerNameMap = computed(() => {
-    // name→id 从 summary；id→id 从 players_index 补充
-    if (!_summary.value) return {}
-    const map = { ..._summary.value.playerNameMap }
-    if (_playersIndex.value) {
-      for (const p of _playersIndex.value) {
-        map[p[0]] = p[0]  // p[0]=id, for id-based lookups
-      }
-    }
-    return map
   })
 
   // ═══════════════════════════════════════
@@ -133,34 +149,35 @@ export function useData() {
   })
 
   // ═══════════════════════════════════════
-  // 数据加载
-  // ═══════════════════════════════════════
-
-  async function loadData() {
-    loading.value = true
-    try {
-      const [s, pi] = await Promise.all([fetchSummary(), fetchPlayersIndex()])
-      _summary.value = s
-      _playersIndex.value = pi
-      crawlTime.value = s.crawl_time || ''
-    } catch (e) {
-      console.error('加载数据失败:', e)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // ═══════════════════════════════════════
   // 选手详情辅助：按 zh_id 快速查询基本信息
   // ═══════════════════════════════════════
   const playerLookup = computed(() => {
     const map = {}
-    if (!_playersIndex.value) return map
+    if (!slices.playersIndex.value) return map
     for (const p of allPlayers.value) {
       map[p.zh_id] = p
     }
     return map
   })
+
+  // ═══════════════════════════════════════
+  // 按需加载
+  // ═══════════════════════════════════════
+
+  async function ensureSlices(names) {
+    await Promise.all([...new Set(names)].map(async (name) => {
+      const r = slices[name]
+      if (!r || r.value) return
+      loading.value[name] = true
+      try { r.value = await SLICE_LOADER[name]() }
+      finally { loading.value[name] = false }
+    }))
+  }
+
+  // App 挂载时只等 core（~20KB），其余分片由路由触发
+  async function loadData() {
+    await ensureSlices(['core'])
+  }
 
   return {
     currentDate, loading, crawlTime,
@@ -169,6 +186,6 @@ export function useData() {
     playerStyles, sectorStats, fullRankPlayers, copyTradeSignals, stockCompare,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
     playerLookup,
-    loadData,
+    ensureSlices, loadData,
   }
 }
