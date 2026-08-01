@@ -1,34 +1,38 @@
 const BASE = import.meta.env.BASE_URL
 
-let _summaryCache = null
+// 统一模块级缓存：按请求路径缓存，clearDataCache() 一次性清空
+const _cache = {}
 
-export async function fetchSummary() {
-  if (_summaryCache) return _summaryCache
-  const resp = await fetch(`${BASE}data/latest/summary.json`)
-  _summaryCache = await resp.json()
-  return _summaryCache
+async function getJson(path) {
+  if (_cache[path]) return _cache[path]
+  const resp = await fetch(`${BASE}${path}`)
+  const data = await resp.json()
+  _cache[path] = data
+  return data
 }
 
-let _playersCache = null
-
-export async function fetchPlayersIndex() {
-  if (_playersCache) return _playersCache
-  const resp = await fetch(`${BASE}data/latest/players_index.json`)
-  _playersCache = await resp.json()
-  return _playersCache
+export function clearDataCache() {
+  for (const k of Object.keys(_cache)) delete _cache[k]
 }
 
-export async function fetchPlayerDetail(zhId) {
-  const resp = await fetch(`${BASE}data/latest/players/${zhId}.json`)
-  return resp.json()
-}
+// 分片（按需加载）
+export const fetchCore          = () => getJson('data/latest/core.json')
+export const fetchCopy          = () => getJson('data/latest/copy.json')
+export const fetchStocks        = () => getJson('data/latest/stocks.json')
+export const fetchTrades        = () => getJson('data/latest/trades.json')
+export const fetchSectors       = () => getJson('data/latest/sectors.json')
+export const fetchCompare       = () => getJson('data/latest/compare.json')
+export const fetchOverview      = () => getJson('data/latest/overview.json')
+export const fetchNameMap       = () => getJson('data/latest/name_map.json')
+export const fetchChangesSummary = () => getJson('data/latest/changes_summary.json')
 
-export async function fetchPlayerHistory(zhId) {
-  const resp = await fetch(`${BASE}data/history/${zhId}.json`)
-  return resp.json()
-}
+// 全量（路由级懒加载）
+export const fetchPlayersIndex  = () => getJson('data/latest/players_index.json')
+export const fetchChanges       = () => getJson('data/latest/changes.json')
 
-export async function fetchChanges() {
-  const resp = await fetch(`${BASE}data/latest/changes.json`)
-  return resp.json()
-}
+// 按需新鲜数据（PlayerDetail，不缓存）
+export const fetchPlayerDetail  = (zhId) => fetch(`${BASE}data/latest/players/${zhId}.json`).then((r) => r.json())
+export const fetchPlayerHistory = (zhId) => fetch(`${BASE}data/history/${zhId}.json`).then((r) => r.json())
+
+// 兼容保留（新架构下前端不再调用）
+export const fetchSummary = () => getJson('data/latest/summary.json')
