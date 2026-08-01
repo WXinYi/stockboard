@@ -6,7 +6,6 @@ import { useTableSort } from '../composables/useTableSort.js'
 
 const route = useRoute()
 const router = useRouter()
-const { loadPlayerHistory } = inject('stockHistory')
 const { playerLookup } = inject('stockData')
 const refreshTick = inject('refreshTick', ref(0))
 
@@ -19,11 +18,6 @@ const player = computed(() => {
   const info = playerLookup.value[playerData.value.id] || {}
   return { ...playerData.value, ...info }
 })
-const history = ref([])
-
-async function loadHistoryData(zhId, force = false) {
-  history.value = await loadPlayerHistory(zhId, force)
-}
 
 const posData = computed(() => playerData.value?.p || [])
 const tradeData = computed(() => playerData.value?.t || [])
@@ -46,49 +40,10 @@ function posLabel(total) {
   return '9成以上'
 }
 
-const curveCanvas = ref(null)
-let curveChart = null
-const chartLoading = ref(false)
-
-async function renderCurve() {
-  if (!curveCanvas.value || !history.value.length) return
-  if (curveChart) curveChart.destroy()
-  chartLoading.value = true
-  try {
-    const { Chart, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler } = await import('chart.js')
-    Chart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler)
-    const labels = history.value.map(h => h.date.slice(5))
-    const dailyData = history.value.map(h => h.daily_return)
-    curveChart = new Chart(curveCanvas.value, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { label: '日收益 %', data: dailyData, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)', fill: true, tension: 0.3, pointRadius: 3, yAxisID: 'y' },
-          { label: '净值', data: history.value.map(h => h.net_value), borderColor: '#2980b9', backgroundColor: 'rgba(41,128,185,0.05)', fill: true, tension: 0.3, pointRadius: 2, yAxisID: 'y1' }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { intersect: false, mode: 'index' },
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { type: 'linear', position: 'left', title: { display: true, text: '日收益%' } },
-          y1: { type: 'linear', position: 'right', title: { display: true, text: '净值' }, grid: { drawOnChartArea: false } },
-        }
-      }
-    })
-  } finally {
-    chartLoading.value = false
-  }
-}
-
-async function loadPlayer(zhId, force = false) {
+async function loadPlayer(zhId) {
   loadingDetail.value = true
   try {
     playerData.value = await fetchPlayerDetail(zhId)
-    await loadHistoryData(zhId, force)
-    renderCurve()
   } catch (e) {
     console.warn('选手详情加载失败:', e.message)
   } finally {
@@ -98,8 +53,8 @@ async function loadPlayer(zhId, force = false) {
 
 watch(() => route.params.zh_id, (newId) => { if (newId) loadPlayer(newId) })
 
-// 全局刷新信号：App.vue 下拉刷新/顶栏刷新后重新拉取选手详情（force 绕过历史缓存）
-watch(refreshTick, () => { if (route.params.zh_id) loadPlayer(route.params.zh_id, true) })
+// 全局刷新信号：App.vue 下拉刷新/顶栏刷新后重新拉取选手详情
+watch(refreshTick, () => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 
 onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 </script>
@@ -218,10 +173,5 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
         </div>
         <div class="lbl">榜单</div>
       </div>
-    </div>
-    <div class="card" style="margin-bottom:20px;">
-      <h2>📈 收益走势 <span v-if="history.length < 2" style="font-size:11px;color:#999;font-weight:400;">（需要至少2天数据）</span></h2>
-      <div v-if="history.length >= 2" class="chart-wrap tall"><canvas ref="curveCanvas"></canvas></div>
-      <div v-else class="empty-state"><p>📭 每天运行数据采集，积累多天后自动生成收益曲线</p><p style="font-size:11px;color:#aaa;">当前仅 {{ history.length }} 天数据</p></div>
     </div>
 </template>

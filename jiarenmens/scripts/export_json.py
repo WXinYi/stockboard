@@ -13,7 +13,6 @@
   latest/name_map.json     — 当日被引用选手 name→id 子集映射
   latest/changes_summary.json — 持仓变动计数摘要（无明细）
   latest/players/*.json    — 选手详情（按需加载）
-  history/*.json           — 选手历史时间序列
   latest/changes.json      — 持仓变动 + 预警（全量）
 
 用法:
@@ -113,7 +112,7 @@ def export(db_path, crawl_date, out_dir):
            WHERE t.crawl_date=?""", (crawl_date,)
     ).fetchall()]
 
-    # 所有日期的调仓（用于推测持仓 + 历史序列）
+    # 所有日期的调仓（用于推测持仓）
     all_trades = [dict(r) for r in conn.execute(
         """SELECT t.*, pl.name as player_name
            FROM trades t LEFT JOIN players pl ON t.zh_id = pl.zh_id
@@ -782,55 +781,7 @@ def export(db_path, crawl_date, out_dir):
             })
         return sorted(result, key=lambda r: 0 if r["cf"] == "mid" else 1)
 
-    # ── 14. 构建历史时间序列 ──────────────────
-    # Per-player: [{date, daily_return, total_return, net_value}, ...]
-    # From players table: each crawl_date snapshot is different
-    # Actually, we need to get players data per crawl_date
-    # But the players table doesn't have crawl_date — it's UPSERTed
-    # We need to reconstruct from positions/trades which have crawl_date
-    # For history, we use the player's current snapshot for each date
-    # Since players are UPSERTed, we can't get historical player data from SQLite
-    #
-    # Alternative: The history is constructed from what we have in all_positions/all_trades
-    # For each player, for each date they have positions/trades, we have data
-    # But daily_return etc. won't be historical
-    #
-    # SIMPLER: Since the frontend's getPlayerHistory uses allPlayersByDate
-    # which reconstructs from the daily players.json files, we need to do the same.
-    # Each date's players.json has the player's return values on that date.
-    #
-    # BUT: the players table always has the LATEST data (due to UPSERT).
-    # Historical player snapshots don't exist in SQLite.
-    #
-    # To solve this: we can export the player history from the already-exported
-    # \{date}/players.json files, or we can accept that history needs to be
-    # built from existing daily exports.
-    #
-    # For NOW: we'll build history from the existing daily exports in the data dir.
-    # If they don't exist, we skip.
-    player_history = {}
-    for date_str in all_dates:
-        players_file = out_dir / date_str / "players.json"
-        if not players_file.exists():
-            continue
-        try:
-            date_players = json.loads(players_file.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        for p in date_players:
-            pid = p.get("zh_id") or p.get("id", "")
-            if not pid:
-                continue
-            if pid not in player_history:
-                player_history[pid] = []
-            player_history[pid].append({
-                "d": date_str,
-                "dr": safe_float(p.get("daily_return")),
-                "tr": safe_float(p.get("total_return")),
-                "nv": safe_float(p.get("net_value")),
-            })
-
-    # ── 15. 写文件 ───────────────────────────
+    # ── 14. 写文件 ───────────────────────────
 
     # 读取 crawl_time
     crawl_start_file = ROOT / "data" / "crawl_start.txt"
@@ -909,14 +860,6 @@ def export(db_path, crawl_date, out_dir):
         with open(players_out_dir / f"{pid}.json", "w", encoding="utf-8") as f:
             json.dump(detail, f, ensure_ascii=False, separators=(",", ":"))
 
-    # history/{zh_id}.json
-    history_dir = out_dir / "history"
-    history_dir.mkdir(parents=True, exist_ok=True)
-    for pid, entries in player_history.items():
-        entries.sort(key=lambda e: e["d"])
-        with open(history_dir / f"{pid}.json", "w", encoding="utf-8") as f:
-            json.dump(entries, f, ensure_ascii=False, separators=(",", ":"))
-
     # changes.json
     with open(latest_dir / "changes.json", "w", encoding="utf-8") as f:
         json.dump({"changes": changes_data, "alerts": alerts},
@@ -940,14 +883,12 @@ def export(db_path, crawl_date, out_dir):
     conn.close()
 
     n_players = len(list(players_out_dir.glob("*.json")))
-    n_history = len(list(history_dir.glob("*.json")))
     summary_size = (latest_dir / "summary.json").stat().st_size / 1024
     changes_size = (latest_dir / "changes.json").stat().st_size / 1024 if changes_data else 0
 
     print(f"✅ 导出完成 ({crawl_date})")
     print(f"   summary.json → {summary_size:.0f}KB")
     print(f"   players/ → {n_players} 个选手详情文件")
-    print(f"   history/ → {n_history} 个历史序列文件")
     if changes_data:
         print(f"   changes.json → {changes_size:.0f}KB")
     print(f"   选手: {len(all_players_raw)} | 持仓: {len(positions_raw)} | 调仓: {len(trades_raw)} | 高手: {len(quality_ids)}")

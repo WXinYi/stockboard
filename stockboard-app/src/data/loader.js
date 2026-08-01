@@ -32,7 +32,6 @@ export const fetchChanges       = () => getJson('data/latest/changes.json')
 
 // 按需新鲜数据（PlayerDetail，不缓存）
 export const fetchPlayerDetail  = (zhId) => fetch(`${BASE}data/latest/players/${zhId}.json`).then((r) => r.json())
-export const fetchPlayerHistory = (zhId) => fetch(`${BASE}data/history/${zhId}.json`).then((r) => r.json())
 
 // 兼容保留（新架构下前端不再调用）
 export const fetchSummary = () => getJson('data/latest/summary.json')

@@ -13,6 +13,9 @@ const todayOnly = ref(true)
 const search = ref('')
 const minRanks = ref(0)
 
+// 当日是否有调仓数据（非交易日 tradedPlayerIds 为空 → todayOnly 过滤自动失效，展示上一交易日全量榜单）
+const hasTodayTrades = computed(() => tradedPlayerIds.value.size > 0)
+
 const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
 
 const { sorted: sortedList, toggle: tog, indicator: ind, sortKey } = useTableSort(allPlayers, 'weekly_return')
@@ -23,7 +26,7 @@ const displayList = computed(() => {
   let list = [...sortedList.value]
   let filtered = list.filter(p => !watched.has(p.zh_id))
   if (qualityOn.value) filtered = filtered.filter(isQuality)
-  if (todayOnly.value) filtered = filtered.filter(p => tradedPlayerIds.value.has(p.zh_id))
+  if (todayOnly.value && hasTodayTrades.value) filtered = filtered.filter(p => tradedPlayerIds.value.has(p.zh_id))
   if (minRanks.value > 0) filtered = filtered.filter(p => (p.ranks || []).length >= minRanks.value)
   // 置顶选手独立
   const pinned = list.filter(p => watched.has(p.zh_id))
@@ -90,7 +93,8 @@ const sortHeaders = computed(() => {
     <div class="filter-row">
       <span style="font-size:12px;color:#888;">筛选:</span>
       <button :class="['filter-btn', { active: qualityOn }]" @click="qualityOn = !qualityOn">高质量</button>
-      <button :class="['filter-btn', { active: todayOnly }]" @click="todayOnly = !todayOnly">今日操作</button>
+      <button :class="['filter-btn', { active: todayOnly && hasTodayTrades }]" @click="todayOnly = !todayOnly">今日操作</button>
+      <span v-if="!hasTodayTrades" style="font-size:11px;color:#e67e22;">非交易日，已展示最近榜单</span>
       <span style="font-size:12px;color:#888;">上榜≥</span>
       <button v-for="n in [1,3,5]" :key="n"
               :class="['filter-btn', { active: minRanks === n }]"
