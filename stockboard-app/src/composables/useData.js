@@ -3,7 +3,7 @@ import {
   fetchCore, fetchCopy, fetchStocks, fetchNameMap, fetchPlayersIndex,
 } from '../data/loader.js'
 
-const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
+const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455', '900372673'])
 
 // 分片 ref 表 + 加载器表（ensureSlices 用）
 const SLICE_REF = {

@@ -8,7 +8,7 @@ import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 const router = useRouter()
 const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality } = inject('stockData')
 
-const WATCHED = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455'])
+const WATCHED = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455', '900372673'])
 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 
@@ -251,8 +251,8 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 /* 固定宽度列一律 min-width:0，防止内容（如进度条+百分比文字）把列撑宽导致列与表头错位 */
 .c-rank { flex: 0 0 34px; min-width: 0; text-align: center; color: #8e8e9a; }
 .c-name {
-  flex: 1 1 180px;
-  min-width: 180px;
+  flex: 1 1 210px;
+  min-width: 210px;
   padding: 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -280,7 +280,7 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
   .rank-vscroll { max-height: min(600px, calc(100vh - 300px)); }
   .rank-row { font-size: 12px; }
   .c-rank { flex-basis: 28px; }
-  .c-name { flex-basis: 120px; min-width: 120px; }
+  .c-name { flex-basis: 150px; min-width: 150px; }
   .c-num { flex-basis: 58px; padding: 0 4px; }
   .c-style { flex-basis: 36px; }
   .c-pos { flex-basis: 96px; padding: 0 4px; }
