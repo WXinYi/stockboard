@@ -9,3 +9,29 @@ export function emMarket(code) {
 export function secid(code) {
   return `${emMarket(code)}.${code}`
 }
+
+// 东财 H5 个股页(移动版自动适配): https://quote.eastmoney.com/sz000938.html
+export function emQuoteUrl(code) {
+  const m = emMarket(code)
+  const pfx = m === '1' ? 'sh' : m === '2' ? 'bj' : m === '116' ? 'hk' : 'sz'
+  return `https://quote.eastmoney.com/${pfx}${code}.html`
+}
+
+// 同花顺 H5 个股页(移动版自动适配): https://stockpage.10jqka.com.cn/000938/
+export function thsUrl(code) {
+  return `https://stockpage.10jqka.com.cn/${code}/`
+}
+
+// JSONP 助手: script 注入绕 CORS, 8s 超时
+export function jsonp(url, cbParam = 'cb', timeout = 8000) {
+  return new Promise((resolve, reject) => {
+    const cbName = '_em' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+    const script = document.createElement('script')
+    const cleanup = () => { delete window[cbName]; script.remove() }
+    const timer = setTimeout(() => { cleanup(); reject(new Error('数据请求超时')) }, timeout)
+    window[cbName] = (data) => { clearTimeout(timer); cleanup(); resolve(data) }
+    script.src = url + (url.includes('?') ? '&' : '?') + cbParam + '=' + cbName
+    script.onerror = () => { clearTimeout(timer); cleanup(); reject(new Error('数据请求失败')) }
+    document.head.appendChild(script)
+  })
+}

@@ -4,11 +4,16 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchPlayerDetail } from '../data/loader.js'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
+import StockDetailModal from './StockDetailModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { playerLookup } = inject('stockData')
 const refreshTick = inject('refreshTick', ref(0))
+
+// 📈 打开股票详情弹窗(iframe 嵌套同花顺/东财)
+const stockModal = ref({ visible: false, code: '', name: '' })
+function openStockDetail(c, n) { stockModal.value = { visible: true, code: c, name: n } }
 
 // 股票名称交互：单击复制代码 / 长按打开东方财富个股页
 const { copiedKey, copyStockCode } = useCopyCode()
@@ -159,6 +164,7 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
             <tr v-for="x in sortedPos" :key="x.sc">
               <td class="nowrap">
                 <strong class="stock-name" @click="onClickCopy(x.sc, 'p:' + x.sc)" @pointerdown="onPressStart(x.sc)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击复制代码 · 长按打开东方财富'">{{ x.sn }}</strong>
+                <button class="stock-icon" @click.stop="openStockDetail(x.sc, x.sn)" title="查看走势详情">📈</button>
                 <span v-if="copiedKey === 'p:' + x.sc" class="copied-tip">✓ 已复制</span>
               </td>
               <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
@@ -184,6 +190,7 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
             <tr v-for="s in inferredPositions" :key="s.cd">
               <td class="nowrap">
                 <strong class="stock-name" @click="onClickCopy(s.cd, 'i:' + s.cd)" @pointerdown="onPressStart(s.cd)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击复制代码 · 长按打开东方财富'">{{ s.sn }}</strong>
+                <button class="stock-icon" @click.stop="openStockDetail(s.cd, s.sn)" title="查看走势详情">📈</button>
                 <span v-if="copiedKey === 'i:' + s.cd" class="copied-tip">✓ 已复制</span>
               </td>
               <td class="nowrap" style="color:#666;">{{ s.cd }}</td>
@@ -216,6 +223,7 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
               <td><span :class="x.dr === '买入' ? 'buy' : 'sell'">{{ x.dr }}</span></td>
               <td class="nowrap">
                 <strong class="stock-name" @click="onClickCopy(x.sc, 't:' + (x.id || x.td + x.sc))" @pointerdown="onPressStart(x.sc)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击复制代码 · 长按打开东方财富'">{{ x.sn }}</strong>
+                <button class="stock-icon" @click.stop="openStockDetail(x.sc, x.sn)" title="查看走势详情">📈</button>
                 <span v-if="copiedKey === 't:' + (x.id || x.td + x.sc)" class="copied-tip">✓ 已复制</span>
               </td>
               <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
@@ -251,6 +259,8 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
         <div class="lbl">榜单</div>
       </div>
     </div>
+
+  <StockDetailModal v-model="stockModal.visible" :code="stockModal.code" :name="stockModal.name" />
 </template>
 
 <style scoped>
@@ -263,4 +273,5 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 }
 .stock-name:hover { color: #2980b9; }
 .copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
+.stock-icon { border: none; background: none; cursor: pointer; font-size: 13px; padding: 0 4px; vertical-align: middle; }
 </style>

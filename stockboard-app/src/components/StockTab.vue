@@ -3,10 +3,15 @@ import { computed, inject, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
+import StockDetailModal from './StockDetailModal.vue'
 
 const router = useRouter()
 const { stockStats: stats, sortedPlayers: sp, isQuality } = inject('stockData')
 function navigateToPlayer(id) { router.push('/player/' + id) }
+
+// 📈 打开股票详情弹窗(iframe 嵌套同花顺/东财)
+const stockModal = ref({ visible: false, code: '', name: '' })
+function openStockDetail(c, n) { stockModal.value = { visible: true, code: c, name: n } }
 
 const stockSearch = ref('')
 const lookedUpHolders = ref(null)
@@ -76,6 +81,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
             <td>{{ i + 1 }}</td>
             <td>
               <strong class="stock-name" @click="copyStockCode(s.c)" :title="'点击复制代码 ' + s.c">{{ s.n }}</strong>
+              <button class="stock-icon" @click.stop="openStockDetail(s.c, s.n)" title="查看走势详情">📈</button>
               <span v-if="copiedKey === s.c" class="copied-tip">✓ 已复制</span>
             </td>
             <td style="color:#999;">{{ s.c }}</td>
@@ -90,10 +96,13 @@ const { copiedKey, copyStockCode } = useCopyCode()
       </table>
     </div>
   </div>
+
+  <StockDetailModal v-model="stockModal.visible" :code="stockModal.code" :name="stockModal.name" />
 </template>
 
 <style scoped>
 .stock-name { cursor: pointer; }
 .stock-name:hover { color: #2980b9; }
 .copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
+.stock-icon { border: none; background: none; cursor: pointer; font-size: 13px; padding: 0 4px; vertical-align: middle; }
 </style>
