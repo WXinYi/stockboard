@@ -1,0 +1,185 @@
+{
+ "date": "2026-08-07",
+ "generated_at": "17:27",
+ "env": {
+  "pass": true,
+  "reasons": [
+   "环境正常"
+  ],
+  "data": {
+   "strong": 63,
+   "lbgd": 4,
+   "capacity_ratio": 1.0536378020833883,
+   "red_ratio": 0.5296735905044511,
+   "bid_count": [
+    158,
+    194,
+    50,
+    52,
+    1
+   ]
+  }
+ },
+ "boards": [
+  {
+   "code": "801660",
+   "name": "通信",
+   "burst": 6.5,
+   "amount": 1701307452.0,
+   "main_net": 225334297.0,
+   "src": "爆量+强度",
+   "strength": 1667.0
+  },
+  {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 6.1,
+   "amount": 1673815866.0,
+   "main_net": 183045502.0,
+   "src": "爆量+强度",
+   "strength": 1731.0
+  },
+  {
+   "code": "801080",
+   "name": "煤炭",
+   "burst": 6.0,
+   "amount": 302637544.0,
+   "main_net": -76484918.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801003",
+   "name": "5G",
+   "burst": 4.8,
+   "amount": 531892262.0,
+   "main_net": 36888692.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801250",
+   "name": "并购重组",
+   "burst": 0.0,
+   "amount": 3483155580.0,
+   "main_net": 15241193.0,
+   "src": "强度",
+   "strength": 1927.0
+  },
+  {
+   "code": "801139",
+   "name": "培育钻石",
+   "burst": 0.0,
+   "amount": 109064779.0,
+   "main_net": 15383815.0,
+   "src": "强度",
+   "strength": 896.0
+  },
+  {
+   "code": "801178",
+   "name": "储能",
+   "burst": 0.0,
+   "amount": 2846871710.0,
+   "main_net": 22279170.0,
+   "src": "强度",
+   "strength": 302.0
+  },
+  {
+   "code": "801694",
+   "name": "非金属材料",
+   "burst": 0.0,
+   "amount": 498778764.0,
+   "main_net": 13678396.0,
+   "src": "强度",
+   "strength": 18.0
+  }
+ ],
+ "candidates": [
+  {
+   "code": "002281",
+   "name": "光迅科技",
+   "score": 9,
+   "max": 15,
+   "factors": {
+    "bid_price": 193.04,
+    "bid_pct": 3.71,
+    "turnover": 0.18,
+    "vol_ratio": 3.06,
+    "circ_mv": 92252052000.0,
+    "bid_vol_last": 5719.0
+   },
+   "sub": {
+    "B1涨幅": 2,
+    "B2换手": 2,
+    "B3量比": 3,
+    "B4形态": 0,
+    "B5方向": 0,
+    "B6大单": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板67%/破板33%)",
+    "data": {
+     "limit_count": 13,
+     "premium_5pct": 7,
+     "next_red_pct": 100.0,
+     "seal_pct": 66.6667,
+     "break_pct": 33.3333,
+     "consecutive_pct": 9.09091
+    }
+   },
+   "boards": [
+    "通信",
+    "芯片",
+    "5G"
+   ],
+   "tag": "193.04",
+   "missing": []
+  },
+  {
+   "code": "601666",
+   "name": "平煤股份",
+   "score": 9,
+   "max": 15,
+   "factors": {
+    "bid_price": 8.94,
+    "bid_pct": 0.0,
+    "turnover": 0.09,
+    "vol_ratio": 21.49,
+    "circ_mv": 11041324373.0,
+    "bid_vol_last": 9926.0
+   },
+   "sub": {
+    "B1涨幅": 0,
+    "B2换手": 2,
+    "B3量比": 3,
+    "B4形态": 0,
+    "B5方向": 2,
+    "B6大单": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板75%/破板25%)",
+    "data": {
+     "limit_count": 3,
+     "premium_5pct": 1,
+     "next_red_pct": 100.0,
+     "seal_pct": 75.0,
+     "break_pct": 25.0,
+     "consecutive_pct": 0.0
+    }
+   },
+   "boards": [
+    "煤炭"
+   ],
+   "tag": "昨日首板",
+   "missing": []
+  }
+ ],
+ "empty_reason": null,
+ "stats": {
+  "pool": 109,
+  "genes": 60,
+  "boards": 8
+ }
+}

@@ -31,6 +31,7 @@ const pageTitles = {
   copy: '抄作业',
   rankings: '排行榜',
   stocks: '重仓共识',
+  auction: '竞价抢筹',
 }
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
@@ -39,7 +40,8 @@ const pageTitle = computed(() => {
 })
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
 const isStockDetail = computed(() => route.path.startsWith('/stock/'))
-const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value)
+const isAuction = computed(() => route.path === '/auction')
+const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value || isAuction.value)
 
 const refreshing = ref(false)
 
@@ -132,7 +134,7 @@ onMounted(async () => {
           <p class="loading-sub">从服务器获取最新行情</p>
         </div>
         <router-view v-else v-slot="{ Component }">
-          <KeepAlive :exclude="['PlayerDetail', 'StockDetailPage', 'StockH5Page']">
+          <KeepAlive :exclude="['PlayerDetail', 'StockDetailPage', 'StockH5Page', 'AuctionTab']">
             <component :is="Component" />
           </KeepAlive>
         </router-view>
