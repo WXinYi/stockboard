@@ -520,6 +520,8 @@ usePullRefresh(() => {
 })
 
 watch(code, () => {
+  // 路由离开详情页(code 变 undefined)时不重载, 否则跳板块/盘面页会发一堆无效请求
+  if (!code.value) return
   // 同一路由记录复用组件实例: 切 code 先清空旧数据并销毁旧图表, 否则残留上一只股票的行情/图表
   quote.value = null
   kline.value = []

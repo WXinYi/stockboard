@@ -38,6 +38,8 @@ async function load() {
 
 // KeepAlive 复用: 一篇正文 → 另一篇(列表直跳)时按 iid 重载; 返回则走 onActivated 不重载
 watch(() => route.params.iid, (id) => {
+  // 路由离开资讯页(iid 变 undefined)时不重载
+  if (!id) return
   title.value = sessionStorage.getItem('info_title_' + id) || ''
   content.value = ''
   sourceUrl.value = ''

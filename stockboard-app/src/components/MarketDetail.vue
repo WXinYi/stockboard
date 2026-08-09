@@ -80,6 +80,8 @@ function onVisibility() {
 }
 
 watch(section, () => {
+  // 路由离开盘面二级页(section 变 undefined)时不重载
+  if (!section.value) return
   openIdx.value = null
   load()
   startTimer()

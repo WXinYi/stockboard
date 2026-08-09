@@ -40,6 +40,8 @@ async function load(silent = false) {
 
 // KeepAlive 复用: 板块 A → 板块 B 直接跳转时清空旧数据重载
 watch(bkCode, () => {
+  // 路由离开板块页(bkCode 变 undefined)时不重载, 避免无效请求
+  if (!bkCode.value) return
   rows.value = []
   loading.value = true
   error.value = false
