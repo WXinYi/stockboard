@@ -200,7 +200,8 @@ def _qq_symbol(code):
 
 
 def qq_minute(code):
-    """腾讯分时: [[0930, 价, 量], ...] 首根 09:30 为开盘分钟"""
+    """腾讯分时: [[0930, 价, 量], ...] 首根 09:30 为开盘分钟。
+    返回结构 data[sym]['data']['data'] 是双层, 每行是空格分隔字符串 → split 解析。"""
     sym = _qq_symbol(code)
     r = requests.get(
         f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={sym}",
@@ -208,7 +209,8 @@ def qq_minute(code):
         headers={"User-Agent": "Mozilla/5.0"},
     )
     r.raise_for_status()
-    return r.json()["data"][sym]["data"]
+    rows = r.json()["data"][sym]["data"]["data"]
+    return [row.split() for row in rows]
 
 
 def e_confirm(candidates_path: Path):
