@@ -104,42 +104,53 @@ def board_select(board_bid: Dict, ranking: Dict, max_boards: int = 8) -> List[Di
 # L3 竞价评分(15 分制)
 # =============================================================================
 
-def _score_b1(bid_pct: Optional[float]) -> int:
-    """竞价涨幅: 1-3%→1, 3-5%→2, 5-7%→1, 其他→0"""
-    if bid_pct is None:
+def _score_b1(bid_net: Optional[float], circ_mv: Optional[float]) -> int:
+    """S1 竞价资金强度(预测上涨第一因子): 净买/流通市值 归一化。
+    竞价净额普遍很小(08-07 过门槛53只中 36只仅 0-0.1%), 阈值取平滑分档:
+    >0.1% → 3(真金白银抢筹), 0.05-0.1% → 2, 0-0.05% → 1, 净卖 → 0(假高开)。"""
+    if bid_net is None or circ_mv is None or circ_mv <= 0:
         return 0
-    if 1 <= bid_pct < 3:
-        return 1
-    if 3 <= bid_pct < 5:
+    ratio = bid_net / circ_mv * 100
+    if ratio > 0.1:
+        return 3
+    if ratio > 0.05:
         return 2
-    if 5 <= bid_pct < 7:
+    if ratio > 0:
         return 1
     return 0
 
 
 def _score_b2(turnover: Optional[float], circ_mv: Optional[float]) -> int:
-    """竞价换手按流通市值分档: <30亿 >0.3% / 30-100亿 >0.15% / >100亿 >0.08% → 2"""
+    """竞价换手按流通市值分档(市值越小要求越低):
+    达标 → 2 分, 达 0.5× 阈值 → 1 分(旧版一刀切 0 分导致大量票失分)"""
     if turnover is None or circ_mv is None:
         return 0
     if circ_mv < 3e9:
-        return 2 if turnover > 0.3 else 0
-    if circ_mv < 1e10:
-        return 2 if turnover > 0.15 else 0
-    return 2 if turnover > 0.08 else 0
+        threshold = 0.3
+    elif circ_mv < 1e10:
+        threshold = 0.15
+    else:
+        threshold = 0.08
+    if turnover >= threshold:
+        return 2
+    if turnover >= threshold * 0.5:
+        return 1
+    return 0
 
 
 def _score_b3(vol_ratio: Optional[float]) -> int:
-    """竞价量比健康区间: 3-8 倍=健康抢筹→3, 8-15 降级→2, >15 巨量分歧警惕→0(可能出货对倒)"""
+    """S5 竞价量比健康: 3-8 倍=真实抢筹→2, 2-3 轻微放量或 8-15 过热→1,
+    >15 巨量分歧警惕→0(可能出货对倒), <2 无量→0"""
     if vol_ratio is None:
         return 0
     if vol_ratio > 15:
         return 0
     if vol_ratio > 8:
-        return 2
+        return 1
     if vol_ratio > 3:
-        return 3
-    if vol_ratio > 2:
         return 2
+    if vol_ratio > 2:
+        return 1
     return 0
 
 
@@ -187,9 +198,39 @@ def _score_b5(bid_rows: Optional[List[List]]) -> int:
     return 0
 
 
+def _score_b4_resonance(boards: List[str], gate_counts: Dict[str, int]) -> int:
+    """S3 板块共振(预测上涨第二因子): 竞价抢筹的胜负手是板块。
+    所属板块内过 B1 门槛的票 ≥3 只 → 3(资金共识/板块行情), 2 只 → 2, 否则 0。
+    孤立抢筹多数是一日游, 板块联动才有持续性。"""
+    if not boards:
+        return 0
+    best = 0
+    for b in boards:
+        best = max(best, gate_counts.get(b, 0))
+    if best >= 3:
+        return 3
+    if best == 2:
+        return 2
+    return 0
+
+
+def _score_gene(gene: Optional[Dict]) -> int:
+    """S6 涨停基因延续性: 首板封板率 ≥70% → 2, ≥50% → 1, 无数据 → 0。
+    历史封板率高的票, 竞价抢筹延续上涨概率更高。破板率 >40% 已在 L4 淘汰。"""
+    if not gene or gene.get("data") is None:
+        return 0
+    seal = gene["data"].get("seal_pct") or 0
+    if seal >= 70:
+        return 2
+    if seal >= 50:
+        return 1
+    return 0
+
+
 def prelim_score(item: Dict) -> int:
-    """初步评分(B1+B2+B3, 不需竞价分时) — 用于决定给哪些股票拉 B4/B5 数据"""
-    return (_score_b1(item.get("bid_pct")) + _score_b2(item.get("turnover_ratio"), item.get("circ_mv"))
+    """初步评分(S1资金+S2换手+S5量比, 不需竞价分时) — 用于决定基因查询顺序"""
+    return (_score_b1(item.get("bid_net"), item.get("circ_mv"))
+            + _score_b2(item.get("turnover_ratio"), item.get("circ_mv"))
             + _score_b3(item.get("vol_ratio")))
 
 
@@ -205,25 +246,35 @@ def gate_b1(bid_pct: Optional[float]) -> Optional[str]:
 
 
 def position_bonus(tag: Optional[str]) -> int:
-    """身位加分(胜率因子): 昨日连板+今日竞价强=题材接力核心 → +2; 昨日首板 → +1。
-    板块权重股无连板标记, 不加分(如光迅科技)。"""
+    """身位加分(预测上涨因子): 连板 → +2, 首板 → +1。
+    兼容标记格式: "连板"/"首板" 关键词 + "4天2板"/"6天5板"(按板数≥2=连板)。
+    板块权重股无连板标记, 不加分。"""
     if not tag:
         return 0
     if "连板" in tag:
         return 2
     if "首板" in tag:
         return 1
+    import re
+    m = re.search(r"(\d+)板", tag)
+    if m:
+        return 2 if int(m.group(1)) >= 2 else 1
     return 0
 
 
-def score_stock(row: List, bid_rows: Optional[List[List]] = None) -> Dict:
-    """单只股票竞价评分(GetBKJJBL 行格式):
+def score_stock(row: List, bid_rows: Optional[List[List]] = None,
+                boards: Optional[List[str]] = None,
+                gate_counts: Optional[Dict[str, int]] = None,
+                tag: str = "", gene: Optional[Dict] = None) -> Dict:
+    """单只股票竞价评分 v3(上涨概率模型, 满分 15):
     [代码,名称,现价,实时涨幅,竞价量比,竞价额,竞价涨幅,竞价净额,竞价换手,流通市值,板块标签,...]
-    满分 12: B1涨幅2 + B2换手2 + B3量比3 + B4形态3 + B5方向2(身位加分另计)。
-    注: B6 大单因子已删除 — 9:15-9:25 无逐笔成交, GetMainMonitor 竞价期拿不到有效数据。"""
+    S1 资金3 + S2 形态3 + S3 共振3 + S4 身位2 + S5 量比2 + S6 基因2。
+    目标: 预测"竞价后买入能否挣钱" — 资金真实流入>涨幅数字, 9:20后不可撤单段行为>竞价整体,
+    板块共振>个股孤立, 身位(昨涨停/连板)>无背景。B6 大单因子已删除(竞价期无逐笔成交)。"""
     factors = {
         "bid_price": float(row[2]) if len(row) > 2 and row[2] not in (None, "") else None,
         "bid_pct": float(row[6]) if len(row) > 6 and row[6] not in (None, "") else None,
+        "bid_net": float(row[7]) if len(row) > 7 and row[7] not in (None, "") else None,
         "turnover": float(row[8]) if len(row) > 8 and row[8] not in (None, "") else None,
         "vol_ratio": float(row[4]) if len(row) > 4 and row[4] not in (None, "") else None,
         "circ_mv": float(row[9]) if len(row) > 9 and row[9] not in (None, "") else None,
@@ -236,15 +287,21 @@ def score_stock(row: List, bid_rows: Optional[List[List]] = None) -> Dict:
             factors["bid_vol_last"] = None
     else:
         factors["bid_vol_last"] = None
-    s_b1 = _score_b1(factors["bid_pct"])
-    s_b2 = _score_b2(factors["turnover"], factors["circ_mv"])
-    s_b3 = _score_b3(factors["vol_ratio"])
-    s_b4 = _score_b4(bid_rows)
-    s_b5 = _score_b5(bid_rows)
-    total = s_b1 + s_b2 + s_b3 + s_b4 + s_b5
-    return {"score": total, "max": 12, "factors": factors,
-            "sub": {"B1涨幅": s_b1, "B2换手": s_b2, "B3量比": s_b3,
-                    "B4形态": s_b4, "B5方向": s_b5},
+    s_fund = _score_b1(factors["bid_net"], factors["circ_mv"])
+    s_form = _score_b4(bid_rows)
+    s_dir = _score_b5(bid_rows)
+    s_res = _score_b4_resonance(boards or [], gate_counts or {})
+    s_pos = position_bonus(tag)
+    s_vol = _score_b3(factors["vol_ratio"])
+    s_gene = _score_gene(gene)
+    total = s_fund + s_form + s_res + s_pos + s_vol + s_gene
+    # 方向修正: 9:23 后持续卖(买占比≤35%) → 形态分减 1(真实流出信号)
+    if s_dir < 0 and s_form > 0:
+        s_form -= 1
+        total -= 1
+    return {"score": total, "max": 15, "factors": factors,
+            "sub": {"S1资金": s_fund, "S2形态": s_form, "S3共振": s_res,
+                    "S4身位": s_pos, "S5量比": s_vol, "S6基因": s_gene},
             "missing": [k for k, v in factors.items() if v is None]}
 
 
@@ -278,14 +335,25 @@ def gene_check(gene: Optional[List]) -> Dict:
 
 def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict[str, List],
                stock_bids: Optional[Dict[str, List]] = None,
-               score_threshold: int = 8) -> Dict:
+               score_threshold: int = 10) -> Dict:
     """执行漏斗: 候选池 = 强势板块成分 + 竞价列表, 逐层过滤
-    B1 硬门槛(1-7%) → 评分(满分12) + 身位加分 → L4 基因"""
+    B1 硬门槛(1-7%) → 评分v3(满分15: 资金/形态/共振/身位/量比/基因) → L4 基因 → 分层
+    分层: core(核心, ≥阈值 且 资金净买) + watch(备选, ≥阈值-3)
+    """
     env_result = env_check(env["mood"], env["capacity"], env["bid_total"], env["bid_count"])
     if not env_result["pass"]:
-        return {"env": env_result, "boards": [], "candidates": [], "empty_reason": "市场环境不满足, 空仓"}
+        return {"env": env_result, "boards": [], "candidates": [], "watch": [],
+                "empty_reason": "市场环境不满足, 空仓"}
+
+    # 板块共振: 每板块过 B1 门槛的票数(资金共识度量)
+    gate_counts: Dict[str, int] = {}
+    for r in pool_rows:
+        if not gate_b1(r.get("bid_pct")) and r.get("boards"):
+            for b in r["boards"]:
+                gate_counts[b] = gate_counts.get(b, 0) + 1
 
     candidates = []
+    watch = []
     rejected = []
     for r in pool_rows:
         code = str(r.get("code") or "")
@@ -297,26 +365,33 @@ def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict
         if gate:
             rejected.append({"code": code, "name": name, "reason": gate})
             continue
-        sc = score_stock([code, name, r.get("price"), r.get("change_pct"), r.get("vol_ratio"),
-                          r.get("limit_up_buy"), r.get("bid_pct"), r.get("bid_net"),
-                          r.get("turnover_ratio"), r.get("circ_mv"), r.get("plates"), 0, 0],
-                         stock_bids.get(code) if stock_bids else None)
-        bonus = position_bonus(r.get("tag") or "")
-        total = sc["score"] + bonus
-        if total < score_threshold:
-            rejected.append({"code": code, "name": name, "reason": f"评分{total}/{sc['max']}+身位{bonus} 低于阈值{score_threshold}"})
-            continue
         gene = gene_check(genes.get(code))
         if not gene["pass"]:
             rejected.append({"code": code, "name": name, "reason": gene["reason"]})
             continue
-        candidates.append({
-            "code": code, "name": name, "score": total, "base": sc["score"],
-            "bonus": bonus, "max": sc["max"],
+        sc = score_stock([code, name, r.get("price"), r.get("change_pct"), r.get("vol_ratio"),
+                          r.get("limit_up_buy"), r.get("bid_pct"), r.get("bid_net"),
+                          r.get("turnover_ratio"), r.get("circ_mv"), r.get("plates"), 0, 0],
+                         stock_bids.get(code) if stock_bids else None,
+                         r.get("boards") or [], gate_counts, r.get("tag") or "", gene)
+        total = sc["score"]
+        item = {
+            "code": code, "name": name, "score": total, "tier": None, "max": sc["max"],
             "factors": sc["factors"], "sub": sc["sub"], "gene": gene,
             "boards": r.get("boards") or [], "tag": r.get("tag") or "",
             "missing": sc["missing"],
-        })
+        }
+        # 资金必须净买(S1>0), 否则即使总分高也是假高开; 备选同样要求资金非负
+        if total >= score_threshold and sc["sub"]["S1资金"] > 0:
+            item["tier"] = "core"
+            candidates.append(item)
+        elif total >= score_threshold - 2 and sc["sub"]["S1资金"] >= 1:
+            item["tier"] = "watch"
+            watch.append(item)
+        else:
+            rejected.append({"code": code, "name": name,
+                             "reason": f"评分{total}/{sc['max']} 低于备选线{score_threshold - 3}"})
     candidates.sort(key=lambda c: c["score"], reverse=True)
-    return {"env": env_result, "boards": boards, "candidates": candidates,
+    watch.sort(key=lambda c: c["score"], reverse=True)
+    return {"env": env_result, "boards": boards, "candidates": candidates, "watch": watch,
             "rejected": rejected[:50], "empty_reason": None}

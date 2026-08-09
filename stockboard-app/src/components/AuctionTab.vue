@@ -75,29 +75,59 @@ function fmt(v, digits = 2) {
         <!-- 候选池 -->
         <div class="card">
           <div class="card-title">
-            🎯 候选池({{ auction.candidates.length }})
+            🎯 核心候选({{ auction.candidates.length }})
             <span v-if="auction.stats" class="pool-stats">
               池{{ auction.stats.pool }} 基因{{ auction.stats.genes }}
             </span>
           </div>
 
           <div v-if="!auction.candidates.length" class="empty-cand">
-            漏斗筛尽 — 今日无候选, 空仓观望
+            竞价无真金白银抢筹 — 观望
           </div>
 
           <div v-for="(c, i) in auction.candidates" :key="c.code"
-               class="cand-card" @click="openStock(c.code)">
+               class="cand-card core" @click="openStock(c.code)">
             <div class="cand-head">
               <span class="rank">{{ i + 1 }}</span>
               <span class="name">{{ c.name }}</span>
               <span class="code">{{ c.code }}</span>
-              <span v-if="c.bonus" class="bonus">身位+{{ c.bonus }}</span>
+              <span v-if="c.sub['S4身位']" class="bonus">身位+{{ c.sub['S4身位'] }}</span>
               <span class="score" :class="{ hot: c.score >= 10 }">{{ c.score }}<i>/{{ c.max }}</i></span>
             </div>
             <div class="cand-factors">
               <span v-if="c.factors.bid_pct !== null" class="f">竞价 {{ fmt(c.factors.bid_pct) }}%</span>
+              <span v-if="c.factors.bid_net !== null" class="f">净买 {{ fmt(c.factors.bid_net / 1e4, 0) }}万</span>
               <span v-if="c.factors.vol_ratio !== null" class="f">量比 {{ fmt(c.factors.vol_ratio) }}</span>
-              <span v-if="c.factors.turnover !== null" class="f">换手 {{ fmt(c.factors.turnover) }}%</span>
+              <span v-if="c.tag && c.tag.includes('板')" class="f tag">{{ c.tag }}</span>
+            </div>
+            <div class="cand-sub">
+              <span v-for="(v, k) in c.sub" :key="k" class="sub" :class="{ on: v > 0, off: v < 0 }">
+                {{ k }}{{ v > 0 ? '+' : '' }}{{ v }}
+              </span>
+            </div>
+            <div class="cand-foot">
+              <span class="gene" :title="c.gene.reason">🧬 {{ c.gene.reason }}</span>
+              <span v-if="c.boards.length" class="boards">{{ c.boards.slice(0, 3).join('·') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 备选观察 -->
+        <div class="card" v-if="auction.watch && auction.watch.length">
+          <div class="card-title">👀 备选观察({{ auction.watch.length }})</div>
+          <div v-for="c in auction.watch" :key="c.code"
+               class="cand-card watch" @click="openStock(c.code)">
+            <div class="cand-head">
+              <span class="rank watch">W</span>
+              <span class="name">{{ c.name }}</span>
+              <span class="code">{{ c.code }}</span>
+              <span v-if="c.sub['S4身位']" class="bonus">身位+{{ c.sub['S4身位'] }}</span>
+              <span class="score">{{ c.score }}<i>/{{ c.max }}</i></span>
+            </div>
+            <div class="cand-factors">
+              <span v-if="c.factors.bid_pct !== null" class="f">竞价 {{ fmt(c.factors.bid_pct) }}%</span>
+              <span v-if="c.factors.bid_net !== null" class="f">净买 {{ fmt(c.factors.bid_net / 1e4, 0) }}万</span>
+              <span v-if="c.factors.vol_ratio !== null" class="f">量比 {{ fmt(c.factors.vol_ratio) }}</span>
               <span v-if="c.tag && c.tag.includes('板')" class="f tag">{{ c.tag }}</span>
             </div>
             <div class="cand-sub">
@@ -156,8 +186,11 @@ function fmt(v, digits = 2) {
 /* 候选卡 */
 .cand-card { border: 1px solid #e8ebf0; border-radius: 12px; padding: 11px 13px; margin-bottom: 10px; cursor: pointer; transition: transform .15s; }
 .cand-card:active { transform: scale(.985); }
+.cand-card.core { border-color: #b9d4ee; background: #fbfdff; }
+.cand-card.watch { border-style: dashed; }
 .cand-head { display: flex; align-items: center; gap: 8px; }
 .rank { font-size: 12px; font-weight: 700; color: #fff; background: #2980b9; border-radius: 6px; padding: 2px 7px; }
+.rank.watch { background: #7f8c8d; }
 .name { font-size: 15px; font-weight: 600; color: #111; }
 .code { font-size: 11px; color: #999; }
 .score { margin-left: auto; font-size: 16px; font-weight: 700; color: #2980b9; }

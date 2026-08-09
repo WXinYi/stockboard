@@ -17,6 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -33,7 +34,7 @@ WORKERS = 20          # 并发
 GENE_LIMIT = 60       # 涨停基因查询上限(候选池按初步分取前 N)
 BID_LIMIT = 20        # 竞价分时/大单查询上限(最终候选前 N)
 BOARD_LIMIT = 8       # 强势板块数
-SCORE_THRESHOLD = 8   # L3 过线分(15 分制, 待回测校准)
+SCORE_THRESHOLD = 10  # 核心过线分(15 分制, 待回测校准); 备选线 = 过线-3
 
 
 # =============================================================================
@@ -273,26 +274,42 @@ def build_message(date_str, result, boards, crawl_time) -> str:
                   "", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
         return "\n".join(lines)
     board_text = "、".join(f"{b['name']}({b['src']})" for b in boards[:6])
-    lines += [f"**强势板块**: {board_text or '无'}", "", "**候选池**:", ""]
-    for i, c in enumerate(result["candidates"][:5], 1):
-        f_ = c["factors"]
-        bonus_txt = f" 身位+{c['bonus']}" if c.get("bonus") else ""
-        lines.append(f"{i}. **{c['name']}**({c['code']}) 评分 {c['score']}/{c['max']}{bonus_txt} {c['gene']['reason']}")
-        parts = []
-        if f_["bid_pct"] is not None:
-            parts.append(f"竞价{f_['bid_pct']:+.2f}%")
-        if f_["vol_ratio"] is not None:
-            parts.append(f"量比{f_['vol_ratio']:.2f}")
-        if f_["turnover"] is not None:
-            parts.append(f"换手{f_['turnover']:.2f}%")
-        if c["tag"] and "板" in c["tag"]:  # 只展示连板类标记(过滤流通市值等杂字段)
-            parts.append(f"标记[{c['tag']}]")
-        if c["boards"]:
-            parts.append("板块:" + ",".join(c["boards"][:3]))
-        lines.append("   - " + " | ".join(parts))
-        lines.append(f"   - 💡 竞价价买入 → 冲高+5%止盈 / 跌破竞价价-2%止损")
+    lines += [f"**强势板块**: {board_text or '无'}", "", "**🎯 核心候选**:", ""]
+    core = [c for c in result["candidates"] if c.get("tier") == "core"]
+    for i, c in enumerate(core[:3], 1):
+        lines += _cand_line(i, c)
+    if not core:
+        lines.append("   (无 — 竞价无真金白银抢筹, 观望)")
+    watch = result.get("watch", [])
+    if watch:
+        lines += ["", f"**👀 备选观察**:", ""]
+        for i, c in enumerate(watch[:5], 1):
+            lines += _cand_line(i, c)
     lines += ["", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
     return "\n".join(lines)
+
+
+def _cand_line(i: int, c: Dict) -> List[str]:
+    """单只候选的消息行: 评分明细 + 因子 + 执行计划"""
+    f_ = c["factors"]
+    sub = c["sub"]
+    lines = [f"{i}. **{c['name']}**({c['code']}) 评分 {c['score']}/{c['max']} "
+             f"(资金{sub['S1资金']} 形态{sub['S2形态']} 共振{sub['S3共振']} "
+             f"身位{sub['S4身位']} 量比{sub['S5量比']} 基因{sub['S6基因']}) {c['gene']['reason']}"]
+    parts = []
+    if f_["bid_pct"] is not None:
+        parts.append(f"竞价{f_['bid_pct']:+.2f}%")
+    if f_["bid_net"] is not None:
+        parts.append(f"净买{f_['bid_net'] / 1e4:.0f}万")
+    if f_["vol_ratio"] is not None:
+        parts.append(f"量比{f_['vol_ratio']:.2f}")
+    if c["tag"] and "板" in c["tag"]:  # 只展示连板类标记(过滤流通市值等杂字段)
+        parts.append(f"标记[{c['tag']}]")
+    if c["boards"]:
+        parts.append("板块:" + ",".join(c["boards"][:3]))
+    lines.append("   - " + " | ".join(parts))
+    lines.append("   - 💡 竞价价买入 → 冲高+5%止盈 / 跌破竞价价-2%止损")
+    return lines
 
 
 # =============================================================================
@@ -319,16 +336,18 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     genes = collect_genes(spider, pool)
     store.save_genes(date_str, genes)
 
-    print(f"[4/6] 初步评分 → 前{BID_LIMIT} 拉竞价分时")
-    prelim = sorted(pool.values(), key=funnel.prelim_score, reverse=True)
-    top = [i["code"] for i in prelim[:BID_LIMIT]]
-    stock_bids = collect_bids(spider, top)
+    print(f"[4/6] 过 B1 门槛全量拉竞价分时(消除前N名数据断层)")
+    in_gate = [i for i in pool.values()
+               if i.get("bid_pct") is not None and 1 <= i["bid_pct"] <= 7]
+    stock_bids = collect_bids(spider, [i["code"] for i in in_gate])
+    print(f"      {len(in_gate)} 只过门槛 → 竞价分时 {len(stock_bids)} 只")
 
     print(f"[5/6] 漏斗计算")
     result = funnel.run_funnel(
         env, boards, list(pool.values()), genes, stock_bids,
         score_threshold=SCORE_THRESHOLD)
-    candidates = result["candidates"]
+    # E 层确认覆盖核心 + 备选(独立变量, 不污染 out 的 candidates)
+    e_candidates = result["candidates"] + result.get("watch", [])
 
     # 落库候选池(板块成分 + 竞价列表合并)
     store.save_bid_pool(date_str, [_pool_row_layout(i) for i in pool.values()], "merged")
@@ -337,15 +356,16 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     out = {
         "date": date_str, "generated_at": crawl_time,
         "env": result["env"], "boards": boards,
-        "candidates": candidates, "empty_reason": result["empty_reason"],
+        "candidates": result["candidates"], "watch": result.get("watch", []),
+        "empty_reason": result["empty_reason"],
         "rejected": result.get("rejected", []),
         "stats": {"pool": len(pool), "genes": len(genes), "boards": len(boards)},
     }
     AUCTION_OUT.parent.mkdir(parents=True, exist_ok=True)
     AUCTION_OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), "utf-8")
     cand_path = Path("/tmp/auction_candidates.json")  # 供 --confirm 步骤使用
-    cand_path.write_text(json.dumps(candidates, ensure_ascii=False), "utf-8")
-    print(f"✅ auction.json 已写入 {AUCTION_OUT} (候选 {len(candidates)} 只)")
+    cand_path.write_text(json.dumps(e_candidates, ensure_ascii=False), "utf-8")
+    print(f"✅ auction.json 已写入 {AUCTION_OUT} (核心 {len(result['candidates'])} + 备选 {len(result.get('watch', []))} 只)")
 
     if not dry_run:
         text = build_message(date_str, result, boards, crawl_time)
