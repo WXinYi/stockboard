@@ -6,12 +6,13 @@ import { fetchAuction } from '../data/loader.js'
 export const KPL_TOKEN = '036ca9cad6e44ee4a585c22cb2c298ed'
 export const KPL_USERID = '3807176'
 const KPL_DEVICE = '6CC28E90-0785-4B21-8EEF-557159D26CF1'   // 固定设备号
-// 浏览器 UA 会被 KPL 风控(返回空 List) → dev 走 vite 代理(覆盖 UA); 生产直连(待 Worker 中转)
+// 浏览器 UA 会被 KPL 风控(返回空 List) → dev 走 vite 代理(覆盖 UA); 生产经 Cloudflare Worker 中转(okhttp UA, 同配方)
 const DEV_PROXY = import.meta.env.DEV
-const HOST_HQ = DEV_PROXY ? '/kpl-hq' : 'https://apphwhq.longhuvip.com/w1/api/index.php'        // 实时行情/盘面
-const HOST_HIS = DEV_PROXY ? '/kpl-his' : 'https://apphis.longhuvip.com/w1/api/index.php'        // 历史/复盘/股东
-const HOST_ART = DEV_PROXY ? '/kpl-art' : 'https://apparticle.longhuvip.com/w1/api/index.php'    // 内容/F10
-const HOST_SECTION = DEV_PROXY ? '/kpl-sec' : 'https://apphwshhq.kaipanhong.com/w1/api/index.php' // 板块归属
+const PROD_PROXY = 'https://kpl-proxy.mystockboard.workers.dev'    // Cloudflare Worker (worker/index.js)
+const HOST_HQ = DEV_PROXY ? '/kpl-hq' : PROD_PROXY + '/kpl-hq'    // 实时行情/盘面
+const HOST_HIS = DEV_PROXY ? '/kpl-his' : PROD_PROXY + '/kpl-his' // 历史/复盘/股东
+const HOST_ART = DEV_PROXY ? '/kpl-art' : PROD_PROXY + '/kpl-art' // 内容/F10
+const HOST_SECTION = DEV_PROXY ? '/kpl-sec' : PROD_PROXY + '/kpl-sec' // 板块归属
 const COMMON = { PhoneOSNew: 1, VerSion: '6.2.20.2', Red: 0, apiv: 'w47' }
 
 function withTimeout(promise, ms = 8000) {
