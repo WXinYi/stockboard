@@ -10,7 +10,10 @@ const router = useRouter()
 const { playerLookup } = inject('stockData')
 const refreshTick = inject('refreshTick', ref(0))
 
-// 股票名称交互：单击复制代码 / 长按打开东方财富个股页
+// 📈 跳转股票详情页(自建详情, 页内含 H5 嵌套入口)
+function openStockDetail(c, n) { router.push({ path: '/stock/' + c, query: { name: n } }) }
+
+// 股票名称交互：点击跳转自建详情页 / 长按打开东方财富App / 名称后复制图标 → 复制代码
 const { copiedKey, copyStockCode } = useCopyCode()
 
 // 东方财富 market 参数: 0=深市 1=沪市 2=北交所 116=港股
@@ -18,7 +21,7 @@ function emMarket(code) {
   if (!code) return '0'
   if (/^\d{5}$/.test(code)) return '116'      // 港股 5 位
   if (/^(4|8|92)/.test(code)) return '2'      // 北交所
-  if (/^[679]/.test(code)) return '1'         // 沪市(6主板/688科创/900B股/7配股)
+  if (/^(6|5|9|11|10)/.test(code)) return '1' // 沪市(6主板/688科创/5基金/900B股/110 113 118转债)
   return '0'                                   // 深市及默认
 }
 
@@ -54,7 +57,7 @@ function openEmApp(code) {
   window.location.href = native
 }
 
-// 长按 600ms → 打开东方财富个股页; 与单击复制互斥(长按后抑制随后的 click)
+// 长按 600ms → 打开东方财富个股页; 与单击跳详情互斥(长按后抑制随后的 click)
 const lpTimer = ref(null)
 const lpFired = ref(false)
 function onPressStart(code) {
@@ -67,9 +70,9 @@ function onPressStart(code) {
 }
 function onPressEnd() { clearTimeout(lpTimer.value) }
 function onPressCancel() { clearTimeout(lpTimer.value) }
-function onClickCopy(code, key) {
-  if (lpFired.value) { lpFired.value = false; return }  // 长按已跳转，不再复制
-  copyStockCode(code, key)
+function onClickName(code, name) {
+  if (lpFired.value) { lpFired.value = false; return }  // 长按已跳转, 不再导航
+  openStockDetail(code, name)
 }
 
 onUnmounted(() => {
@@ -158,7 +161,10 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
           <tbody>
             <tr v-for="x in sortedPos" :key="x.sc">
               <td class="nowrap">
-                <strong class="stock-name" @click="onClickCopy(x.sc, 'p:' + x.sc)" @pointerdown="onPressStart(x.sc)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击复制代码 · 长按打开东方财富'">{{ x.sn }}</strong>
+                <strong class="stock-name" @click="onClickName(x.sc, x.sn)" @pointerdown="onPressStart(x.sc)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击查看详情 · 长按打开东方财富'">{{ x.sn }}</strong>
+                <button class="stock-copy" @click.stop="copyStockCode(x.sc, 'p:' + x.sc)" title="复制代码" :aria-label="'复制代码 ' + x.sc">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
                 <span v-if="copiedKey === 'p:' + x.sc" class="copied-tip">✓ 已复制</span>
               </td>
               <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
@@ -183,7 +189,10 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
           <tbody>
             <tr v-for="s in inferredPositions" :key="s.cd">
               <td class="nowrap">
-                <strong class="stock-name" @click="onClickCopy(s.cd, 'i:' + s.cd)" @pointerdown="onPressStart(s.cd)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击复制代码 · 长按打开东方财富'">{{ s.sn }}</strong>
+                <strong class="stock-name" @click="onClickName(s.cd, s.sn)" @pointerdown="onPressStart(s.cd)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击查看详情 · 长按打开东方财富'">{{ s.sn }}</strong>
+                <button class="stock-copy" @click.stop="copyStockCode(s.cd, 'i:' + s.cd)" title="复制代码" :aria-label="'复制代码 ' + s.cd">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
                 <span v-if="copiedKey === 'i:' + s.cd" class="copied-tip">✓ 已复制</span>
               </td>
               <td class="nowrap" style="color:#666;">{{ s.cd }}</td>
@@ -215,7 +224,10 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
               <td>{{ x.td }}</td>
               <td><span :class="x.dr === '买入' ? 'buy' : 'sell'">{{ x.dr }}</span></td>
               <td class="nowrap">
-                <strong class="stock-name" @click="onClickCopy(x.sc, 't:' + (x.id || x.td + x.sc))" @pointerdown="onPressStart(x.sc)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击复制代码 · 长按打开东方财富'">{{ x.sn }}</strong>
+                <strong class="stock-name" @click="onClickName(x.sc, x.sn)" @pointerdown="onPressStart(x.sc)" @pointerup="onPressEnd" @pointerleave="onPressCancel" @pointercancel="onPressCancel" @contextmenu.prevent :title="'点击查看详情 · 长按打开东方财富'">{{ x.sn }}</strong>
+                <button class="stock-copy" @click.stop="copyStockCode(x.sc, 't:' + (x.id || x.td + x.sc))" title="复制代码" :aria-label="'复制代码 ' + x.sc">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
                 <span v-if="copiedKey === 't:' + (x.id || x.td + x.sc)" class="copied-tip">✓ 已复制</span>
               </td>
               <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
@@ -251,16 +263,23 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
         <div class="lbl">榜单</div>
       </div>
     </div>
+
 </template>
 
 <style scoped>
+/* 下划线标识可点击 → 跳详情页 */
 .stock-name {
   cursor: pointer;
   touch-action: manipulation;
   -webkit-touch-callout: none;   /* iOS 长按不弹系统菜单/文本选择 */
   -webkit-user-select: none;
   user-select: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(41,128,185,.45);
 }
 .stock-name:hover { color: #2980b9; }
+.stock-copy { border: none; background: none; cursor: pointer; color: #aaa; padding: 0 3px; vertical-align: middle; }
+.stock-copy:hover { color: #2980b9; }
 .copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
 </style>

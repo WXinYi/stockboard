@@ -36,6 +36,12 @@ h3 { font-size: 14px; font-weight: 450; }
 .app { max-width: 1200px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
 .main-content { flex: 1; padding: 16px 16px 88px; }
 @media (min-width: 768px) { .main-content { padding: 20px 28px 20px; } }
+/* 详情页无底部导航: 底部留白收紧 */
+.main-content.detail-page { padding-bottom: 16px; }
+@media (min-width: 768px) { .main-content.detail-page { padding-bottom: 24px; } }
+/* 股票详情页: 左右全宽, 内容区域最大化(内部自行控制留白) */
+.main-content.stock-page { padding-left: 0; padding-right: 0; }
+@media (min-width: 768px) { .main-content.stock-page { padding-left: 0; padding-right: 0; } }
 
 /* ═══════════════════════════════════════════════
    GLASS CARD — the foundation surface

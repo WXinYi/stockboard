@@ -6,6 +6,7 @@ const primary = [
   { key: 'copy', label: '抄作业', icon: 'copy' },
   { key: 'rankings', label: '排行', icon: 'rankings' },
   { key: 'stocks', label: '重仓共识', icon: 'stocks' },
+  { key: 'auction', label: '竞价', icon: 'auction' },
 ]
 const route = useRoute()
 

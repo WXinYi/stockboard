@@ -28,3 +28,18 @@ HEADERS = {
     "User-Agent": USER_AGENT,
     "Referer": BASE_URL,
 }
+
+# ---- 开盘啦(KPL)竞价数据 ----
+# 非官方 APP 接口(2026-08-09 实测 19/19 可用)。Token 为公开示例账号,
+# 落地后注册自有账号替换(KPL_TOKEN/KPL_USERID 一行切换)。
+KPL_UA = "Dalvik/2.1.0 (Linux; U; Android 14; V2178A Build/UP1A.231005.007)"
+KPL_TOKEN = "036ca9cad6e44ee4a585c22cb2c298ed"
+KPL_USERID = "3807176"
+KPL_HOST_RT = "https://apphwhq.longhuvip.com"  # 今日实时
+KPL_HOST_HIS = "https://apphis.longhuvip.com"  # 历史(回测)
+KPL_HOST_APP = "https://apphq.longhuvip.com"   # 实时(情绪/大单)
+KPL_HOST_LHB = "https://applhb.longhuvip.com"  # 龙虎榜
+KPL_TIMEOUT = 10
+
+# 竞价扫描结果输出路径(前端读取)
+AUCTION_OUT = Path(__file__).resolve().parents[2] / "stockboard-app" / "public" / "data" / "latest" / "auction.json"

@@ -1,0 +1,397 @@
+"""
+竞价抢筹漏斗计算器
+
+七层漏斗收敛为四段(09:30 前出结论, E 层开盘确认后置):
+  L1 环境(任一不过 → 空仓): 情绪/连板高度/竞价量能比/红盘占比
+  L0 板块: 竞价爆量板块 + 竞价时段板块强度 → 强势板块集合
+  L3 竞价评分(15分制, ≥8 过): 涨幅/换手/量比/形态/方向/大单
+  L4 基因(淘汰制): 首板封板率/破板率(开盘啦 GetZhangTingGene 直接数据)
+
+阈值目前为文档经验值 + 开盘啦自带提示, 待迭代2 用积累数据回测校准。
+"""
+from typing import Any, Dict, List, Optional
+
+
+# =============================================================================
+# L1 环境
+# =============================================================================
+
+def env_check(mood: Dict, capacity: Dict, bid_total: Dict, bid_count: List) -> Dict:
+    """市场环境检查 → {pass, reasons, data}
+    - 情绪 strong: 开盘啦提示 <25 冰点 / >75 过热 → 空仓
+    - 连板高度 lbgd < 2 → 无赚钱效应
+    - 竞价量能比 last/s_zrcs < 0.8 → 大幅缩量
+    - 红盘占比 tSZ/(tSZ+tXD) < 0.4 → 情绪冰点
+    """
+    info = (mood.get("info") or [{}])[0]
+    strong = int(info.get("strong") or 0)
+    lbgd = int(info.get("lbgd") or 0)
+    cap = capacity.get("info") or {}
+    bt = bid_total.get("info") or {}
+
+    reasons = []
+    ok = True
+    if not (25 <= strong <= 75):
+        ok = False
+        reasons.append(f"情绪值{strong} 超区间[25,75](开盘啦提示: 过低冰点/过高释放亏钱效应)")
+    if lbgd < 2:
+        ok = False
+        reasons.append(f"连板高度{lbgd} < 2, 无赚钱效应")
+    try:
+        ratio = float(cap.get("last") or 0) / float(cap.get("s_zrcs") or 1)
+        if ratio < 0.8:
+            ok = False
+            reasons.append(f"竞价量能比 {ratio:.2f} < 0.8, 缩量")
+    except (ValueError, TypeError):
+        ratio = None
+        reasons.append("量能数据缺失")
+    try:
+        red = int(bt.get("tSZ") or 0)
+        green = int(bt.get("tXD") or 0)
+        red_ratio = red / (red + green) if (red + green) else 0
+        if red_ratio < 0.4:
+            ok = False
+            reasons.append(f"红盘占比 {red_ratio:.0%} < 40%")
+    except (ValueError, TypeError):
+        red_ratio = None
+
+    if not reasons:
+        reasons.append("环境正常")
+    return {"pass": ok, "reasons": reasons,
+            "data": {"strong": strong, "lbgd": lbgd, "capacity_ratio": ratio,
+                     "red_ratio": red_ratio, "bid_count": bid_count}}
+
+
+# =============================================================================
+# L0 板块
+# =============================================================================
+
+def board_select(board_bid: Dict, ranking: Dict, max_boards: int = 8) -> List[Dict]:
+    """强势板块选择: 竞价爆量板块(List1新增+List2延续) + 竞价时段强度榜(涨幅>0 且 主力净额>0)。
+    两路信号量纲不同(burst 2-6 倍 vs strength 10-30), 各自取半再合并去重, 避免互相挤掉。"""
+    burst_boards: Dict[str, Dict] = {}
+    for lt, key in (("L1", "List1"), ("L2", "List2")):
+        for row in board_bid.get(key, []):
+            if len(row) < 6:
+                continue
+            burst_boards[row[0]] = {
+                "code": row[0], "name": row[1], "burst": float(row[2]),
+                "amount": float(row[3]), "main_net": float(row[5]),
+                "src": f"爆量{lt}", "strength": 0.0,
+            }
+    strength_boards: Dict[str, Dict] = {}
+    for row in ranking.get("list", []):
+        if len(row) < 19:
+            continue
+        code, name, strength, chg = row[0], row[1], float(row[2]), float(row[3])
+        main_net = float(row[6])
+        if chg <= 0 or main_net <= 0:
+            continue
+        if code in burst_boards:  # 双信号同板块 → 升级标记
+            burst_boards[code]["strength"] = strength
+            burst_boards[code]["src"] = "爆量+强度"
+            continue
+        strength_boards[code] = {"code": code, "name": name, "burst": 0.0,
+                                 "amount": float(row[5]), "main_net": main_net,
+                                 "src": "强度", "strength": strength}
+    half = max(1, max_boards // 2)
+    ranked = (sorted(burst_boards.values(), key=lambda b: b["burst"], reverse=True)[:half]
+              + sorted(strength_boards.values(), key=lambda b: b["strength"], reverse=True)[:half])
+    return ranked[:max_boards]
+
+
+# =============================================================================
+# L3 竞价评分(15 分制)
+# =============================================================================
+
+def _score_b1(bid_net: Optional[float], circ_mv: Optional[float]) -> int:
+    """S1 竞价资金强度(预测上涨第一因子): 净买/流通市值 归一化。
+    竞价净额普遍很小(08-07 过门槛53只中 36只仅 0-0.1%), 阈值取平滑分档:
+    >0.1% → 3(真金白银抢筹), 0.05-0.1% → 2, 0-0.05% → 1, 净卖 → 0(假高开)。"""
+    if bid_net is None or circ_mv is None or circ_mv <= 0:
+        return 0
+    ratio = bid_net / circ_mv * 100
+    if ratio > 0.1:
+        return 3
+    if ratio > 0.05:
+        return 2
+    if ratio > 0:
+        return 1
+    return 0
+
+
+def _score_b2(turnover: Optional[float], circ_mv: Optional[float]) -> int:
+    """竞价换手按流通市值分档(市值越小要求越低):
+    达标 → 2 分, 达 0.5× 阈值 → 1 分(旧版一刀切 0 分导致大量票失分)"""
+    if turnover is None or circ_mv is None:
+        return 0
+    if circ_mv < 3e9:
+        threshold = 0.3
+    elif circ_mv < 1e10:
+        threshold = 0.15
+    else:
+        threshold = 0.08
+    if turnover >= threshold:
+        return 2
+    if turnover >= threshold * 0.5:
+        return 1
+    return 0
+
+
+def _score_b3(vol_ratio: Optional[float]) -> int:
+    """S5 竞价量比健康: 3-8 倍=真实抢筹→2, 2-3 轻微放量或 8-15 过热→1,
+    >15 巨量分歧警惕→0(可能出货对倒), <2 无量→0"""
+    if vol_ratio is None:
+        return 0
+    if vol_ratio > 15:
+        return 0
+    if vol_ratio > 8:
+        return 1
+    if vol_ratio > 3:
+        return 2
+    if vol_ratio > 2:
+        return 1
+    return 0
+
+
+def _score_b4(bid_rows: Optional[List[List]]) -> int:
+    """竞价形态(9:15-9:25 逐分钟): 推土机(单调升)→3, 诱空(V型收回)→3, 末抢(最后30秒拉升)→2
+    无数据 → 0(标注缺数据)"""
+    if not bid_rows or len(bid_rows) < 5:
+        return 0
+    pts = []
+    for r in bid_rows:
+        if len(r) >= 2:
+            pts.append((str(r[0]), float(r[1])))
+    if len(pts) < 5:
+        return 0
+    # 末抢: 最后 30 秒(09:24:30 后)价格拉升 ≥1%
+    last_ts, last_px = pts[-1]
+    pre_ts, pre_px = pts[-4] if len(pts) >= 4 else pts[0]
+    if "09:24" in last_ts and pre_px > 0 and (last_px / pre_px - 1) >= 0.01:
+        return 2
+    # 推土机: 价格序列后半程单调上升(9:20 后 8 个点)
+    tail = [px for _, px in pts if str(_) >= "09:20"]
+    if len(tail) >= 6 and all(tail[i] <= tail[i + 1] * 1.0005 for i in range(len(tail) - 1)) and tail[-1] > tail[0]:
+        return 3
+    # 诱空: 前期下跌(9:20 前低点) + 9:20 后 V 型收回至高于前期
+    pre = [px for _, px in pts if str(_) < "09:20"]
+    post = [px for _, px in pts if str(_) >= "09:20"]
+    if pre and post and min(pre) < pre[0] * 0.99 and post[-1] > pre[0]:
+        return 3
+    return 0
+
+
+def _score_b5(bid_rows: Optional[List[List]]) -> int:
+    """未匹配量方向近似(GetStockBid 买卖方向标记): 9:23 后买方向占比>60% → 2, 持续卖 → -2"""
+    if not bid_rows:
+        return 0
+    tail = [r for r in bid_rows if len(r) >= 3 and str(r[0]) >= "09:23"]
+    if len(tail) < 3:
+        return 0
+    buys = sum(1 for r in tail if int(r[2]) == 1)
+    buy_ratio = buys / len(tail)
+    if buy_ratio >= 0.6:
+        return 2
+    if buy_ratio <= 0.35:
+        return -2
+    return 0
+
+
+def _score_b4_resonance(boards: List[str], gate_counts: Dict[str, int]) -> int:
+    """S3 板块共振(预测上涨第二因子): 竞价抢筹的胜负手是板块。
+    所属板块内过 B1 门槛的票 ≥3 只 → 3(资金共识/板块行情), 2 只 → 2, 否则 0。
+    孤立抢筹多数是一日游, 板块联动才有持续性。"""
+    if not boards:
+        return 0
+    best = 0
+    for b in boards:
+        best = max(best, gate_counts.get(b, 0))
+    if best >= 3:
+        return 3
+    if best == 2:
+        return 2
+    return 0
+
+
+def _score_gene(gene: Optional[Dict]) -> int:
+    """S6 涨停基因延续性: 首板封板率 ≥70% → 2, ≥50% → 1, 无数据 → 0。
+    历史封板率高的票, 竞价抢筹延续上涨概率更高。破板率 >40% 已在 L4 淘汰。"""
+    if not gene or gene.get("data") is None:
+        return 0
+    seal = gene["data"].get("seal_pct") or 0
+    if seal >= 70:
+        return 2
+    if seal >= 50:
+        return 1
+    return 0
+
+
+def prelim_score(item: Dict) -> int:
+    """初步评分(S1资金+S2换手+S5量比, 不需竞价分时) — 用于决定基因查询顺序"""
+    return (_score_b1(item.get("bid_net"), item.get("circ_mv"))
+            + _score_b2(item.get("turnover_ratio"), item.get("circ_mv"))
+            + _score_b3(item.get("vol_ratio")))
+
+
+def gate_b1(bid_pct: Optional[float]) -> Optional[str]:
+    """B1 硬门槛: 竞价涨幅必须在 [1%,7%] 抢筹区间。
+    <1% 不是抢筹(平开无动作); >7% 距涨停空间 ≤3%, 盈亏比天然差, 且一字板买不进。
+    返回 None=通过, 否则返回淘汰原因。"""
+    if bid_pct is None:
+        return "无竞价涨幅数据"
+    if not (1 <= bid_pct <= 7):
+        return f"竞价涨幅{bid_pct:.2f}% 不在抢筹区间[1%,7%]"
+    return None
+
+
+def position_bonus(tag: Optional[str]) -> int:
+    """身位加分(预测上涨因子): 连板 → +2, 首板 → +1。
+    兼容标记格式: "连板"/"首板" 关键词 + "4天2板"/"6天5板"(按板数≥2=连板)。
+    板块权重股无连板标记, 不加分。"""
+    if not tag:
+        return 0
+    if "连板" in tag:
+        return 2
+    if "首板" in tag:
+        return 1
+    import re
+    m = re.search(r"(\d+)板", tag)
+    if m:
+        return 2 if int(m.group(1)) >= 2 else 1
+    return 0
+
+
+def score_stock(row: List, bid_rows: Optional[List[List]] = None,
+                boards: Optional[List[str]] = None,
+                gate_counts: Optional[Dict[str, int]] = None,
+                tag: str = "", gene: Optional[Dict] = None) -> Dict:
+    """单只股票竞价评分 v3(上涨概率模型, 满分 15):
+    [代码,名称,现价,实时涨幅,竞价量比,竞价额,竞价涨幅,竞价净额,竞价换手,流通市值,板块标签,...]
+    S1 资金3 + S2 形态3 + S3 共振3 + S4 身位2 + S5 量比2 + S6 基因2。
+    目标: 预测"竞价后买入能否挣钱" — 资金真实流入>涨幅数字, 9:20后不可撤单段行为>竞价整体,
+    板块共振>个股孤立, 身位(昨涨停/连板)>无背景。B6 大单因子已删除(竞价期无逐笔成交)。"""
+    factors = {
+        "bid_price": float(row[2]) if len(row) > 2 and row[2] not in (None, "") else None,
+        "bid_pct": float(row[6]) if len(row) > 6 and row[6] not in (None, "") else None,
+        "bid_net": float(row[7]) if len(row) > 7 and row[7] not in (None, "") else None,
+        "turnover": float(row[8]) if len(row) > 8 and row[8] not in (None, "") else None,
+        "vol_ratio": float(row[4]) if len(row) > 4 and row[4] not in (None, "") else None,
+        "circ_mv": float(row[9]) if len(row) > 9 and row[9] not in (None, "") else None,
+    }
+    # 竞价末分钟累计量(GetStockBid 最后一行 r[3]), E 层 E1 对比用
+    if bid_rows and len(bid_rows[-1]) >= 4:
+        try:
+            factors["bid_vol_last"] = float(bid_rows[-1][3])
+        except (TypeError, ValueError):
+            factors["bid_vol_last"] = None
+    else:
+        factors["bid_vol_last"] = None
+    s_fund = _score_b1(factors["bid_net"], factors["circ_mv"])
+    s_form = _score_b4(bid_rows)
+    s_dir = _score_b5(bid_rows)
+    s_res = _score_b4_resonance(boards or [], gate_counts or {})
+    s_pos = position_bonus(tag)
+    s_vol = _score_b3(factors["vol_ratio"])
+    s_gene = _score_gene(gene)
+    total = s_fund + s_form + s_res + s_pos + s_vol + s_gene
+    # 方向修正: 9:23 后持续卖(买占比≤35%) → 形态分减 1(真实流出信号)
+    if s_dir < 0 and s_form > 0:
+        s_form -= 1
+        total -= 1
+    return {"score": total, "max": 15, "factors": factors,
+            "sub": {"S1资金": s_fund, "S2形态": s_form, "S3共振": s_res,
+                    "S4身位": s_pos, "S5量比": s_vol, "S6基因": s_gene},
+            "missing": [k for k, v in factors.items() if v is None]}
+
+
+# =============================================================================
+# L4 基因(淘汰制)
+# =============================================================================
+
+def gene_check(gene: Optional[List]) -> Dict:
+    """涨停基因(GetZhangTingGene 免Token): [涨停次数, 5%溢价次, 次日红盘%, 首板封板率%, 破板率%, 连板率%]
+    封板率 < 30% 或 破板率 > 40% → 淘汰(渣男股)"""
+    if not gene or len(gene) < 6:
+        return {"pass": True, "reason": "无基因数据", "data": None}
+    seal, brk = float(gene[3]), float(gene[4])
+    reasons = []
+    ok = True
+    if seal < 30:
+        ok = False
+        reasons.append(f"首板封板率{seal:.0f}% < 30%")
+    if brk > 40:
+        ok = False
+        reasons.append(f"首板破板率{brk:.0f}% > 40%")
+    return {"pass": ok, "reason": "；".join(reasons) or f"基因正常(封板{seal:.0f}%/破板{brk:.0f}%)",
+            "data": {"limit_count": int(gene[0]), "premium_5pct": int(gene[1]),
+                     "next_red_pct": float(gene[2]), "seal_pct": seal, "break_pct": brk,
+                     "consecutive_pct": float(gene[5])}}
+
+
+# =============================================================================
+# 主流程
+# =============================================================================
+
+def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict[str, List],
+               stock_bids: Optional[Dict[str, List]] = None,
+               score_threshold: int = 10) -> Dict:
+    """执行漏斗: 候选池 = 强势板块成分 + 竞价列表, 逐层过滤
+    B1 硬门槛(1-7%) → 评分v3(满分15: 资金/形态/共振/身位/量比/基因) → L4 基因 → 分层
+    分层: core(核心, ≥阈值 且 资金净买) + watch(备选, ≥阈值-3)
+    """
+    env_result = env_check(env["mood"], env["capacity"], env["bid_total"], env["bid_count"])
+    if not env_result["pass"]:
+        return {"env": env_result, "boards": [], "candidates": [], "watch": [],
+                "empty_reason": "市场环境不满足, 空仓"}
+
+    # 板块共振: 每板块过 B1 门槛的票数(资金共识度量)
+    gate_counts: Dict[str, int] = {}
+    for r in pool_rows:
+        if not gate_b1(r.get("bid_pct")) and r.get("boards"):
+            for b in r["boards"]:
+                gate_counts[b] = gate_counts.get(b, 0) + 1
+
+    candidates = []
+    watch = []
+    rejected = []
+    for r in pool_rows:
+        code = str(r.get("code") or "")
+        if not code:
+            continue
+        name = r.get("name") or ""
+        # B1 硬门槛: 抢筹区间之外直接出局
+        gate = gate_b1(r.get("bid_pct"))
+        if gate:
+            rejected.append({"code": code, "name": name, "reason": gate})
+            continue
+        gene = gene_check(genes.get(code))
+        if not gene["pass"]:
+            rejected.append({"code": code, "name": name, "reason": gene["reason"]})
+            continue
+        sc = score_stock([code, name, r.get("price"), r.get("change_pct"), r.get("vol_ratio"),
+                          r.get("limit_up_buy"), r.get("bid_pct"), r.get("bid_net"),
+                          r.get("turnover_ratio"), r.get("circ_mv"), r.get("plates"), 0, 0],
+                         stock_bids.get(code) if stock_bids else None,
+                         r.get("boards") or [], gate_counts, r.get("tag") or "", gene)
+        total = sc["score"]
+        item = {
+            "code": code, "name": name, "score": total, "tier": None, "max": sc["max"],
+            "factors": sc["factors"], "sub": sc["sub"], "gene": gene,
+            "boards": r.get("boards") or [], "tag": r.get("tag") or "",
+            "missing": sc["missing"],
+        }
+        # 资金必须净买(S1>0), 否则即使总分高也是假高开; 备选同样要求资金非负
+        if total >= score_threshold and sc["sub"]["S1资金"] > 0:
+            item["tier"] = "core"
+            candidates.append(item)
+        elif total >= score_threshold - 2 and sc["sub"]["S1资金"] >= 1:
+            item["tier"] = "watch"
+            watch.append(item)
+        else:
+            rejected.append({"code": code, "name": name,
+                             "reason": f"评分{total}/{sc['max']} 低于备选线{score_threshold - 3}"})
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    watch.sort(key=lambda c: c["score"], reverse=True)
+    return {"env": env_result, "boards": boards, "candidates": candidates, "watch": watch,
+            "rejected": rejected[:50], "empty_reason": None}
