@@ -145,8 +145,9 @@ def collect_boards(spider, date_str):
             rows = [r for group in data.get("info", []) for r in group]
             zt_groups.append((pid, rows))
             for r in rows:
-                if len(r) > 21 and r[21] and str(r[0]) in pool:
-                    pool[str(r[0])]["tag"] = str(r[21])
+                # 连板标记在 r[18](r[21] 是数字字段), 仅文本标记才覆盖 GetBKJJBL 的板块标记
+                if len(r) > 18 and r[18] and str(r[0]) in pool:
+                    pool[str(r[0])]["tag"] = str(r[18])
         except Exception as e:
             print(f"⚠️ 涨停池 PidType={pid} 失败: {e}")
             zt_groups.append((pid, []))
@@ -170,26 +171,19 @@ def collect_genes(spider, pool, limit=GENE_LIMIT):
     return genes
 
 
-def collect_bids_and_monitors(spider, candidates_top):
-    """候选前 N 的竞价分时 + 大单"""
-    stock_bids, monitors = {}, {}
+def collect_bids(spider, candidates_top):
+    """候选前 N 的竞价分时(GetStockBid, B4/B5 用)"""
+    stock_bids = {}
     def fetch(code):
         try:
-            bid = spider.stock_bid(code).get("bid", [])
+            return code, spider.stock_bid(code).get("bid", [])
         except Exception as e:
-            bid = []
             print(f"⚠️ 竞价分时失败 {code}: {e}")
-        try:
-            mon = spider.main_monitor(code)
-        except Exception as e:
-            mon = {}
-            print(f"⚠️ 大单失败 {code}: {e}")
-        return code, bid, mon
+            return code, []
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        for code, bid, mon in ex.map(fetch, candidates_top):
+        for code, bid in ex.map(fetch, candidates_top):
             stock_bids[code] = bid
-            monitors[code] = mon
-    return stock_bids, monitors
+    return stock_bids
 
 
 # =============================================================================
@@ -282,7 +276,8 @@ def build_message(date_str, result, boards, crawl_time) -> str:
     lines += [f"**强势板块**: {board_text or '无'}", "", "**候选池**:", ""]
     for i, c in enumerate(result["candidates"][:5], 1):
         f_ = c["factors"]
-        lines.append(f"{i}. **{c['name']}**({c['code']}) 评分 {c['score']}/{c['max']} {c['gene']['reason']}")
+        bonus_txt = f" 身位+{c['bonus']}" if c.get("bonus") else ""
+        lines.append(f"{i}. **{c['name']}**({c['code']}) 评分 {c['score']}/{c['max']}{bonus_txt} {c['gene']['reason']}")
         parts = []
         if f_["bid_pct"] is not None:
             parts.append(f"竞价{f_['bid_pct']:+.2f}%")
@@ -295,6 +290,7 @@ def build_message(date_str, result, boards, crawl_time) -> str:
         if c["boards"]:
             parts.append("板块:" + ",".join(c["boards"][:3]))
         lines.append("   - " + " | ".join(parts))
+        lines.append(f"   - 💡 竞价价买入 → 冲高+5%止盈 / 跌破竞价价-2%止损")
     lines += ["", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
     return "\n".join(lines)
 
@@ -323,14 +319,14 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     genes = collect_genes(spider, pool)
     store.save_genes(date_str, genes)
 
-    print(f"[4/6] 初步评分 → 前{BID_LIMIT} 拉竞价分时/大单")
+    print(f"[4/6] 初步评分 → 前{BID_LIMIT} 拉竞价分时")
     prelim = sorted(pool.values(), key=funnel.prelim_score, reverse=True)
     top = [i["code"] for i in prelim[:BID_LIMIT]]
-    stock_bids, monitors = collect_bids_and_monitors(spider, top)
+    stock_bids = collect_bids(spider, top)
 
     print(f"[5/6] 漏斗计算")
     result = funnel.run_funnel(
-        env, boards, list(pool.values()), genes, stock_bids, monitors,
+        env, boards, list(pool.values()), genes, stock_bids,
         score_threshold=SCORE_THRESHOLD)
     candidates = result["candidates"]
 
@@ -342,6 +338,7 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         "date": date_str, "generated_at": crawl_time,
         "env": result["env"], "boards": boards,
         "candidates": candidates, "empty_reason": result["empty_reason"],
+        "rejected": result.get("rejected", []),
         "stats": {"pool": len(pool), "genes": len(genes), "boards": len(boards)},
     }
     AUCTION_OUT.parent.mkdir(parents=True, exist_ok=True)

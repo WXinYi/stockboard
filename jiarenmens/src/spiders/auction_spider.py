@@ -250,7 +250,7 @@ class AuctionStore:
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (date_str, r[0], r[1], pid_type, int(r[4] or 0), str(r[5] or ""),
                          float(r[6] or 0), float(r[7] or 0), float(r[8] or 0), float(r[11] or 0),
-                         str(r[12] or ""), float(r[13] or 0), str(r[21] if len(r) > 21 else "")))
+                         str(r[12] or ""), float(r[13] or 0), str(r[18] if len(r) > 18 else "")))
 
     def save_genes(self, date_str: str, genes: Dict[str, List]):
         with self._conn() as c:

@@ -91,6 +91,7 @@ function fmt(v, digits = 2) {
               <span class="rank">{{ i + 1 }}</span>
               <span class="name">{{ c.name }}</span>
               <span class="code">{{ c.code }}</span>
+              <span v-if="c.bonus" class="bonus">身位+{{ c.bonus }}</span>
               <span class="score" :class="{ hot: c.score >= 10 }">{{ c.score }}<i>/{{ c.max }}</i></span>
             </div>
             <div class="cand-factors">
@@ -162,6 +163,7 @@ function fmt(v, digits = 2) {
 .score { margin-left: auto; font-size: 16px; font-weight: 700; color: #2980b9; }
 .score.hot { color: #c0392b; }
 .score i { font-size: 10px; color: #999; font-weight: 400; }
+.bonus { font-size: 10px; font-weight: 600; color: #8e44ad; background: #f6f0fb; border: 1px solid #e5d5f5; padding: 2px 7px; border-radius: 5px; }
 .cand-factors { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px; }
 .f { font-size: 11px; color: #333; background: #f4f6f9; padding: 3px 8px; border-radius: 6px; }
 .f.tag { color: #8e44ad; background: #f6f0fb; }

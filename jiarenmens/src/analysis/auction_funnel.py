@@ -129,9 +129,13 @@ def _score_b2(turnover: Optional[float], circ_mv: Optional[float]) -> int:
 
 
 def _score_b3(vol_ratio: Optional[float]) -> int:
-    """竞价量比: >3→3, >2→2"""
+    """竞价量比健康区间: 3-8 倍=健康抢筹→3, 8-15 降级→2, >15 巨量分歧警惕→0(可能出货对倒)"""
     if vol_ratio is None:
         return 0
+    if vol_ratio > 15:
+        return 0
+    if vol_ratio > 8:
+        return 2
     if vol_ratio > 3:
         return 3
     if vol_ratio > 2:
@@ -183,28 +187,40 @@ def _score_b5(bid_rows: Optional[List[List]]) -> int:
     return 0
 
 
-def _score_b6(monitor: Dict) -> int:
-    """大单方向(GetMainMonitor 分档): 主动买(方向2)金额 > 主动卖(方向4) → 2, 反偏 → -2
-    无大单数据 → 0(标注缺数据)"""
-    rows = monitor.get("List") or []
-    if not rows:
-        return 0
-    buy = sum(float(r[3] or 0) for r in rows if len(r) >= 4 and int(r[0]) == 2)
-    sell = sum(float(r[3] or 0) for r in rows if len(r) >= 4 and int(r[0]) == 4)
-    if buy + sell == 0:
-        return 0
-    return 2 if buy > sell else -2
-
-
 def prelim_score(item: Dict) -> int:
-    """初步评分(B1+B2+B3, 不需竞价分时/大单) — 用于决定给哪些股票拉 B4/B5/B6 数据"""
+    """初步评分(B1+B2+B3, 不需竞价分时) — 用于决定给哪些股票拉 B4/B5 数据"""
     return (_score_b1(item.get("bid_pct")) + _score_b2(item.get("turnover_ratio"), item.get("circ_mv"))
             + _score_b3(item.get("vol_ratio")))
 
 
-def score_stock(row: List, bid_rows: Optional[List[List]] = None, monitor: Optional[Dict] = None) -> Dict:
+def gate_b1(bid_pct: Optional[float]) -> Optional[str]:
+    """B1 硬门槛: 竞价涨幅必须在 [1%,7%] 抢筹区间。
+    <1% 不是抢筹(平开无动作); >7% 距涨停空间 ≤3%, 盈亏比天然差, 且一字板买不进。
+    返回 None=通过, 否则返回淘汰原因。"""
+    if bid_pct is None:
+        return "无竞价涨幅数据"
+    if not (1 <= bid_pct <= 7):
+        return f"竞价涨幅{bid_pct:.2f}% 不在抢筹区间[1%,7%]"
+    return None
+
+
+def position_bonus(tag: Optional[str]) -> int:
+    """身位加分(胜率因子): 昨日连板+今日竞价强=题材接力核心 → +2; 昨日首板 → +1。
+    板块权重股无连板标记, 不加分(如光迅科技)。"""
+    if not tag:
+        return 0
+    if "连板" in tag:
+        return 2
+    if "首板" in tag:
+        return 1
+    return 0
+
+
+def score_stock(row: List, bid_rows: Optional[List[List]] = None) -> Dict:
     """单只股票竞价评分(GetBKJJBL 行格式):
-    [代码,名称,现价,实时涨幅,竞价量比,竞价额,竞价涨幅,竞价净额,竞价换手,流通市值,板块标签,...]"""
+    [代码,名称,现价,实时涨幅,竞价量比,竞价额,竞价涨幅,竞价净额,竞价换手,流通市值,板块标签,...]
+    满分 12: B1涨幅2 + B2换手2 + B3量比3 + B4形态3 + B5方向2(身位加分另计)。
+    注: B6 大单因子已删除 — 9:15-9:25 无逐笔成交, GetMainMonitor 竞价期拿不到有效数据。"""
     factors = {
         "bid_price": float(row[2]) if len(row) > 2 and row[2] not in (None, "") else None,
         "bid_pct": float(row[6]) if len(row) > 6 and row[6] not in (None, "") else None,
@@ -225,11 +241,10 @@ def score_stock(row: List, bid_rows: Optional[List[List]] = None, monitor: Optio
     s_b3 = _score_b3(factors["vol_ratio"])
     s_b4 = _score_b4(bid_rows)
     s_b5 = _score_b5(bid_rows)
-    s_b6 = _score_b6(monitor or {})
-    total = s_b1 + s_b2 + s_b3 + s_b4 + s_b5 + s_b6
-    return {"score": total, "max": 15, "factors": factors,
+    total = s_b1 + s_b2 + s_b3 + s_b4 + s_b5
+    return {"score": total, "max": 12, "factors": factors,
             "sub": {"B1涨幅": s_b1, "B2换手": s_b2, "B3量比": s_b3,
-                    "B4形态": s_b4, "B5方向": s_b5, "B6大单": s_b6},
+                    "B4形态": s_b4, "B5方向": s_b5},
             "missing": [k for k, v in factors.items() if v is None]}
 
 
@@ -263,34 +278,45 @@ def gene_check(gene: Optional[List]) -> Dict:
 
 def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict[str, List],
                stock_bids: Optional[Dict[str, List]] = None,
-               monitors: Optional[Dict[str, Dict]] = None,
                score_threshold: int = 8) -> Dict:
-    """执行漏斗: 候选池 = 强势板块成分 + 竞价列表, 逐层过滤"""
+    """执行漏斗: 候选池 = 强势板块成分 + 竞价列表, 逐层过滤
+    B1 硬门槛(1-7%) → 评分(满分12) + 身位加分 → L4 基因"""
     env_result = env_check(env["mood"], env["capacity"], env["bid_total"], env["bid_count"])
     if not env_result["pass"]:
         return {"env": env_result, "boards": [], "candidates": [], "empty_reason": "市场环境不满足, 空仓"}
 
     candidates = []
+    rejected = []
     for r in pool_rows:
         code = str(r.get("code") or "")
         if not code:
             continue
         name = r.get("name") or ""
+        # B1 硬门槛: 抢筹区间之外直接出局
+        gate = gate_b1(r.get("bid_pct"))
+        if gate:
+            rejected.append({"code": code, "name": name, "reason": gate})
+            continue
         sc = score_stock([code, name, r.get("price"), r.get("change_pct"), r.get("vol_ratio"),
                           r.get("limit_up_buy"), r.get("bid_pct"), r.get("bid_net"),
                           r.get("turnover_ratio"), r.get("circ_mv"), r.get("plates"), 0, 0],
-                         stock_bids.get(code) if stock_bids else None,
-                         (monitors or {}).get(code))
-        if sc["score"] < score_threshold:
+                         stock_bids.get(code) if stock_bids else None)
+        bonus = position_bonus(r.get("tag") or "")
+        total = sc["score"] + bonus
+        if total < score_threshold:
+            rejected.append({"code": code, "name": name, "reason": f"评分{total}/{sc['max']}+身位{bonus} 低于阈值{score_threshold}"})
             continue
         gene = gene_check(genes.get(code))
         if not gene["pass"]:
+            rejected.append({"code": code, "name": name, "reason": gene["reason"]})
             continue
         candidates.append({
-            "code": code, "name": name, "score": sc["score"], "max": sc["max"],
+            "code": code, "name": name, "score": total, "base": sc["score"],
+            "bonus": bonus, "max": sc["max"],
             "factors": sc["factors"], "sub": sc["sub"], "gene": gene,
             "boards": r.get("boards") or [], "tag": r.get("tag") or "",
             "missing": sc["missing"],
         })
     candidates.sort(key=lambda c: c["score"], reverse=True)
-    return {"env": env_result, "boards": boards, "candidates": candidates, "empty_reason": None}
+    return {"env": env_result, "boards": boards, "candidates": candidates,
+            "rejected": rejected[:50], "empty_reason": None}
