@@ -6,9 +6,9 @@ import { fetchAuction } from '../data/loader.js'
 export const KPL_TOKEN = '036ca9cad6e44ee4a585c22cb2c298ed'
 export const KPL_USERID = '3807176'
 const KPL_DEVICE = '6CC28E90-0785-4B21-8EEF-557159D26CF1'   // 固定设备号
-// 浏览器 UA 会被 KPL 风控(返回空 List) → dev 走 vite 代理(覆盖 UA); 生产经 Cloudflare Worker 中转(okhttp UA, 同配方)
+// 浏览器 UA 会被 KPL 风控(返回空 List) → dev 走 vite 代理(覆盖 UA); 生产经腾讯云函数中转(okhttp UA, 同配方)
 const DEV_PROXY = import.meta.env.DEV
-const PROD_PROXY = 'https://kpl-proxy.mystockboard.workers.dev'    // Cloudflare Worker (worker/index.js)
+const PROD_PROXY = 'https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com'   // 腾讯云 SCF 函数 URL (scf/index.js, 国内直连)
 const HOST_HQ = DEV_PROXY ? '/kpl-hq' : PROD_PROXY + '/kpl-hq'    // 实时行情/盘面
 const HOST_HIS = DEV_PROXY ? '/kpl-his' : PROD_PROXY + '/kpl-his' // 历史/复盘/股东
 const HOST_ART = DEV_PROXY ? '/kpl-art' : PROD_PROXY + '/kpl-art' // 内容/F10
@@ -166,17 +166,25 @@ export async function fetchBoards(code, silent = false) {
     .sort((a, b) => (b.strength || 0) - (a.strength || 0))
 }
 
-// 板块成分 GetBKJJBL (GET) — 行 [code,name,price,chg_pct,bid_vr,bid_amt,bid_chg,bid_net,bid_turnover,float_cap,tags,...]
+// 板块完整成分 ZhiShuStockList_W8 (GET) — Date 必须横线格式 YYYY-MM-DD(实测 2026-08-07 磷化铟 16 只全量)
+// 行 [code,name,"",0,tags,price,chg%,amount,换手,0,总市值,大单净买,大单净卖,大单净额,...,r22,r23连板标签,...]
+// 实测(2026-08-10): Type=-4 涨幅排序, r[23]=连板标签("4连板"/"首板"/""), r[24]="龙一" 等仅在部分排序出现 → 只取连板
 export async function fetchBoardConstituents(bkCode, day, silent = false) {
-  const url = `${HOST_HIS}?${new URLSearchParams({ a: 'GetBKJJBL', c: 'StockBidYiDong', Day: day, StockID: bkCode, Index: 0, Order: 1, Type: 1, IsLB: 0, IsZT: 0, Isst: 1, filter: 3, st: 50, Token: KPL_TOKEN, UserID: KPL_USERID, apiv: 'w41' })}`
+  const date = String(day || '').replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')   // 8位 → 横线格式
+  const url = `${HOST_HIS}?${new URLSearchParams({ a: 'ZhiShuStockList_W8', c: 'ZhiShuRanking', Date: date, PlateID: bkCode, Index: 0, Order: 1, st: 1000, Type: -4, IsKZZType: 0, TSZB: 0, TSZB_Type: 0, filterType: 0, old: 1, RStart: 925, REnd: 1500, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON })}`
   const j = await getJson(url, silent)
-  const rows = j && j.List
+  const rows = j && j.list
   if (!Array.isArray(rows)) {
     if (silent) return null
     throw new Error('KPL成分失败')
   }
   return rows
-    .map(r => ({ code: String(r[0]), name: r[1], price: r[2], chgPct: r[3], bidVr: r[4], bidAmt: r[5], bidChg: r[6], bidNet: r[7], bidTurnover: r[8], floatCap: r[9], tags: r[10] }))
+    .map(r => ({
+      code: String(r[0]), name: r[1], tags: r[4] || '',
+      price: r[5], chgPct: r[6], amount: r[7], turnover: r[8],
+      totalMv: r[10], bigBuy: r[11], bigSell: r[12], bigNet: r[13],
+      boardLabel: r[23] || '',
+    }))
     .sort((a, b) => (b.chgPct || 0) - (a.chgPct || 0))
 }
 

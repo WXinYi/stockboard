@@ -10,7 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const bkCode = computed(() => route.params.bk_code)
 const bkName = computed(() => route.query.name || bkCode.value)
-// 数据口径: 'bid' 竞价异动成分(GetBKJJBL) / 'nh' 百日新高股(fetchNewHighBoards 板块 List)
+// 数据口径: 'bid' 完整成分(ZhiShuStockList_W8) / 'nh' 百日新高股(fetchNewHighBoards 板块 List)
 const src = computed(() => (route.query.src === 'nh' ? 'nh' : 'bid'))
 
 const rows = ref([])
@@ -87,12 +87,13 @@ function goBack() { router.back() }
 function fmt(v, d = 2) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(d) : '—' }
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
 const isUp = r => (typeof r.chgPct === 'number' ? r.chgPct >= 0 : false)
+const dayStr = computed(() => String(day.value).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
 </script>
 
 <template>
   <div class="bd-page">
     <!-- 顶部导航由 App header 统一提供(返回+标题), 此处信息条含板块代码; bid=竞价异动口径非完整成分 -->
-    <div class="bd-bar">⚡ {{ bkName }} {{ bkCode }} · {{ src === 'nh' ? '百日新高' : '今日竞价异动' }}口径{{ src === 'nh' ? '' : ' ' + day }}</div>
+    <div class="bd-bar">⚡ {{ bkName }} {{ bkCode }} · {{ src === 'nh' ? '百日新高' : '完整成分' }}口径{{ src === 'nh' ? '' : ' · ' + dayStr }}</div>
 
     <div v-if="loading" class="sd-loading">板块成分加载中…</div>
     <div v-else-if="error" class="sd-error">
@@ -100,7 +101,7 @@ const isUp = r => (typeof r.chgPct === 'number' ? r.chgPct >= 0 : false)
       <button class="sd-retry" @click="load()">重试</button>
     </div>
     <template v-else>
-      <div class="bd-sub">{{ rows.length }} {{ src === 'nh' ? '家新高' : '只' }} · {{ src === 'nh' ? '新高口径' : '仅当日竞价异动个股, 非完整成分(云南锗业等未异动个股不在此列)' }}</div>
+      <div class="bd-sub">{{ rows.length }} {{ src === 'nh' ? '家新高' : '只成分' }} · {{ src === 'nh' ? '新高口径' : '完整成分(ZhiShuStockList_W8)' }}</div>
       <div class="bd-table">
         <div class="bd-row bd-head">
           <span class="bd-rank">#</span>
@@ -112,6 +113,7 @@ const isUp = r => (typeof r.chgPct === 'number' ? r.chgPct >= 0 : false)
           <span class="bd-rank">{{ i + 1 }}</span>
           <span class="bd-name">
             {{ r.name }}
+            <span v-if="r.boardLabel" class="bd-lb">{{ r.boardLabel }}</span>
             <span v-if="r.tags" class="bd-tags">{{ r.tags }}</span>
           </span>
           <span class="bd-price">{{ fmt(r.price) }}</span>
@@ -136,6 +138,7 @@ const isUp = r => (typeof r.chgPct === 'number' ? r.chgPct >= 0 : false)
 .bd-rank { width: 22px; color: #999; font-size: 12px; flex: none; }
 .bd-name { flex: 1; font-size: 13px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-tags { color: #999; font-size: 11px; margin-left: 6px; }
+.bd-lb { background: #e74c3c; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; flex: none; }
 .bd-price { font-size: 13px; color: #333; width: 64px; text-align: right; flex: none; }
 .bd-chg { font-size: 13px; width: 64px; text-align: right; flex: none; }
 
