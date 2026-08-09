@@ -40,8 +40,7 @@ const pageTitle = computed(() => {
 })
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
 const isStockDetail = computed(() => route.path.startsWith('/stock/'))
-const isAuction = computed(() => route.path === '/auction')
-const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value || isAuction.value)
+const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value)
 
 const refreshing = ref(false)
 
