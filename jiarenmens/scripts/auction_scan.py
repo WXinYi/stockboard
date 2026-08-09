@@ -316,9 +316,25 @@ def _cand_line(i: int, c: Dict) -> List[str]:
 # 主流程
 # =============================================================================
 
+def _fallback_trading_day(spider: KPLSpider, date_str: str) -> str:
+    """周末/节假日无市场数据(errcode=1020) → 回退最近交易日(最多回溯5天)。
+    工作日 cron-job 触发不受影响; 周末手动触发/测试用最近交易日数据。"""
+    from datetime import timedelta
+    cur = date_str
+    for _ in range(6):
+        try:
+            spider.env_capacity(cur)
+            return cur
+        except RuntimeError:
+            print(f"⚠️ {cur} 无市场数据(周末/节假日), 回退上一天")
+            cur = (datetime.strptime(cur, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    raise RuntimeError(f"最近5天均无市场数据({date_str} 起回溯)")
+
+
 def scan(date_str: str, dry_run: bool = False) -> int:
     t0 = time.time()
     spider = KPLSpider()
+    date_str = _fallback_trading_day(spider, date_str)
     store = AuctionStore()
     crawl_time = datetime.now(BJ_TZ).strftime("%H:%M")
 
