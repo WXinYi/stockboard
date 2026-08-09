@@ -126,7 +126,7 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 </script>
 
 <template>
-  <div class="card">
+  <div class="rank-page">
     <div class="search-box">
       <input type="text" v-model="search" placeholder="🔍 搜索选手名称..." />
     </div>
@@ -230,7 +230,8 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
    使本容器成为横向滚动候选。iOS 嵌套滚动时内层容器会抢走横向手势，导致行上左滑不滚动
    .rank-hscroll（看起来右侧空白）。显式 hidden 让它只滚纵向，横向手势归外层容器。 */
 .rank-vscroll {
-  max-height: 600px;
+  /* 去卡片化后列表高度=视口-固定头部(搜索/排序/筛选/导航), 整页不再嵌套滚动 */
+  max-height: calc(100vh - 300px);
   min-height: 120px;
   overflow-x: hidden;
   /* iOS Safari 上 .rank-cols 的 min-width:max-content 未能按表头撑宽(实测行被裁在视口宽)。
@@ -276,8 +277,12 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
   margin-right: 0;
 }
 .sortable { cursor: pointer; user-select: none; }
+@media (min-width: 768px) {
+  /* 桌面: 无底部导航大留白, 头部更矮 → 列表更高 */
+  .rank-vscroll { max-height: calc(100vh - 240px); }
+}
 @media (max-width: 767px) {
-  .rank-vscroll { max-height: min(600px, calc(100vh - 300px)); }
+  .rank-vscroll { max-height: calc(100vh - 300px); }
   .rank-row { font-size: 12px; }
   .c-rank { flex-basis: 28px; }
   .c-name { flex-basis: 150px; min-width: 150px; }

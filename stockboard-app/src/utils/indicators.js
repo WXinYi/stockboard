@@ -159,19 +159,58 @@ export function calcVOLMA(kl, ns = [5, 10]) {
 // 缠论(简化主流口径, 定位为参考标记, 非唯一标准)
 // ══════════════════════════════════════════════════════════════
 
-// 顶底分型: 中间bar的最高/最低为三根中极值
-// 返回 [{ i, type: 1=顶分型, -1=底分型 }] 按索引升序
-export function calcFractals(kl) {
+// ── K 线包含处理(缠论标准): 方向向上时合并取"高者高点+高者低点", 向下时取"低者低点+高者高点" ──
+// 方向: 前一根合并K线(与再前一根)的比较决定; 首次包含按向上处理
+// 返回 [{ high, low, first, last }] first/last = 覆盖的原始K线索引闭区间
+function mergeKlines(kl) {
   const out = []
-  for (let i = 1; i < kl.length - 1; i++) {
-    const a = kl[i - 1], b = kl[i], c = kl[i + 1]
-    if (b.high > a.high && b.high > c.high) out.push({ i, type: 1 })
-    else if (b.low < a.low && b.low < c.low) out.push({ i, type: -1 })
+  let dir = 0   // 1 向上, -1 向下, 0 初始
+  for (let i = 0; i < kl.length; i++) {
+    const k = { high: kl[i].high, low: kl[i].low, first: i, last: i }
+    if (!out.length) { out.push(k); continue }
+    const prev = out[out.length - 1]
+    const contained = (k.high <= prev.high && k.low >= prev.low) || (k.high >= prev.high && k.low <= prev.low)
+    if (contained) {
+      if (dir === 0) dir = 1
+      if (dir > 0) {
+        prev.high = Math.max(prev.high, k.high)
+        prev.low = Math.max(prev.low, k.low)
+      } else {
+        prev.high = Math.min(prev.high, k.high)
+        prev.low = Math.min(prev.low, k.low)
+      }
+      prev.last = i
+    } else {
+      if (k.high > prev.high) dir = 1
+      else if (k.low < prev.low) dir = -1
+      out.push(k)
+    }
   }
   return out
 }
 
-// 笔: 相邻同向分型合并(保留更极端), 顶底交替且间隔(中bar索引差)≥5
+// 顶底分型(标准缠论): 在包含处理后的合并K线上判定, 中间合并K线最高/最低为分型
+// 极值点映射回覆盖范围内最极端的原始K线索引(笔线端点与蜡烛对齐)
+// 返回 [{ i, type: 1=顶分型, -1=底分型 }] 按索引升序
+export function calcFractals(kl) {
+  const mk = mergeKlines(kl)
+  const out = []
+  for (let i = 1; i < mk.length - 1; i++) {
+    const a = mk[i - 1], b = mk[i], c = mk[i + 1]
+    if (b.high > a.high && b.high > c.high) {
+      let bi = b.first, bh = -Infinity
+      for (let t = b.first; t <= b.last; t++) if (kl[t].high > bh) { bh = kl[t].high; bi = t }
+      out.push({ i: bi, type: 1 })
+    } else if (b.low < a.low && b.low < c.low) {
+      let bi = b.first, bl = Infinity
+      for (let t = b.first; t <= b.last; t++) if (kl[t].low < bl) { bl = kl[t].low; bi = t }
+      out.push({ i: bi, type: -1 })
+    }
+  }
+  return out
+}
+
+// 笔(新笔): 相邻同向分型合并(保留更极端), 顶底交替且间隔(原始K线索引差)≥5
 // 返回 [{ from, to }] from/to 为分型对象 { i, type }
 export function calcBis(kl) {
   const fs = calcFractals(kl)
@@ -273,6 +312,27 @@ export function calcChanSignals(kl, macd, bis, zhongshu) {
   return signals
 }
 
+// MACD 背离: 相邻同向摆动点(中间隔一个反向摆动点)比较 —
+// 底背离 = 后低点更低但 DIF 抬高; 顶背离 = 后高点更高但 DIF 走低
+// 返回 [{ i, type: 'top'|'bottom' }] 按索引升序
+export function calcDivergence(kl, macd, gap = 5) {
+  const pts = swingPoints(kl)
+  const out = []
+  for (let k = 2; k < pts.length; k++) {
+    if (pts[k].type !== pts[k - 2].type) continue
+    const a = pts[k - 2], b = pts[k]
+    if (b.i - a.i < gap) continue
+    if (b.type === -1) {
+      // 底背离: 价新低 + DIF 抬高
+      if (kl[b.i].low < kl[a.i].low && macd.dif[b.i] > macd.dif[a.i] + 0.001) out.push({ i: b.i, type: 'bottom' })
+    } else {
+      // 顶背离: 价新高 + DIF 走低
+      if (kl[b.i].high > kl[a.i].high && macd.dif[b.i] < macd.dif[a.i] - 0.001) out.push({ i: b.i, type: 'top' })
+    }
+  }
+  return out
+}
+
 // ══════════════════════════════════════════════════════════════
 // 波浪理论(艾略特, 启发式简化, 定位为参考标记, 无法判定时明示)
 // ══════════════════════════════════════════════════════════════
@@ -297,34 +357,61 @@ function swingPoints(kl) {
 }
 
 // 自动计数 5浪推动 + 3浪调整(1-2-3-4-5-A-B-C), 从最近摆动点向前找最后一个匹配:
-// 上升推动: 2浪不破1浪起点, 3浪新高, 4浪不破1浪顶, 5浪新高, A-C 调整(A下B反弹C破A低)
-// 下跌推动镜像。均满足才判定, 否则 status 'unknown' → 前端显示「无法判定」
+// 摆动点 = 分型合并序列(经包含处理+异向间隔过滤, 交替顶底)
+// 上升推动铁律: 2浪不破1浪起点, 3浪创新高且非最短, 4浪不破1浪顶, 5浪创新高, B浪不破5浪顶, C浪破A浪低点
+// 下跌推动镜像。优先完整 5+3(9点); 无则降级 5浪推动(7点, 调整未确认); 均不满足 → status 'unknown'
+// status: 'ok' 完整 5+3 / 'ok5' 仅5浪推动(调整未确认) / 'unknown' 无法判定
 export function calcWaves(kl) {
   const pts = swingPoints(kl)
-  if (pts.length < 9) return { status: 'unknown', waves: [] }
+  if (pts.length < 7) return { status: 'unknown', waves: [] }
   const hi = i => kl[pts[i].i].high
   const lo = i => kl[pts[i].i].low
-  for (let s = pts.length - 9; s >= 0; s--) {
-    const up = pts[s].type === -1   // 起于底 → 上升推动浪
+  const lenUp = i => Math.abs(kl[pts[i].i].high - kl[pts[i - 1].i].low)  // 上升浪长度
+  const lenDn = i => Math.abs(kl[pts[i - 1].i].high - kl[pts[i].i].low) // 下跌浪长度
+
+  // 检查从 s 起的推动浪规则(5浪: n=5, 完整结构: n=7 → 5+3)
+  function check(s, n) {
+    const up = pts[s].type === -1
+    const t = n - 1  // 推动浪末索引
     if (up) {
-      if (!(lo(s + 2) > lo(s))) continue           // 2浪不破1浪起点
-      if (!(hi(s + 3) > hi(s + 1))) continue       // 3浪创新高
-      if (!(lo(s + 4) > hi(s + 1))) continue       // 4浪不破1浪顶(简化不重叠)
-      if (!(hi(s + 5) > hi(s + 3))) continue       // 5浪创新高
-      if (!(hi(s + 7) < hi(s + 5))) continue       // B浪不破5浪顶
-      if (!(lo(s + 8) < lo(s + 6))) continue       // C浪破A浪低点
+      if (!(lo(s + 2) > lo(s))) return false             // 2浪不破1浪起点
+      if (!(hi(s + 3) > hi(s + 1))) return false         // 3浪创新高
+      if (!(lenUp(s + 3) >= lenUp(s + 1))) return false  // 3浪不短于1浪
+      if (!(lenUp(s + 3) >= lenUp(s + 5))) return false  // 3浪非最短(铁律)
+      if (!(lo(s + 4) > hi(s + 1))) return false         // 4浪不破1浪顶(简化不重叠)
+      if (!(hi(s + 5) > hi(s + 3))) return false         // 5浪创新高
+      if (n > 7) {
+        if (!(hi(s + 7) < hi(s + 5))) return false       // B浪不破5浪顶
+        if (!(lo(s + 8) < lo(s + 6))) return false       // C浪破A浪低点
+      }
     } else {
-      if (!(hi(s + 2) < hi(s))) continue           // 2浪不破1浪起点
-      if (!(lo(s + 3) < lo(s + 1))) continue       // 3浪创新低
-      if (!(hi(s + 4) < lo(s + 1))) continue       // 4浪不破1浪底
-      if (!(lo(s + 5) < lo(s + 3))) continue       // 5浪创新低
-      if (!(lo(s + 7) > lo(s + 5))) continue       // B浪不破5浪底
-      if (!(hi(s + 8) > hi(s + 6))) continue       // C浪破A浪高点
+      if (!(hi(s + 2) < hi(s))) return false             // 2浪不破1浪起点
+      if (!(lo(s + 3) < lo(s + 1))) return false         // 3浪创新低
+      if (!(lenDn(s + 3) >= lenDn(s + 1))) return false  // 3浪不短于1浪
+      if (!(lenDn(s + 3) >= lenDn(s + 5))) return false  // 3浪非最短
+      if (!(hi(s + 4) < lo(s + 1))) return false         // 4浪不破1浪底
+      if (!(lo(s + 5) < lo(s + 3))) return false         // 5浪创新低
+      if (n > 7) {
+        if (!(lo(s + 7) > lo(s + 5))) return false       // B浪不破5浪底
+        if (!(hi(s + 8) > hi(s + 6))) return false       // C浪破A浪高点
+      }
     }
-    // 从后向前扫, 首次命中即最新完整结构
+    return true
+  }
+
+  // 完整 5+3 结构优先(9点)
+  for (let s = pts.length - 9; s >= 0; s--) {
+    if (!check(s, 9)) continue
     const labels = ['起', '1', '2', '3', '4', '5', 'A', 'B', 'C']
     const waves = pts.slice(s, s + 9).map((p, k) => ({ i: p.i, type: p.type, label: labels[k] }))
-    return { status: 'ok', waves, dir: up ? 1 : -1 }
+    return { status: 'ok', waves, dir: pts[s].type === -1 ? 1 : -1 }
+  }
+  // 降级: 5浪推动已完整(7点, 调整未确认)
+  for (let s = pts.length - 7; s >= 0; s--) {
+    if (!check(s, 7)) continue
+    const labels = ['起', '1', '2', '3', '4', '5']
+    const waves = pts.slice(s, s + 7).map((p, k) => ({ i: p.i, type: p.type, label: labels[k] }))
+    return { status: 'ok5', waves, dir: pts[s].type === -1 ? 1 : -1 }
   }
   return { status: 'unknown', waves: [] }
 }

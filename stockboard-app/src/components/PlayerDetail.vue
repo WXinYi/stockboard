@@ -4,11 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchPlayerDetail } from '../data/loader.js'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
+import { usePullRefresh } from '../composables/usePullRefresh.js'
 
 const route = useRoute()
 const router = useRouter()
 const { playerLookup } = inject('stockData')
-const refreshTick = inject('refreshTick', ref(0))
 
 // 📈 跳转股票详情页(自建详情, 页内含 H5 嵌套入口)
 function openStockDetail(c, n) { router.push({ path: '/stock/' + c, query: { name: n } }) }
@@ -124,8 +124,8 @@ async function loadPlayer(zhId) {
 
 watch(() => route.params.zh_id, (newId) => { if (newId) loadPlayer(newId) })
 
-// 全局刷新信号：App.vue 下拉刷新/顶栏刷新后重新拉取选手详情
-watch(refreshTick, () => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
+// 全局刷新信号：App.vue 下拉刷新/顶栏刷新后重拉选手详情(仅当前激活页面响应)
+usePullRefresh(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 
 onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 </script>

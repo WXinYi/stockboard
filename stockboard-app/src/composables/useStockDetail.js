@@ -1,6 +1,7 @@
-// 自建股票详情数据层: 行情(push2delay 主 + 腾讯备) + K线/分时(腾讯 host)
+// 自建股票详情数据层: 行情(开盘啦主 + 东财 push2delay + 腾讯备) + K线/分时(腾讯 host)
 import { ref } from 'vue'
 import { emQuoteApi, jsonp, qqKlineUrl, qqMinuteUrl, qqMklineUrl, qqPrefix, qqQuoteUrl } from '../utils/eastmoney.js'
+import { fetchKplQuote, calcLimitPx } from './useKplApi.js'
 
 function withTimeout(promise, ms = 8000) {
   return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('请求超时')), ms))])
@@ -55,10 +56,20 @@ export function useStockDetail(code) {
   const loading = ref({ quote: false, chart: false })
   const error = ref('')
 
-  async function loadQuote() {
-    loading.value.quote = true
-    error.value = ''
+  async function loadQuote(silent = false) {
+    // silent=true 轮询刷新: 不置 loading/error, 失败保留旧数据等下个 tick 重试
+    if (!silent) loading.value.quote = true
+    if (!silent) error.value = ''
     try {
+      // 主源: 开盘啦行情快照(免Token, 覆盖沪深北, 含量比/振幅/涨停跌停价/均价)
+      const q = await fetchKplQuote(getCode(), silent)
+      if (q) {
+        quote.value = { ...q, mainFlowYi: quote.value?.mainFlowYi ?? null }  // 主力由独立轮询覆盖, 不覆盖
+        if (!silent) loading.value.quote = false
+        return
+      }
+      if (silent) return   // silent 主源失败 → 保留旧数据
+      // 降级1: 东财 push2delay
       const r = await withTimeout(jsonp(emQuoteApi(getCode())))
       const d = r && r.data
       if (!d) throw new Error('行情数据为空')
@@ -67,28 +78,37 @@ export function useStockDetail(code) {
         open: d.f46, prevClose: d.f60, volume: d.f47, amount: d.f48,
         pe: d.f162, pb: d.f167, totalCap: d.f116, floatCap: d.f117,
         turnover: d.f168, change: d.f169, changePct: d.f170,
+        volumeRatio: d.f50, amplitude: d.f171,
         // f62 主力净流入(亿); 数值异常(如 -)则置 null 隐藏
         mainFlowYi: (typeof d.f62 === 'number' && isFinite(d.f62) && Math.abs(d.f62) < 10000) ? d.f62 : null,
+        upPx: null, downPx: null, avgPx: null,   // 东财无这三项, 涨跌停价按板规则推算
       }
+      const lim = calcLimitPx(quote.value.prevClose, getCode(), d.f58)
+      quote.value.upPx = lim.up
+      quote.value.downPx = lim.down
     } catch (e) {
-      // 降级: 腾讯脚本变量
+      if (silent) return
+      // 降级2: 腾讯脚本变量
       try {
         const c = getCode()
         const raw = await loadScriptVar(qqQuoteUrl(c), 'v_' + qqPrefix(c) + c)
         const q = parseTencentQuote(raw)
         if (!q) throw new Error('腾讯行情解析失败')
         quote.value = q
+        const lim = calcLimitPx(q.prevClose, c, q.name)
+        quote.value.upPx = lim.up
+        quote.value.downPx = lim.down
       } catch (e2) {
         error.value = '行情加载失败'
       }
     } finally {
-      loading.value.quote = false
+      if (!silent) loading.value.quote = false
     }
   }
 
-  async function loadKline(period = 'day', adjust = 'qfq') {
-    loading.value.chart = true
-    error.value = ''
+  async function loadKline(period = 'day', adjust = 'qfq', silent = false) {
+    if (!silent) loading.value.chart = true
+    if (!silent) error.value = ''
     try {
       const c = getCode()
       let url, key, intraday = false
@@ -114,15 +134,15 @@ export function useStockDetail(code) {
         return { time, open: +r[1], close: +r[2], high: +r[3], low: +r[4], volume: +r[5] }
       })
     } catch (e) {
-      error.value = 'K线加载失败'
+      if (!silent) error.value = 'K线加载失败'
     } finally {
-      loading.value.chart = false
+      if (!silent) loading.value.chart = false
     }
   }
 
-  async function loadTrend() {
-    loading.value.chart = true
-    error.value = ''
+  async function loadTrend(silent = false) {
+    if (!silent) loading.value.chart = true
+    if (!silent) error.value = ''
     try {
       const c = getCode()
       const resp = await withTimeout(fetch(qqMinuteUrl(c)))
@@ -130,20 +150,21 @@ export function useStockDetail(code) {
       const box = j.data && j.data[qqPrefix(c) + c]
       const rows = (box && box.data && box.data.data) || []
       const dateStr = (box && box.data && box.data.date) || ''
-      // 行格式 "HHMM price vol amount" → 组装 {time, price}; 时间用 UTC-naive 秒(中国时区渲染)
+      // 行格式 "HHMM price vol amount" → 组装 {time, price, vol, amount}; 时间用 UTC-naive 秒(中国时区渲染)
+      // vol=手(100股), amount=元 → 累计均价 = Σamount / (Σvol×100) (渲染层计算)
       trend.value = rows.map(r => {
-        const [hhmm, price] = String(r).split(' ')
+        const [hhmm, price, vol, amount] = String(r).split(' ')
         let time = 0
         if (dateStr && hhmm && hhmm.length === 4) {
           const y = +dateStr.slice(0, 4), mo = +dateStr.slice(4, 6) - 1, d = +dateStr.slice(6, 8)
           time = Date.UTC(y, mo, d, +hhmm.slice(0, 2), +hhmm.slice(2, 4)) / 1000
         }
-        return { time, price: parseFloat(price) }
+        return { time, price: parseFloat(price), vol: parseFloat(vol) || 0, amount: parseFloat(amount) || 0 }
       })
     } catch (e) {
-      error.value = '分时加载失败'
+      if (!silent) error.value = '分时加载失败'
     } finally {
-      loading.value.chart = false
+      if (!silent) loading.value.chart = false
     }
   }
 

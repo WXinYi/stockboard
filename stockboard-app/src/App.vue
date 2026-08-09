@@ -28,19 +28,27 @@ const route = useRoute()
 const router = useRouter()
 
 const pageTitles = {
+  market: '盘面',
   copy: '抄作业',
   rankings: '排行榜',
   stocks: '重仓共识',
   auction: '竞价抢筹',
 }
+const marketSectionTitles = {
+  auction: '竞价抢筹', wind: '最强风口', ladder: '涨停天梯', reasons: '涨停原因',
+  newhighs: '百日新高', global: '外围市场', institution: '机构增仓',
+}
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
   if (route.path.startsWith('/stock/')) return '股票详情'
+  if (route.path.startsWith('/info/')) return '资讯详情'
+  if (route.path.startsWith('/market/')) return marketSectionTitles[route.path.slice(8)] || '盘面详情'
+  if (route.path.startsWith('/board/')) return '板块详情'
   return pageTitles[route.path.slice(1)] || ''
 })
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
 const isStockDetail = computed(() => route.path.startsWith('/stock/'))
-const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value)
+const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value || route.path.startsWith('/info/') || route.path.startsWith('/board/') || route.path.startsWith('/market/'))
 
 const refreshing = ref(false)
 
@@ -64,7 +72,7 @@ const initialLoading = computed(() => loading.value.core && !isDetailPage.value 
 
 function goBack() {
   if (window.history.length > 2) router.back()
-  else router.push('/copy')
+  else router.push('/market')
 }
 
 const { updateAvailable, initCheck, dismiss } = useDataRefresh()
@@ -133,7 +141,8 @@ onMounted(async () => {
           <p class="loading-sub">从服务器获取最新行情</p>
         </div>
         <router-view v-else v-slot="{ Component }">
-          <KeepAlive :exclude="['PlayerDetail', 'StockDetailPage', 'StockH5Page', 'AuctionTab']">
+          <!-- 全部页面 KeepAlive: 详情页返回保留状态不重载; 参数化页面各自 watch 参数重载 -->
+          <KeepAlive>
             <component :is="Component" />
           </KeepAlive>
         </router-view>

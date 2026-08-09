@@ -1,8 +1,14 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStockDetail } from '../composables/useStockDetail.js'
-import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves } from '../utils/indicators.js'
+import { usePullRefresh } from '../composables/usePullRefresh.js'
+import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence } from '../utils/indicators.js'
+import {
+  fetchBoards, fetchLimitReason, fetchMainFlow, isTradingTime,
+  fetchInfoList,
+  fetchF10Company, fetchF10Finance, fetchF10Shareholders, fetchF10Valuation,
+} from '../composables/useKplApi.js'
 
 defineOptions({ name: 'StockDetailPage' })
 
@@ -12,6 +18,45 @@ const code = computed(() => route.params.code)
 const qname = computed(() => route.query.name || '')
 
 const { quote, kline, trend, loading, error, loadQuote, loadKline, loadTrend } = useStockDetail(code)
+
+// ── 板块胶囊 / 涨停原因(开盘啦) ──
+const boards = ref(null)          // null=未加载失败, []或数组=成功
+const boardsLoading = ref(false)
+const boardsMore = ref(false)
+const limitReason = ref(null)     // {zsCodes, reason} 或 null(接口无数据)
+const limitMore = ref(false)
+// 仅当日涨停才展示涨停原因: GetDayZhangTing 对非涨停股也返回"最近一次涨停原因"(如茅台返回7月17日) →
+// 用行情涨停价口径判断: 现价 >= 涨停价; KPL 主源缺失(降级源)时退用涨幅 ≥9.8%
+const isLimitUp = computed(() => {
+  const q = quote.value
+  if (!q) return false
+  if (q.upPx != null && +q.upPx > 0) return +q.price >= +q.upPx
+  return typeof q.changePct === 'number' && q.changePct >= 9.8
+})
+const boardNameById = computed(() => {
+  const m = {}
+  for (const b of boards.value || []) m[b.code] = b.name
+  return m
+})
+
+// ── 底部 资讯|基本面 tab 区(默认展开资讯+新闻, 用户要求) ──
+const gridMore = ref(false)       // 基础信息 L3 次要 8 格折叠
+const moreTab = ref('info')       // 'info' / 'f10'
+const infoTypes = [{ type: 1, label: '新闻' }, { type: 2, label: '研报' }, { type: 3, label: '公告' }]
+const infoType = ref(1)
+const infoList = ref([])
+const infoLoading = ref(false)
+const infoError = ref(false)
+const infoPage = ref(0)
+const infoHasMore = ref(false)
+const f10Types = [{ key: 'company', label: '公司' }, { key: 'finance', label: '财务' }, { key: 'holders', label: '股东' }, { key: 'valuation', label: '估值' }]
+const f10Type = ref('company')
+const f10Company = ref(null)
+const f10Finance = ref(null)
+const f10Holders = ref(null)
+const f10Valuation = ref([])
+const f10Loading = ref(false)
+const f10Error = ref('')
 
 // 视图: trend 分时 / m60 60分 / day 日K / week 周K / month 月K
 const views = [
@@ -29,7 +74,7 @@ const isKline = computed(() => view.value !== 'trend')
 
 // 主图叠加(多选) + 副屏指标(单选); BOLL 默认不选
 const overlays = reactive({ ma: true, boll: false })
-const subInd = ref('none')   // 'none'|'macd'|'kdj'|'rsi'|'wr'
+const subInd = ref('macd')   // 副屏指标: 默认展示 MACD(用户要求); 'none'|'macd'|'kdj'|'rsi'|'wr'
 const subInds = [
   { key: 'none', label: '无' }, { key: 'macd', label: 'MACD' }, { key: 'kdj', label: 'KDJ' },
   { key: 'rsi', label: 'RSI' }, { key: 'wr', label: 'WR' },
@@ -41,7 +86,6 @@ const SIGNAL_LABELS = { '1buy': '1买', '2buy': '2买', '3buy': '3买', '1sell':
 const CHAN_MAX_ZHONGSHU = 10   // 最多画最近 10 个中枢(每个中枢2条线, 防止 series 过多)
 
 const chartEl = ref(null)
-const legendEl = ref(null)
 let chart = null
 let series = []          // 当前所有 series(切视图/指标时整体移除重建)
 let markerPlugins = []   // 已挂载的 marker 插件(移除 series 前先 detach)
@@ -62,7 +106,14 @@ const BOLL_COLORS = { up: '#e74c3c', mid: '#f39c12', lo: '#27ae60' }
 
 function fmt(v, digits = 2) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(digits) : '—' }
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
-function wan(v) { return (typeof v === 'number' && isFinite(v)) ? v.toLocaleString() : '—' }
+// 金额格式化(元 → 亿/万 带单位): 成交额/总市值/流通市值/主力净流入
+function wan(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '—'
+  const a = Math.abs(v)
+  if (a >= 1e8) return (v / 1e8).toFixed(2) + '亿'
+  if (a >= 1e4) return (v / 1e4).toFixed(1) + '万'
+  return v.toLocaleString()
+}
 function fmtVol(v) {
   if (typeof v !== 'number' || !isFinite(v)) return '—'
   if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿'
@@ -89,7 +140,7 @@ function computeIndicators() {
     ma: calcMA(kl), boll: calcBOLL(kl), volma: calcVOLMA(kl),
     macd, kdj: calcKDJ(kl), rsi: calcRSI(kl), wr: calcWR(kl),
     fractals, bis, zhongshu, chanSignals,
-    waves: calcWaves(kl),
+    waves: calcWaves(kl), divergences: calcDivergence(kl, macd),
     // 图例速查: bar 索引 → 分型类型 / 买卖点类型
     fractalAt: new Map(fractals.map(f => [f.i, f.type])),
     signalAt: new Map(chanSignals.map(s => [s.i, s.type])),
@@ -105,73 +156,23 @@ function fmtCandleTime(t) {
   }
   return String(t)
 }
-function setLegend(html, color) {
-  const el = legendEl.value
-  if (!el) return
-  el.innerHTML = html
-  el.style.color = color || '#666'
-  el.style.display = 'block'
-}
-function hideLegend() {
-  const el = legendEl.value
-  if (el) el.style.display = 'none'
-}
-function renderKlineLegend(idx) {
-  const arr = kline.value
-  if (!arr.length || idx === undefined || idx === null || idx < 0) return hideLegend()
-  const i = Math.min(Math.round(idx), arr.length - 1)
-  const k = arr[i]
-  if (!k) return hideLegend()
-  const prevClose = i > 0 ? arr[i - 1].close : k.open
-  const chg = k.close - prevClose
-  const chgPct = prevClose ? (chg / prevClose * 100) : 0
-  const sign = chg >= 0 ? '+' : ''
-  const color = chg >= 0 ? '#e74c3c' : '#27ae60'
-  let html = `<b>${fmtCandleTime(k.time)}</b>　开 <b>${k.open.toFixed(2)}</b>　高 <b>${k.high.toFixed(2)}</b>　低 <b>${k.low.toFixed(2)}</b>　收 <b>${k.close.toFixed(2)}</b>　<span style="color:${color}">${sign}${chg.toFixed(2)} (${sign}${chgPct.toFixed(2)}%)</span>`
-  const extra = [`量 <b>${fmtVol(k.volume)}</b>`]
-  if (indCache) {
-    if (overlays.ma) {
-      const parts = []
-      for (const n of [5, 10, 20, 60]) {
-        const v = indCache.ma[n][i]
-        if (v !== null && v !== undefined) parts.push(`MA${n} ${v.toFixed(2)}`)
-      }
-      if (parts.length) extra.push(parts.join(' '))
-    }
-    const s = subInd.value
-    if (s === 'macd') { const m = indCache.macd; extra.push(`DIF <b>${m.dif[i].toFixed(3)}</b> DEA <b>${m.dea[i].toFixed(3)}</b> 柱 <b>${m.hist[i].toFixed(3)}</b>`) }
-    else if (s === 'kdj') { const m = indCache.kdj; extra.push(`K <b>${m.k[i].toFixed(2)}</b> D <b>${m.d[i].toFixed(2)}</b> J <b>${m.j[i].toFixed(2)}</b>`) }
-    else if (s === 'rsi') { const m = indCache.rsi; extra.push(`RSI6 <b>${m[6][i].toFixed(1)}</b> RSI12 <b>${m[12][i].toFixed(1)}</b> RSI24 <b>${m[24][i].toFixed(1)}</b>`) }
-    else if (s === 'wr') { const m = indCache.wr; extra.push(`WR10 <b>${m[10][i].toFixed(1)}</b> WR6 <b>${m[6][i].toFixed(1)}</b>`) }
-    if (chan.value) {
-      const parts2 = []
-      const ft = indCache.fractalAt.get(i)
-      if (ft) parts2.push(ft === 1 ? '顶分型' : '底分型')
-      const st = indCache.signalAt.get(i)
-      if (st) parts2.push(SIGNAL_LABELS[st])
-      if (parts2.length) extra.push(`缠 <b>${parts2.join(' ')}</b>`)
-    }
-  }
-  html += '<br>' + extra.join('　')
-  setLegend(html, color)
-}
-function renderLastLegend() {
-  if (view.value === 'trend') {
-    const last = trend.value[trend.value.length - 1]
-    if (last) setLegend(`${fmtCandleTime(last.time)}　价格 <b>${last.price.toFixed(2)}</b>`, upColor.value)
-    else hideLegend()
-  } else {
-    renderKlineLegend(kline.value.length - 1)
-  }
-}
+// 光标处 K线数据 → 顶部 16 格联动(今开/最高/最低/昨收/成交额); null = 无光标, 显示当日实时
+const crossInfo = ref(null)
 function onCrosshair(param) {
-  if (!param || param.time === undefined) { renderLastLegend(); return }  // 移出图表 → 恢复最后一根
-  if (view.value === 'trend') {
-    const item = param.seriesData.get(series[0])
-    if (item) setLegend(`${fmtCandleTime(param.time)}　价格 <b>${item.value.toFixed(2)}</b>`, upColor.value)
-  } else {
-    renderKlineLegend(param.logical)
-  }
+  // 分时视图/移出图表 → 恢复当日实时; K线视图 → 16 格显示光标处该日数据(图内不悬浮, 不遮挡 K线)
+  if (view.value === 'trend' || !param || param.time === undefined) { crossInfo.value = null; return }
+  const arr = kline.value
+  const i = Math.min(Math.round(param.logical), arr.length - 1)
+  const k = arr[i]
+  crossInfo.value = k ? (() => {
+    const prevClose = i > 0 ? arr[i - 1].close : k.open
+    const chg = k.close - prevClose
+    return {
+      open: k.open, high: k.high, low: k.low, close: k.close, prevClose,
+      amount: k.volume * 100 * k.close,   // 额 = 手×100股×收盘价 近似(腾讯K线无成交额字段)
+      chg, chgPct: prevClose ? (chg / prevClose * 100) : 0,   // 头部大价格联动(颜色随光标K线涨跌)
+    }
+  })() : null
 }
 
 // ── 图表创建/series 管理 ──
@@ -186,7 +187,7 @@ async function ensureChart() {
   createSeriesMarkersFn = m.createSeriesMarkers
   chart = m.createChart(chartEl.value, {
     width: chartEl.value.clientWidth || 360,
-    height: view.value === 'trend' ? 320 : 480,
+    height: 360,
     layout: { background: { type: m.ColorType.Solid, color: '#ffffff' }, textColor: '#666', fontSize: 11 },
     grid: { vertLines: { color: '#f3f3f3' }, horzLines: { color: '#f3f3f3' } },
     crosshair: {
@@ -196,8 +197,9 @@ async function ensureChart() {
     },
     rightPriceScale: { borderColor: '#e5e5e5', scaleMargins: { top: 0.08, bottom: 0.12 } },
     timeScale: { borderColor: '#e5e5e5', timeVisible: isIntraday.value, rightBarStaysOnScroll: true, minBarSpacing: 1.5 },
-    // 手势: 滚轮/捏合缩放, 拖动平移(按住), 单指左右平移; 关掉单指上下拖动, 避免与页面滚动冲突
-    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+    // 手势: 滚轮/捏合缩放, 按住平移(水平); 关闭 Y 轴拖动(上下滑动手势)
+    // 垂直方向交还页面滚动: 容器 touch-action: pan-y(见 .sd-chart), 单指上下滑=滚页面
+    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: false },
     handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
   })
   chart.subscribeCrosshairMove(onCrosshair)
@@ -248,31 +250,38 @@ function addBollLines() {
 }
 
 // ── marker 统一收集: 一个 series 只能挂一个 markers 插件, 缠论与波浪标记合并进同一数组 ──
-// 缠论标记: 分型箭头(顶/底) + 三类买卖点(圆点+文字, 红卖绿买)
+// 缠论标记: 分型箭头(顶/底) + 三类买卖点(圆点+文字, 红卖绿买) + 背离(顶背离橙/底背离蓝紫)
 function addChanMarkers(out) {
   const kl = kline.value
   const fs = indCache.fractals
   const sigAt = indCache.signalAt
+  const divMap = new Map(indCache.divergences.map(d => [d.i, d.type]))
   for (const f of fs) {
     const isTop = f.type === 1
     const s = sigAt.get(f.i)
-    out.push(s
-      ? { time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: 'circle', color: isTop ? '#c0392b' : '#16a085', size: 1.2, text: SIGNAL_LABELS[s] }
-      : { time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: isTop ? 'arrowDown' : 'arrowUp', color: isTop ? '#c0392b' : '#16a085', size: 1 })
+    const dv = divMap.get(f.i)
+    if (dv) {
+      // 背离优先: 圆点 + 文字(顶背离/底背离), 比普通分型更醒目
+      out.push({ time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: 'circle', color: dv === 'top' ? '#e67e22' : '#5b2c8f', size: 1.7, text: dv === 'top' ? '顶背离' : '底背离' })
+    } else {
+      out.push(s
+        ? { time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: 'circle', color: isTop ? '#c0392b' : '#16a085', size: 1.3, text: SIGNAL_LABELS[s] }
+        : { time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: isTop ? 'arrowDown' : 'arrowUp', color: isTop ? '#c0392b' : '#16a085', size: 1 })
+    }
   }
 }
 
-// 波浪标记: 1-2-3-4-5-A-B-C 数字标签(顶红底绿), 无法判定则不画并在 waveNote 明示
+// 波浪标记: 1-2-3-4-5-A-B-C 数字标签(顶红底绿, 大圆点+文字更清晰), 无法判定则不画并在 waveNote 明示
 function addWaveMarkers(out) {
   const w = indCache.waves
-  if (w.status !== 'ok') return
+  if (w.status !== 'ok' && w.status !== 'ok5') return
   const kl = kline.value
   for (const p of w.waves) {
-    out.push({ time: kl[p.i].time, position: p.type === 1 ? 'aboveBar' : 'belowBar', shape: 'circle', color: p.type === 1 ? '#c0392b' : '#16a085', size: 1.1, text: p.label })
+    out.push({ time: kl[p.i].time, position: p.type === 1 ? 'aboveBar' : 'belowBar', shape: 'circle', color: p.type === 1 ? '#c0392b' : '#16a085', size: 1.5, text: p.label })
   }
 }
 
-// 笔: 一条虚线折线连接分型极值(相邻笔共享端点, 顺序连接即为笔链)
+// 笔: 一条实线折线连接分型极值(相邻笔共享端点, 顺序连接即为笔链); 2px 深紫保证可见
 function addChanLines() {
   const kl = kline.value
   const bis = indCache.bis
@@ -285,14 +294,14 @@ function addChanLines() {
     lastI = b.to.i
   }
   const line = chart.addSeries(LineSeriesDef, {
-    color: 'rgba(142,68,173,.9)', lineWidth: 1, lineStyle: LineStyleDef.Dashed,
+    color: '#7d3c98', lineWidth: 2, lineStyle: LineStyleDef.Solid,
     priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
   })
   line.setData(pts)
   track(line)
 }
 
-// 中枢: 上沿 ZG / 下沿 ZD 各一条虚线水平线段(setData 不支持断点, 每中枢两条 2 点线)
+// 中枢: 上沿 ZG / 下沿 ZD 各一条水平线段(setData 不支持断点, 每中枢两条 2 点线); 1.5px 实线
 function addZhongshuLines() {
   const kl = kline.value
   const zs = indCache.zhongshu.slice(-CHAN_MAX_ZHONGSHU)
@@ -300,7 +309,7 @@ function addZhongshuLines() {
     const t1 = kl[z.from].time, t2 = kl[z.to].time
     for (const v of [z.zg, z.zd]) {
       const line = chart.addSeries(LineSeriesDef, {
-        color: 'rgba(142,68,173,.7)', lineWidth: 1, lineStyle: LineStyleDef.Dashed,
+        color: '#7d3c98', lineWidth: 1.5, lineStyle: LineStyleDef.Solid,
         priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       })
       line.setData([{ time: t1, value: v }, { time: t2, value: v }])
@@ -357,8 +366,26 @@ function addSubIndicator() {
 function renderSeries() {
   if (!chart) return
   removeAllSeries()
-  chart.applyOptions({ height: isKline.value ? 480 : 320, timeScale: { timeVisible: isIntraday.value } })
+  // 分时/K线统一 360(用户要求与日K同高)
+  chart.applyOptions({ height: 360, timeScale: { timeVisible: isIntraday.value } })
   if (view.value === 'trend') {
+    // 分时图: 时间轴锁定禁止左右移动/缩放; 价格轴涨跌停范围在 series 就位后统一锁定(见函数末尾)
+    chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: true })
+    const upP = quote.value?.upPx, downP = quote.value?.downPx
+    // 左轴涨跌%坐标系: 承载 series 绑 left scale(百分比是价格的线性变换 → 与价格线视觉重合),
+    // 刻度 custom formatter 显示 +X.X%; 左轴范围锁定 跌停%→涨停%(涨跌停坐标系)
+    // v5 要点: leftPriceScale.visible 在 chart 级; 刻度渲染依赖 scale 上有可见 series(透明色即可)
+    chart.applyOptions({ leftPriceScale: { visible: true, minimumWidth: 48 } })
+    const prevClose = quote.value?.prevClose
+    if (typeof prevClose === 'number' && prevClose > 0) {
+      const pctLine = chart.addSeries(LineSeriesDef, {
+        priceScaleId: 'left',
+        color: 'rgba(0,0,0,0)', lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        priceFormat: { type: 'custom', formatter: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%' },
+      })
+      pctLine.setData(trend.value.map(p => ({ time: p.time, value: +(((p.price - prevClose) / prevClose) * 100).toFixed(2) })))
+    }
     const color = upColor.value
     const area = chart.addSeries(AreaSeriesDef, {
       lineColor: color, topColor: color + '33', bottomColor: color + '00',
@@ -366,9 +393,71 @@ function renderSeries() {
     })
     area.setData(trend.value.map(p => ({ time: p.time, value: p.price })))
     track(area)
+    // 均价线: 累计成交额/累计成交量(vol=手×100), 黄色实线(用户要求不用虚线)
+    let cumAmt = 0, cumVol = 0
+    const avgPoints = []
+    for (const p of trend.value) {
+      cumAmt += p.amount
+      cumVol += p.vol
+      if (cumVol > 0) avgPoints.push({ time: p.time, value: +(cumAmt / (cumVol * 100)).toFixed(3) })
+    }
+    if (avgPoints.length) {
+      const avg = chart.addSeries(LineSeriesDef, {
+        color: '#f2a900', lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      })
+      avg.setData(avgPoints)
+    }
+    // 分时成交量副屏(pane 1): 每分钟柱状, 红涨绿跌(相对昨收)
+    const volSer = chart.addSeries(HistogramSeriesDef, { priceFormat: { type: 'volume' } }, 1)
+    volSer.setData(trend.value.map(p => ({
+      time: p.time, value: p.vol,
+      color: typeof prevClose === 'number' && p.price >= prevClose ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
+    })))
+    track(volSer)
+    // 分时 MACD 副屏(pane 2): 分钟收盘价序列算 DIF/DEA/柱
+    const tm = calcMACD(trend.value.map(p => ({ close: p.price })))
+    const tLine = (vals, color) => {
+      const pts = []
+      for (let i = 0; i < vals.length; i++) {
+        if (Number.isFinite(vals[i])) pts.push({ time: trend.value[i].time, value: vals[i] })
+      }
+      if (!pts.length) return
+      const line = chart.addSeries(LineSeriesDef, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 2)
+      line.setData(pts)
+      track(line)
+    }
+    tLine(tm.dif, '#f2a900')
+    tLine(tm.dea, '#9b59b6')
+    const tHist = chart.addSeries(HistogramSeriesDef, {}, 2)
+    tHist.setData(trend.value.map((p, i) => ({
+      time: p.time, value: Number.isFinite(tm.hist[i]) ? tm.hist[i] : 0,
+      color: tm.hist[i] >= 0 ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
+    })))
+    track(tHist)
+    setPaneStretch()
     chart.timeScale().fitContent()
+    // 价格轴范围锁定放最后(series 就位后 setVisibleRange 才生效, 否则被 addSeries 数据范围覆盖):
+    // 右轴 跌停价~涨停价(价格) / 左轴 跌停%~涨停%(百分比) — 分时最高最低固定为当日涨跌停
+    if (typeof upP === 'number' && typeof downP === 'number' && upP > downP) {
+      const rs = chart.priceScale('right')
+      rs.applyOptions({ autoScale: false })
+      rs.setVisibleRange({ from: downP, to: upP })
+      if (typeof prevClose === 'number' && prevClose > 0) {
+        const ls = chart.priceScale('left')
+        ls.applyOptions({ autoScale: false })
+        ls.setVisibleRange({
+          from: +(((downP - prevClose) / prevClose) * 100).toFixed(2),
+          to: +(((upP - prevClose) / prevClose) * 100).toFixed(2),
+        })
+      }
+    }
   } else {
     if (!kline.value.length) return
+    // K 线: 恢复时间轴可移动/缩放 + Y 轴自动 + 隐藏左轴(分时锁定设置不影响 K 线)
+    chart.timeScale().applyOptions({ fixLeftEdge: false, fixRightEdge: false })
+    chart.priceScale('right').applyOptions({ autoScale: true })
+    chart.applyOptions({ leftPriceScale: { visible: false } })
     computeIndicators()
     // pane0 蜡烛
     const candle = chart.addSeries(CandlestickSeriesDef, {
@@ -386,11 +475,17 @@ function renderSeries() {
     const markersAll = []
     if (chan.value) addChanMarkers(markersAll)
     if (wave.value) addWaveMarkers(markersAll)
-    if (markersAll.length) markerPlugins.push(createSeriesMarkersFn(candle, markersAll))
-    // 波浪判定提示(无法判定时明示, 始终标注参考)
-    waveNote.value = indCache.waves.status === 'ok'
+    if (markersAll.length) {
+      // v5: createSeriesMarkers 创建即自动挂载到 series(detach 用于移除), 只需记录插件供清理
+      markerPlugins.push(createSeriesMarkersFn(candle, markersAll))
+    }
+    // 波浪判定提示(无法判定时明示, 始终标注参考): ok=完整5+3, ok5=5浪推动(调整未确认)
+    const ws = indCache.waves.status
+    waveNote.value = ws === 'ok'
       ? `波浪:${indCache.waves.dir === 1 ? '上升' : '下跌'}推动 5浪+ABC 已识别(参考)`
-      : '波浪:无法判定(参考)'
+      : ws === 'ok5'
+        ? `波浪:${indCache.waves.dir === 1 ? '上升' : '下跌'}推动 5浪已识别, 调整浪未确认(参考)`
+        : '波浪:无法判定(参考)'
     // 成交量 + 副屏指标
     addVolumePane()
     addSubIndicator()
@@ -401,7 +496,7 @@ function renderSeries() {
     const vis = Math.min(n, max)
     if (vis > 0) chart.timeScale().setVisibleLogicalRange({ from: n - vis, to: n - 1 })
   }
-  renderLastLegend()
+  crossInfo.value = null   // 重绘后无光标 → 16 格恢复当日实时
 }
 
 async function loadChart() {
@@ -413,25 +508,220 @@ async function loadChart() {
 }
 
 watch([view, adjust], () => { loadChart() })
+// 行情异步到达后重绘: 左轴%/分时Y轴锁定依赖 prevClose/upPx/downPx, 首帧 renderSeries 时 quote 可能未就绪
+watch(quote, () => { if (chart) renderSeries() })
 // 指标/叠加/缠论/波浪切换只重绘, 不重新拉数据
 watch([subInd, chan, wave, () => overlays.ma, () => overlays.boll], () => {
   if (chart) renderSeries()
 })
+// 下拉刷新: 仅当前激活页面响应(usePullRefresh 按激活态过滤)
+usePullRefresh(() => {
+  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadInfo(true)
+})
+
 watch(code, () => {
   // 同一路由记录复用组件实例: 切 code 先清空旧数据并销毁旧图表, 否则残留上一只股票的行情/图表
   quote.value = null
   kline.value = []
   trend.value = []
   indCache = null
+  boards.value = null
+  limitReason.value = null
+  moreTab.value = 'info'
+  infoList.value = []
+  f10Company.value = null
+  f10Finance.value = null
+  f10Holders.value = null
+  f10Valuation.value = []
   if (chart) { chart.remove(); chart = null; series = []; markerPlugins = [] }
   loadQuote()
   loadChart()
+  loadBoards()
+  loadLimit()
+  loadMainFlow()
+  loadInfo()
 })
 
-onMounted(() => { loadQuote(); loadChart() })
+// ── 板块胶囊(开盘啦 GetFeaturedSection) ──
+async function loadBoards(silent = false) {
+  try {
+    const res = await fetchBoards(code.value, silent)
+    if (res) boards.value = res
+  } catch (e) { /* 板块失败不阻塞 */ }
+  boardsLoading.value = false
+}
+
+// ── 涨停原因(GetDayZhangTing, 仅当日涨停显示) ──
+async function loadLimit(silent = false) {
+  try {
+    const res = await fetchLimitReason(code.value, silent)
+    if (res !== undefined) limitReason.value = res
+  } catch (e) { /* 非涨停或失败: 隐藏 */ }
+}
+
+// ── 主力净流入(精确主力口径 StockDPRealData, 15s 轮询) ──
+async function loadMainFlow(silent = false) {
+  try {
+    const res = await fetchMainFlow(code.value, silent)
+    if (res && quote.value) quote.value.mainFlowYi = res.zlJe / 1e8
+  } catch (e) { /* 失败保留旧值 */ }
+}
+
+// ── 资讯 tab: 新闻|研报|公告 列表 + 正文懒加载 ──
+async function loadInfo(reset = true) {
+  if (reset) { infoList.value = []; infoPage.value = 0; infoHasMore.value = false }
+  infoLoading.value = true
+  infoError.value = false
+  try {
+    const rows = await fetchInfoList(code.value, infoType.value, infoPage.value)
+    if (!rows) throw new Error('empty')
+    infoList.value = reset ? rows : [...infoList.value, ...rows]
+    infoHasMore.value = rows.length >= 34
+  } catch (e) {
+    if (!infoList.value.length) infoError.value = true
+  } finally { infoLoading.value = false }
+}
+function switchInfo(t) { infoType.value = t; loadInfo(true) }
+async function loadMoreInfo() { infoPage.value += 1; loadInfo(false) }
+// 资讯行 → 跳转独立详情页(新闻/研报/公告共用 /info/:code/:iid); 标题经 sessionStorage 传递
+function goInfo(it) {
+  try { sessionStorage.setItem('info_title_' + it.iid, it.title) } catch (e) { /* 隐私模式忽略 */ }
+  router.push({ path: `/info/${code.value}/${it.iid}`, query: { type: infoType.value, name: qname.value } })
+}
+
+// ── 基本面 tab: 公司|财务|股东|估值(每 code 缓存一次) ──
+async function loadF10() {
+  f10Loading.value = true
+  f10Error.value = ''
+  try {
+    const c = code.value
+    if (f10Type.value === 'company') {
+      if (!f10Company.value) f10Company.value = await fetchF10Company(c)
+    } else if (f10Type.value === 'finance') {
+      if (!f10Finance.value) f10Finance.value = await fetchF10Finance(c)
+    } else if (f10Type.value === 'holders') {
+      if (!f10Holders.value) f10Holders.value = await fetchF10Shareholders(c)
+    } else {
+      if (!f10Valuation.value.length) f10Valuation.value = (await fetchF10Valuation(c)) || []
+    }
+  } catch (e) { f10Error.value = '加载失败' }
+  finally { f10Loading.value = false }
+}
+function switchF10(t) { f10Type.value = t; loadF10() }
+function toggleMore(tab) {
+  moreTab.value = moreTab.value === tab ? null : tab
+  if (moreTab.value === 'info') loadInfo(true)
+  else if (moreTab.value === 'f10') loadF10()
+}
+
+// ── F10 派生数据 ──
+const mainFlowText = computed(() => {
+  const v = quote.value?.mainFlowYi
+  return (typeof v === 'number' && isFinite(v)) ? v.toFixed(2) + '亿' : '—'
+})
+const shownBoards = computed(() => (boardsMore.value ? boards.value : (boards.value || []).slice(0, 12)))
+const f10CpRows = computed(() => {
+  const biz = f10Company.value?.biz
+  if (!biz || !Array.isArray(biz.cp) || !biz.cp.length) return { date: '', rows: [] }
+  const rows = (biz.cp[0] || []).map(r => ({ name: r[0], amount: r[1], ratio: r[2], margin: r[3] }))
+  return { date: (biz.cpDate || [])[0] || '', rows }
+})
+const f10FinanceRows = computed(() => {
+  const s = f10Finance.value
+  if (!s) return []
+  return Object.entries(s).map(([label, arr]) => {
+    const y = arr[arr.length - 1] || {}
+    const q = (y.quarter || []).slice(-1)[0] || {}
+    return { label, yname: y.name || '', yval: y.value, ytb: y.tb, qname: q.name || '', qval: q.value, qtb: q.tb }
+  })
+})
+const MONEY_KEYS = ['营业收入', '归母净利润', '扣非净利润', '经营现金流']
+function fmtFin(v, label) {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = parseFloat(v)
+  if (!isFinite(n)) return String(v)
+  if (MONEY_KEYS.includes(label)) {
+    if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(2) + '亿'
+    if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(1) + '万'
+    return String(Math.round(n))
+  }
+  return n.toFixed(2) + '%'
+}
+function fmtTb(v) {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = parseFloat(v)
+  return isFinite(n) ? (n >= 0 ? '+' : '') + n.toFixed(2) + '%' : String(v)
+}
+// 估值 PE 内联 SVG 折线(最近 ~120 点, 340×120 视口)
+const pePoints = computed(() => {
+  const pts = (f10Valuation.value || []).slice(-120)
+  if (pts.length < 2) return ''
+  const vals = pts.map(p => p.pe).filter(v => typeof v === 'number' && isFinite(v))
+  if (!vals.length) return ''
+  const min = Math.min(...vals), max = Math.max(...vals)
+  const range = (max - min) || 1
+  return pts.map((p, i) => `${(i / (pts.length - 1) * 340).toFixed(1)},${(110 - (p.pe - min) / range * 100).toFixed(1)}`).join(' ')
+})
+const peStats = computed(() => {
+  const pts = (f10Valuation.value || []).slice(-120).filter(p => typeof p.pe === 'number' && isFinite(p.pe))
+  if (!pts.length) return { last: '—', max: '—', min: '—' }
+  return { last: pts[pts.length - 1].pe.toFixed(2), max: Math.max(...pts.map(p => p.pe)).toFixed(2), min: Math.min(...pts.map(p => p.pe)).toFixed(2) }
+})
+
+// ── 导航/工具 ──
+function goBoard(bkCode, name) { router.push({ path: '/board/' + bkCode, query: { name } }) }
+function firstLine(s) { if (!s) return ''; const i = s.indexOf('\n'); return i > 0 ? s.slice(0, i) : s }
+function shortDate(s) { return s ? String(s).slice(0, 10) : '' }
+
+// ── 盘中轮询: 5s 报价 / 15s 主力+图表 / 30s 板块+涨停原因; 全部 silent, 仅交易时段 ──
+let timers = {}
+function startTimers() {
+  if (Object.keys(timers).length) return
+  if (!isTradingTime()) return
+  timers.quote = setInterval(() => tick(() => loadQuote(true)), 5000)
+  timers.mainFlow = setInterval(() => tick(() => loadMainFlow(true)), 15000)
+  timers.chart = setInterval(() => tick(refreshChartSilent), 15000)
+  timers.board = setInterval(() => tick(() => loadBoards(true)), 30000)
+  timers.limit = setInterval(() => tick(() => loadLimit(true)), 30000)
+}
+function stopTimers() { for (const k in timers) clearInterval(timers[k]); timers = {} }
+function tick(fn) { if (!isTradingTime()) { stopTimers(); return } fn() }
+async function refreshChartSilent() {
+  if (view.value === 'trend') await loadTrend(true)
+  else await loadKline(view.value, adjust.value, true)
+  if (chart) renderSeries()
+}
+function onVisibility() {
+  if (document.hidden) { stopTimers(); return }
+  if (!isTradingTime()) return
+  startTimers()
+  loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true)
+}
+
+// KeepAlive 组件首次挂载时 onMounted+onActivated 双触发 → 加载只在 onActivated 做(inited 分支)
+let inited = false
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibility)
+})
+
+// KeepAlive: 详情→资讯详情→返回时组件复用, 滚动位置保留; 切走停轮询, 切回恢复+静默刷新
+onActivated(() => {
+  if (!inited) {
+    inited = true
+    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadInfo()
+  } else if (isTradingTime()) {
+    loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true)
+    if (view.value === 'trend') loadTrend(true)
+    if (chart) renderSeries()
+  }
+  startTimers()
+})
+onDeactivated(() => { stopTimers() })
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
+  document.removeEventListener('visibilitychange', onVisibility)
+  stopTimers()
   if (chart) { chart.remove(); chart = null }
 })
 </script>
@@ -452,26 +742,35 @@ onUnmounted(() => {
       <div v-if="loading.quote" class="sd-loading">行情加载中…</div>
       <template v-else-if="quote">
         <div class="sd-price-row">
-          <span class="sd-price" :style="{ color: upColor }">{{ fmt(quote.price) }}</span>
-          <span class="sd-chg" :style="{ color: upColor }">{{ pct(quote.changePct) }}</span>
-          <span class="sd-chg" :style="{ color: upColor }">{{ quote.change !== undefined && quote.change !== null ? (quote.change >= 0 ? '+' : '') + fmt(quote.change) : '' }}</span>
+          <span class="sd-price" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ fmt(crossInfo ? crossInfo.close : quote.price) }}</span>
+          <span class="sd-chg" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ pct(crossInfo ? crossInfo.chgPct : quote.changePct) }}</span>
+          <span class="sd-chg" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ crossInfo ? (crossInfo.chg >= 0 ? '+' : '') + fmt(crossInfo.chg) : (quote.change !== undefined && quote.change !== null ? (quote.change >= 0 ? '+' : '') + fmt(quote.change) : '') }}</span>
         </div>
         <div class="sd-grid">
-          <div class="sd-cell"><span class="lbl">今开</span><span class="val">{{ fmt(quote.open) }}</span></div>
-          <div class="sd-cell"><span class="lbl">最高</span><span class="val">{{ fmt(quote.high) }}</span></div>
-          <div class="sd-cell"><span class="lbl">最低</span><span class="val">{{ fmt(quote.low) }}</span></div>
-          <div class="sd-cell"><span class="lbl">昨收</span><span class="val">{{ fmt(quote.prevClose) }}</span></div>
-          <div class="sd-cell"><span class="lbl">成交量</span><span class="val">{{ wan(quote.volume) }}手</span></div>
-          <div class="sd-cell"><span class="lbl">成交额</span><span class="val">{{ wan(quote.amount) }}</span></div>
-          <div class="sd-cell"><span class="lbl">换手率</span><span class="val">{{ quote.turnover !== undefined && quote.turnover !== null ? quote.turnover + '%' : '—' }}</span></div>
-          <div class="sd-cell"><span class="lbl">PE(TTM)</span><span class="val">{{ fmt(quote.pe) }}</span></div>
-          <div class="sd-cell"><span class="lbl">PB</span><span class="val">{{ fmt(quote.pb) }}</span></div>
-          <div class="sd-cell"><span class="lbl">总市值</span><span class="val">{{ wan(quote.totalCap) }}</span></div>
-          <div class="sd-cell"><span class="lbl">流通市值</span><span class="val">{{ wan(quote.floatCap) }}</span></div>
+          <!-- L2 短线核心(正常字号): 开盘四价 + 量能四指标; crossInfo=光标处 K线数据(切日期时联动), null=当日实时 -->
+          <div class="sd-cell"><span class="lbl">今开</span><span class="val">{{ fmt(crossInfo ? crossInfo.open : quote.open) }}</span></div>
+          <div class="sd-cell"><span class="lbl">最高</span><span class="val">{{ fmt(crossInfo ? crossInfo.high : quote.high) }}</span></div>
+          <div class="sd-cell"><span class="lbl">最低</span><span class="val">{{ fmt(crossInfo ? crossInfo.low : quote.low) }}</span></div>
+          <div class="sd-cell"><span class="lbl">昨收</span><span class="val">{{ fmt(crossInfo ? crossInfo.prevClose : quote.prevClose) }}</span></div>
+          <div class="sd-cell"><span class="lbl">量比</span><span class="val">{{ crossInfo ? '—' : fmt(quote.volumeRatio) }}</span></div>
+          <div class="sd-cell"><span class="lbl">换手率</span><span class="val">{{ crossInfo ? '—' : (quote.turnover !== undefined && quote.turnover !== null ? fmt(quote.turnover) + '%' : '—') }}</span></div>
+          <div class="sd-cell"><span class="lbl">成交额</span><span class="val">{{ wan(crossInfo ? crossInfo.amount : quote.amount) }}</span></div>
           <div class="sd-cell">
             <span class="lbl">主力净流入</span>
-            <span class="val" :style="{ color: quote.mainFlowYi !== null && quote.mainFlowYi >= 0 ? '#e74c3c' : '#27ae60' }">{{ quote.mainFlowYi !== null ? quote.mainFlowYi + '亿' : '—' }}</span>
+            <span class="val" :style="{ color: crossInfo || quote.mainFlowYi === null ? '#999' : (quote.mainFlowYi >= 0 ? '#e74c3c' : '#27ae60') }">{{ crossInfo ? '—' : mainFlowText }}</span>
           </div>
+        </div>
+        <!-- L3 背景参考(小字 .minor)折叠: 估值市值 + 涨跌停价/均价 -->
+        <button class="sd-grid-more" @click="gridMore = !gridMore">更多指标 {{ gridMore ? '▴' : '▾' }}</button>
+        <div v-if="gridMore" class="sd-grid">
+          <div class="sd-cell minor"><span class="lbl">振幅</span><span class="val">{{ crossInfo ? '—' : (quote.amplitude !== undefined && quote.amplitude !== null ? fmt(quote.amplitude) + '%' : '—') }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">PE(TTM)</span><span class="val">{{ fmt(quote.pe) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">PB</span><span class="val">{{ fmt(quote.pb) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">总市值</span><span class="val">{{ wan(quote.totalCap) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">流通市值</span><span class="val">{{ wan(quote.floatCap) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">涨停价</span><span class="val">{{ fmt(quote.upPx) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">跌停价</span><span class="val">{{ fmt(quote.downPx) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">均价</span><span class="val">{{ fmt(quote.avgPx) }}</span></div>
         </div>
       </template>
       <div v-else class="sd-error">
@@ -486,20 +785,16 @@ onUnmounted(() => {
         <div class="sd-tabs">
           <button v-for="t in views" :key="t.key" :class="['sd-tab', { on: view === t.key }]" @click="view = t.key">{{ t.label }}</button>
         </div>
-        <div v-if="showAdjust" class="sd-adjust">
-          <button :class="['sd-tab', 'small', { on: adjust === 'qfq' }]" @click="adjust = 'qfq'">前复权</button>
-          <button :class="['sd-tab', 'small', { on: adjust === '' }]" @click="adjust = ''">不复权</button>
-        </div>
       </div>
-      <!-- 缠论/波浪前置, 然后主图叠加 + 副屏指标切换(K线视图) -->
+      <!-- 指标切换(K线视图): MA/BOLL/缠/波 常显, 复权按钮同行 -->
       <div v-if="isKline" class="sd-inds">
-        <button :class="['sd-ibtn', 'chan', { on: chan }]" @click="chan = !chan">缠</button>
-        <button :class="['sd-ibtn', 'wave', { on: wave }]" @click="wave = !wave">波</button>
-        <span class="sd-isep"></span>
         <button :class="['sd-ibtn', { on: overlays.ma }]" @click="overlays.ma = !overlays.ma">MA</button>
         <button :class="['sd-ibtn', { on: overlays.boll }]" @click="overlays.boll = !overlays.boll">BOLL</button>
-        <span class="sd-isep"></span>
-        <button v-for="s in subInds" :key="s.key" :class="['sd-ibtn', { on: subInd === s.key }]" @click="subInd = s.key">{{ s.label }}</button>
+        <button :class="['sd-ibtn', 'chan', { on: chan }]" @click="chan = !chan">缠</button>
+        <button :class="['sd-ibtn', 'wave', { on: wave }]" @click="wave = !wave">波</button>
+        <span v-if="showAdjust" class="sd-isep"></span>
+        <button v-if="showAdjust" :class="['sd-ibtn', { on: adjust === 'qfq' }]" @click="adjust = 'qfq'">前复权</button>
+        <button v-if="showAdjust" :class="['sd-ibtn', { on: adjust === '' }]" @click="adjust = ''">不复权</button>
       </div>
       <div v-if="wave" class="sd-wave-note">{{ waveNote || '波浪:计算中…' }}</div>
       <div v-if="loading.chart && !kline.length && !trend.length" class="sd-loading">图表加载中…</div>
@@ -508,7 +803,134 @@ onUnmounted(() => {
         <button class="sd-retry" @click="loadChart">重试</button>
       </div>
       <div v-else ref="chartEl" class="sd-chart" :class="{ kline: isKline }">
-        <div ref="legendEl" class="sd-legend"></div>
+        <!-- 副图指标切换: 定位在副图(pane 2)区域左上角的下拉按钮 -->
+        <select v-if="isKline" v-model="subInd" class="sd-subind-select" title="切换副图指标">
+          <option v-for="s in subInds" :key="s.key" :value="s.key">{{ s.label }}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 涨停原因(仅当日涨停显示: 现价≥涨停价; 开盘啦 GetDayZhangTing) -->
+    <div v-if="isLimitUp && limitReason" class="sd-limit">
+      <div class="sd-limit-head">
+        <strong class="sd-limit-title">📌 涨停原因</strong>
+        <button v-if="limitReason.reason && limitReason.reason.length > 60" class="sd-limit-toggle" @click="limitMore = !limitMore">{{ limitMore ? '收起 ▴' : '更多 ▾' }}</button>
+      </div>
+      <p class="sd-limit-text">{{ limitMore ? limitReason.reason : firstLine(limitReason.reason) }}</p>
+      <div v-if="limitReason.zsCodes && limitReason.zsCodes.length" class="sd-limit-codes">
+        <span v-for="c in limitReason.zsCodes" :key="c" class="sd-mini-chip" @click="goBoard(c, boardNameById[c] || c)">{{ boardNameById[c] || c }}</span>
+      </div>
+    </div>
+
+    <!-- 所属板块胶囊(开盘啦 GetFeaturedSection, 强度%红涨绿跌) -->
+    <div v-if="boards && boards.length" class="sd-boards">
+      <div class="sd-boards-head">
+        <strong class="sd-boards-title">所属板块 {{ boards.length }} 个</strong>
+        <button v-if="boards.length > 12" class="sd-boards-toggle" @click="boardsMore = !boardsMore">{{ boardsMore ? '收起 ▴' : '全部 ▾' }}</button>
+      </div>
+      <div class="sd-chips">
+        <div v-for="b in shownBoards" :key="b.code" class="sd-chip" :style="{ color: (typeof b.strength === 'number' ? b.strength : 0) >= 0 ? '#e74c3c' : '#27ae60' }" @click="goBoard(b.code, b.name)">
+          <span class="sd-chip-name">{{ b.name }}</span>
+          <span class="sd-chip-str">{{ typeof b.strength === 'number' ? (b.strength >= 0 ? '+' : '') + b.strength.toFixed(2) + '%' : '' }}</span>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="boardsLoading" class="sd-boards-loading">板块加载中…</div>
+
+    <!-- 底部 tab 区: 📰 资讯 | 🏢 基本面(默认收起, 点开才请求) -->
+    <div class="sd-more">
+      <div class="sd-more-tabs sd-tabs">
+        <button :class="['sd-tab', { on: moreTab === 'info' }]" @click="toggleMore('info')">📰 资讯</button>
+        <button :class="['sd-tab', { on: moreTab === 'f10' }]" @click="toggleMore('f10')">🏢 基本面</button>
+      </div>
+
+      <!-- 资讯: 新闻|研报|公告 + 正文展开 -->
+      <div v-if="moreTab === 'info'" class="sd-more-body">
+        <div class="sd-tabs sd-subtabs">
+          <button v-for="t in infoTypes" :key="t.type" :class="['sd-tab', 'small', { on: infoType === t.type }]" @click="switchInfo(t.type)">{{ t.label }}</button>
+        </div>
+        <div v-if="infoLoading && !infoList.length" class="sd-tip">资讯加载中…</div>
+        <div v-else-if="infoError && !infoList.length" class="sd-tip sd-tip-err">加载失败 <button class="sd-retry" @click="loadInfo(true)">重试</button></div>
+        <ul v-else-if="infoList.length" class="sd-info-list">
+          <li v-for="it in infoList" :key="it.iid" class="sd-info-item">
+            <div class="sd-info-line" @click="goInfo(it)">
+              <span class="sd-info-title">{{ it.title }}</span>
+              <span class="sd-info-date">{{ shortDate(it.date) }}</span>
+              <span class="sd-info-go">›</span>
+            </div>
+          </li>
+        </ul>
+        <button v-if="infoHasMore && infoList.length" class="sd-more-btn" @click="loadMoreInfo">加载更多</button>
+      </div>
+
+      <!-- 基本面: 公司|财务|股东|估值 -->
+      <div v-else-if="moreTab === 'f10'" class="sd-more-body">
+        <div class="sd-tabs sd-subtabs">
+          <button v-for="t in f10Types" :key="t.key" :class="['sd-tab', 'small', { on: f10Type === t.key }]" @click="switchF10(t.key)">{{ t.label }}</button>
+        </div>
+        <div v-if="f10Loading && !f10Company && !f10Finance && !f10Holders && !f10Valuation.length" class="sd-tip">加载中…</div>
+        <div v-else-if="f10Error && !f10Company && !f10Finance && !f10Holders && !f10Valuation.length" class="sd-tip sd-tip-err">{{ f10Error }} <button class="sd-retry" @click="loadF10">重试</button></div>
+        <template v-else-if="f10Type === 'company' && f10Company">
+          <div class="sd-f10">
+            <dl class="sd-f10-dl">
+              <div><dt>公司全称</dt><dd>{{ f10Company.info.name }}</dd></div>
+              <div><dt>董事长</dt><dd>{{ f10Company.info.chairman }}</dd></div>
+              <div><dt>董秘</dt><dd>{{ f10Company.info.secretary }}</dd></div>
+              <div><dt>主营</dt><dd>{{ f10Company.info.mainSale }}</dd></div>
+              <div><dt>控股股东</dt><dd>{{ f10Company.info.troHold }}</dd></div>
+              <div><dt>实控人</dt><dd>{{ f10Company.info.actHold }}</dd></div>
+              <div><dt>地址</dt><dd>{{ f10Company.info.address }}</dd></div>
+            </dl>
+            <div v-if="f10CpRows.rows.length" class="sd-f10-sec">主营构成 <span class="sd-f10-date">{{ f10CpRows.date }}</span></div>
+            <table v-if="f10CpRows.rows.length" class="sd-f10-tb">
+              <tr><th>产品</th><th>收入</th><th>占比</th><th>毛利率</th></tr>
+              <tr v-for="(r, i) in f10CpRows.rows" :key="i">
+                <td>{{ r.name }}</td>
+                <td>{{ r.amount }}</td>
+                <td>{{ r.ratio }}</td>
+                <td>{{ r.margin }}</td>
+              </tr>
+            </table>
+          </div>
+        </template>
+        <template v-else-if="f10Type === 'finance' && f10FinanceRows.length">
+          <table class="sd-f10-tb">
+            <tr><th>指标</th><th>{{ f10FinanceRows[0].yname }}</th><th>同比</th><th>{{ f10FinanceRows[0].qname }}</th></tr>
+            <tr v-for="r in f10FinanceRows" :key="r.label">
+              <td>{{ r.label }}</td>
+              <td>{{ fmtFin(r.yval, r.label) }}</td>
+              <td class="sd-num">{{ fmtTb(r.ytb) }}</td>
+              <td>{{ fmtFin(r.qval, r.label) }}</td>
+            </tr>
+          </table>
+        </template>
+        <template v-else-if="f10Type === 'holders' && f10Holders">
+          <div class="sd-f10">
+            <div class="sd-f10-sec">股东户数 <span class="sd-f10-date">{{ f10Holders.counts[0].day }}</span>：{{ f10Holders.counts[0].count }} 户
+              <span class="sd-f10-change">{{ f10Holders.countChange }}</span>
+            </div>
+            <div class="sd-f10-sec">十大股东 <span class="sd-f10-date">{{ f10Holders.date }}</span></div>
+            <table class="sd-f10-tb">
+              <tr><th>股东</th><th>比例</th><th>持股(万)</th><th>增减</th></tr>
+              <tr v-for="(h, i) in f10Holders.top10" :key="i">
+                <td>{{ h.name }}</td>
+                <td>{{ h.ratio }}</td>
+                <td>{{ h.shares }}</td>
+                <td>{{ h.change }}</td>
+              </tr>
+            </table>
+          </div>
+        </template>
+        <template v-else-if="f10Type === 'valuation' && f10Valuation.length">
+          <div class="sd-f10">
+            <div class="sd-f10-sec">PE(TTM) 近一年走势</div>
+            <svg viewBox="0 0 340 120" preserveAspectRatio="none" class="sd-svg">
+              <line v-for="y in [30, 60, 90]" :key="y" x1="0" :x2="340" :y1="y" :y2="y" stroke="#f0f0f0" stroke-width="1"/>
+              <polyline :points="pePoints" fill="none" stroke="#2980b9" stroke-width="1.5"/>
+            </svg>
+            <div class="sd-svg-scale"><span>最新 {{ peStats.last }}</span><span>高 {{ peStats.max }} / 低 {{ peStats.min }}</span></div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -517,22 +939,24 @@ onUnmounted(() => {
 <style scoped>
 /* 全宽页面: main-content.stock-page 已去左右留白, 内部区块自行控制 padding */
 .sd-page { padding: 4px 0 12px; }
-.sd-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 0 14px; flex-wrap: wrap; }
-.sd-info { margin-bottom: 14px; padding: 0 14px; }
+/* 基本信息: 总高控制在约 1/4 屏(用户要求) — 名称行+价格行+16格两段式紧凑排布 */
+.sd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 0 12px; flex-wrap: wrap; }
+.sd-info { margin-bottom: 8px; padding: 0 12px; }
 .sd-chart-block { margin-bottom: 14px; }
-.sd-name { display: flex; align-items: baseline; gap: 8px; }
-.sd-title { font-size: 20px; font-weight: 600; color: #111; }
-.sd-code { color: #999; font-size: 13px; }
-.sd-h5 { margin-left: auto; border: 1px solid #2980b9; color: #2980b9; background: #fff; font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; }
+.sd-name { display: flex; align-items: baseline; gap: 6px; }
+.sd-title { font-size: 16px; font-weight: 600; color: #111; }
+.sd-code { color: #999; font-size: 11px; }
+.sd-h5 { margin-left: auto; border: 1px solid #2980b9; color: #2980b9; background: #fff; font-size: 11px; padding: 3px 9px; border-radius: 7px; cursor: pointer; }
 
-.sd-price-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
-.sd-price { font-size: 30px; font-weight: 700; }
-.sd-chg { font-size: 16px; font-weight: 600; }
+.sd-price-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.sd-price { font-size: 20px; font-weight: 700; }
+.sd-chg { font-size: 13px; font-weight: 600; }
 
-.sd-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 12px; }
-.sd-cell { display: flex; flex-direction: column; gap: 2px; }
-.sd-cell .lbl { font-size: 11px; color: #999; }
-.sd-cell .val { font-size: 13px; color: #333; font-weight: 500; }
+.sd-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 10px; }
+.sd-cell { display: flex; flex-direction: column; gap: 1px; }
+.sd-cell .lbl { font-size: 9px; color: #999; }
+.sd-cell .val { font-size: 11px; color: #333; font-weight: 500; }
+.sd-grid-more { border: 1px solid #eceff3; background: #fff; color: #2980b9; font-size: 11px; padding: 4px 0; border-radius: 6px; cursor: pointer; margin-top: 6px; width: 100%; }
 
 .sd-chart-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 0 14px; flex-wrap: wrap; }
 .sd-tabs { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -550,20 +974,93 @@ onUnmounted(() => {
 .sd-wave-note { font-size: 11px; color: #d35400; margin-bottom: 6px; padding: 0 14px; }
 .sd-isep { width: 1px; background: #e5e5e5; margin: 0 2px; flex: none; }
 
-.sd-chart { position: relative; width: 100%; height: 320px; }
-.sd-chart.kline { height: 480px; }
-.sd-legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 11px; color: #666; pointer-events: none; white-space: nowrap; max-width: 96%; overflow: hidden; text-overflow: ellipsis; background: rgba(255,255,255,.85); border-radius: 6px; padding: 3px 8px; line-height: 1.8; }
+/* touch-action: pan-y !important — 覆盖 lightweight-charts 内联 none: 垂直手势交还页面滚动(上下滑=滚页面), 水平拖动/双指缩放仍归图表
+   ⚠️ 外层高度必须与 renderSeries 内联高度一致(分时/K线均为 360), 否则内层 canvas 溢出遮住下方涨停原因块 */
+.sd-chart { position: relative; width: 100%; height: 360px; touch-action: pan-y !important; }
+.sd-chart.kline { height: 360px; }
+/* 副图指标下拉: 定位在副图(pane 2)区域左上角, 半透明底避免挡K线 */
+.sd-subind-select {
+  position: absolute;
+  left: 8px;
+  bottom: 30px;
+  z-index: 9;
+  font-size: 11px;
+  color: #555;
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid #e0e3e8;
+  border-radius: 6px;
+  padding: 2px 4px;
+  max-width: 96px;
+}
 .sd-loading { padding: 40px 0; text-align: center; color: #999; font-size: 13px; }
 .sd-error { padding: 40px 0; text-align: center; color: #c0392b; font-size: 13px; }
 .sd-retry { margin-left: 8px; border: 1px solid #2980b9; background: #fff; color: #2980b9; font-size: 12px; padding: 4px 12px; border-radius: 8px; cursor: pointer; }
 
+/* L3 背景参考格: 小字弱化(估值市值/涨跌停价/均价) */
+.sd-cell.minor .lbl { font-size: 9px; }
+.sd-cell.minor .val { font-size: 10px; color: #666; }
+
+/* ── 涨停原因块 ── */
+.sd-limit { margin: 0 14px 14px; background: #fff7f5; border: 1px solid #f5dcd5; border-radius: 10px; padding: 10px 12px; }
+.sd-limit-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sd-limit-title { font-size: 13px; color: #c0392b; }
+.sd-limit-toggle { margin-left: auto; border: none; background: none; color: #2980b9; font-size: 12px; cursor: pointer; flex: none; }
+.sd-limit-text { font-size: 12px; color: #555; line-height: 1.7; margin: 0 0 8px; }
+.sd-limit-codes { display: flex; flex-wrap: wrap; gap: 6px; }
+.sd-mini-chip { background: #fdecea; color: #c0392b; font-size: 11px; padding: 2px 8px; border-radius: 20px; cursor: pointer; }
+
+/* ── 所属板块胶囊 ── */
+.sd-boards { margin: 0 14px 14px; }
+.sd-boards-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sd-boards-title { font-size: 13px; color: #333; }
+.sd-boards-toggle { margin-left: auto; border: none; background: none; color: #2980b9; font-size: 12px; cursor: pointer; flex: none; }
+.sd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.sd-chip { display: flex; align-items: center; gap: 5px; background: #f5f7fa; border: 1px solid #eceff3; border-radius: 16px; padding: 4px 10px; cursor: pointer; }
+.sd-chip-name { font-size: 12px; }
+.sd-chip-str { font-size: 11px; font-weight: 600; }
+.sd-boards-loading { padding: 10px 0; text-align: center; color: #999; font-size: 12px; }
+
+/* ── 底部 资讯|基本面 tab 区 ── */
+.sd-more { margin: 0 14px; }
+.sd-more-tabs { padding: 8px 0; }
+.sd-subtabs { margin-bottom: 10px; }
+/* min-height: tab/子tab 切换时内容高度突变导致页面跳动, 保底高度吸收加载态 */
+.sd-more-body { padding: 0 2px 10px; min-height: 200px; }
+.sd-tip { padding: 20px 0; text-align: center; color: #999; font-size: 12px; }
+.sd-tip-err { color: #c0392b; }
+.sd-info-list { list-style: none; margin: 0; padding: 0; }
+.sd-info-item { border-bottom: 1px solid #f0f0f0; }
+.sd-info-item:last-child { border-bottom: none; }
+.sd-info-line { display: flex; align-items: baseline; gap: 8px; padding: 9px 2px; cursor: pointer; }
+.sd-info-title { font-size: 13px; color: #333; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-info-date { font-size: 11px; color: #999; flex: none; }
+.sd-info-go { color: #ccc; font-size: 14px; flex: none; }
+.sd-more-btn { display: block; width: 100%; border: 1px solid #2980b9; background: #fff; color: #2980b9; font-size: 12px; padding: 7px 0; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+
+/* ── 基本面 ── */
+.sd-f10 { }
+.sd-f10-dl { margin: 0; }
+.sd-f10-dl > div { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
+.sd-f10-dl dt { color: #999; flex: none; width: 64px; }
+.sd-f10-dl dd { margin: 0; color: #333; flex: 1; }
+.sd-f10-sec { font-size: 12px; color: #333; font-weight: 600; margin: 12px 0 6px; }
+.sd-f10-date { color: #999; font-weight: 400; }
+.sd-f10-change { color: #c0392b; font-weight: 400; }
+.sd-f10-tb { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sd-f10-tb th { text-align: left; color: #999; font-weight: 400; padding: 5px 4px; border-bottom: 1px solid #eceff3; white-space: nowrap; }
+.sd-f10-tb td { padding: 6px 4px; color: #333; border-bottom: 1px solid #f5f5f5; }
+.sd-f10-tb td.sd-num { color: #555; }
+.sd-svg { width: 100%; height: 120px; display: block; }
+.sd-svg-scale { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+
 @media (max-width: 480px) {
-  .sd-grid { grid-template-columns: repeat(3, 1fr); }
+  .sd-limit, .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }
 }
 /* 桌面端: 内层留白与其它页 main-content 水平 padding(28px) 对齐 */
 @media (min-width: 768px) {
   .sd-page { padding: 8px 0 20px; }
   .sd-head, .sd-chart-head, .sd-inds, .sd-wave-note, .sd-info { padding-left: 28px; padding-right: 28px; }
+  .sd-limit, .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
   .sd-info { margin-bottom: 18px; }
 }
 </style>

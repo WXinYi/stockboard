@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -235,6 +236,14 @@ def e_confirm(candidates_path: Path):
     if not rows:
         print("⚠️ 无可用分时数据, 跳过推送")
         return []
+    text = _confirm_text(rows)
+    resp = DingTalk().send_markdown("竞价开盘确认", text)
+    print(f"📣 钉钉推送: {resp}")
+    return rows
+
+
+def _confirm_text(rows: List[Dict]) -> str:
+    """E 层确认消息文本: 开盘价较竞价涨跌 + 首分钟量放量/缩量倍数"""
     ok = [r for r in rows if r["E1"] or r["E2"]]
     text = [
         f"## ⚡ 开盘确认 09:31",
@@ -243,74 +252,103 @@ def e_confirm(candidates_path: Path):
     ]
     for r in rows[:10]:
         mark = "🟢" if r["E1"] or r["E2"] else "⚪"
-        marks = ("E1量" if r["E1"] else "") + ("E2价" if r["E2"] else "") or "走弱"
-        text.append(f"- {mark} **{r['name']}**({r['code']}) 开盘{r['first_px']:.2f} 首分钟量{r['first_vol']:.0f} [{marks}]")
+        line = f"- {mark} {_stock_link(r['name'], r['code'])} 开盘{r['first_px']:.2f}"
+        if r["bid_px"]:
+            chg = (r["first_px"] - r["bid_px"]) / r["bid_px"] * 100
+            line += f" (较竞价{chg:+.2f}%)"
+        text.append(line)
+        vol = f"首分钟量 {r['first_vol']:.0f}手"
+        if r["bid_vol"]:
+            ratio = r["first_vol"] / r["bid_vol"]
+            verb = "放量" if ratio >= 1 else "缩量"
+            vol += f" (竞价末 {r['bid_vol']:.0f}手, {verb}{ratio:.1f}倍)"
+        text.append("    " + vol)
     text.append("")
     text.append("📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)")
-    resp = DingTalk().send_markdown("竞价开盘确认", "\n".join(text))
-    print(f"📣 钉钉推送: {resp}")
-    return rows
+    return "\n".join(text)
 
 
 # =============================================================================
 # 钉钉消息
 # =============================================================================
 
+def _stock_link(name: str, code: str) -> str:
+    """钉钉 markdown 链接 → 前端股票 H5 详情页(手机场景, ?name 显示股票名)"""
+    url = f"https://WXinYi.github.io/stockboard/#/stock/{code}/h5?name={quote(name)}"
+    return f"[{name}]({url})"
+
+
 def build_message(date_str, result, boards, crawl_time) -> str:
     env = result["env"]
     e = env["data"]
-    env_parts = [f"情绪{e['strong']}", f"连板{e['lbgd']}"]
-    if e["capacity_ratio"] is not None:
-        env_parts.append(f"量能比{e['capacity_ratio']:.2f}")
-    if e["red_ratio"] is not None:
-        env_parts.append(f"红盘占比{e['red_ratio']:.0%}")
     lines = [
         f"## 🏆 竞价抢筹候选池 {crawl_time}",
-        f"> 日期: {date_str} | 环境: {'✅ 正常' if env['pass'] else '❌ 空仓'}",
-        "",
-        f"**环境**: {' '.join(env_parts)}",
+        f"> {date_str} · 大盘 {'✅ 可做' if env['pass'] else '❌ 空仓'}",
         "",
     ]
     if not env["pass"]:
         lines += ["**空仓原因**: " + "; ".join(env["reasons"]),
                   "", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
         return "\n".join(lines)
-    board_text = "、".join(f"{b['name']}({b['src']})" for b in boards[:6])
-    lines += [f"**强势板块**: {board_text or '无'}", "", "**🎯 核心候选**:", ""]
+    env_parts = [f"情绪{e['strong']}", f"连板{e['lbgd']}"]
+    if e["capacity_ratio"] is not None:
+        env_parts.append(f"量能比{e['capacity_ratio']:.2f}")
+    if e["red_ratio"] is not None:
+        env_parts.append(f"红盘占比{e['red_ratio']:.0%}")
+    lines.append(f"**环境**: {' · '.join(env_parts)}")
+    # src 信号来源 → 友好文字(L1=今日新增爆量, L2=昨日延续爆量)
+    src_text = lambda s: s.replace("爆量L1", "今日爆量").replace("爆量L2", "延续爆量")
+    board_text = "、".join(f"{b['name']}({src_text(b['src'])})" for b in boards[:6])
+    lines += ["", f"**🔥 强势板块**: {board_text or '无'}", ""]
     core = [c for c in result["candidates"] if c.get("tier") == "core"]
+    lines.append(f"**🎯 核心候选 {len(core[:3])} 只**:")
     for i, c in enumerate(core[:3], 1):
-        lines += _cand_line(i, c)
+        lines += _cand_line(i, c, "core")
     if not core:
         lines.append("   (无 — 竞价无真金白银抢筹, 观望)")
     watch = result.get("watch", [])
     if watch:
-        lines += ["", f"**👀 备选观察**:", ""]
+        lines += ["", f"**👀 备选观察 {len(watch[:5])} 只**:"]
         for i, c in enumerate(watch[:5], 1):
-            lines += _cand_line(i, c)
+            lines += _cand_line(i, c, "watch")
     lines += ["", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
     return "\n".join(lines)
 
 
-def _cand_line(i: int, c: Dict) -> List[str]:
-    """单只候选的消息行: 评分明细 + 因子 + 执行计划"""
+def _cand_line(i: int, c: Dict, kind: str = "core") -> List[str]:
+    """单只候选的消息行(亮点式): 名称(可点击) + 资金 + 核心附加亮点
+    kind=core: 名称/💰/✨ 3 行; kind=watch: 名称/💰 2 行(减少刷屏)"""
     f_ = c["factors"]
-    sub = c["sub"]
-    lines = [f"{i}. **{c['name']}**({c['code']}) 评分 {c['score']}/{c['max']} "
-             f"(资金{sub['S1资金']} 形态{sub['S2形态']} 共振{sub['S3共振']} "
-             f"身位{sub['S4身位']} 量比{sub['S5量比']} 基因{sub['S6基因']}) {c['gene']['reason']}"]
+    tags = []
+    if c["tag"] and "板" in c["tag"]:  # 只展示连板类标记(过滤流通市值等杂字段)
+        tags.append(c["tag"])
+    if c["boards"]:
+        tags.append("、".join(c["boards"][:2]))
+    tag_text = (" · " + " · ".join(tags)) if tags else ""
+    lines = [f"{i}. {_stock_link(c['name'], c['code'])} 评分{c['score']}/{c['max']}{tag_text}"]
     parts = []
     if f_["bid_pct"] is not None:
         parts.append(f"竞价{f_['bid_pct']:+.2f}%")
     if f_["bid_net"] is not None:
-        parts.append(f"净买{f_['bid_net'] / 1e4:.0f}万")
+        net = f_["bid_net"] / 1e4
+        parts.append(f"{'净买' if net >= 0 else '净卖'}{abs(net):.0f}万")
     if f_["vol_ratio"] is not None:
         parts.append(f"量比{f_['vol_ratio']:.2f}")
-    if c["tag"] and "板" in c["tag"]:  # 只展示连板类标记(过滤流通市值等杂字段)
-        parts.append(f"标记[{c['tag']}]")
-    if c["boards"]:
-        parts.append("板块:" + ",".join(c["boards"][:3]))
-    lines.append("   - " + " | ".join(parts))
-    lines.append("   - 💡 竞价价买入 → 冲高+5%止盈 / 跌破竞价价-2%止损")
+    lines.append("   💰 " + " · ".join(parts))
+    if kind == "core":
+        highlights = []
+        res = int(c.get("resonance") or 0)
+        if c["boards"] and res >= 2:
+            highlights.append(f"{c['boards'][0]}共振({res}票)")
+        gene = (c.get("gene") or {}).get("data") or {}
+        seal = gene.get("seal_pct")
+        if seal is not None:
+            if seal >= 70:
+                highlights.append(f"封板率{seal:.0f}% 基因优秀")
+            elif seal >= 50:
+                highlights.append(f"封板率{seal:.0f}% 基因尚可")
+        if highlights:
+            lines.append("   ✨ " + " · ".join(highlights))
     return lines
 
 

@@ -50,8 +50,9 @@ export function qqPrefix(code) {
 }
 
 // 东财单股行情 push2delay(fltt=2 返回小数价; f62=主力净流入亿, 单位存疑则兜底隐藏)
+// fields 追加 f50量比/f171振幅/f174-52周高/f175-52周低 (KPL 主源失败时兜底尽量全)
 export function emQuoteApi(code, fields) {
-  const f = fields || 'f43,f44,f45,f46,f47,f48,f57,f58,f60,f62,f116,f117,f162,f167,f168,f169,f170'
+  const f = fields || 'f43,f44,f45,f46,f47,f48,f50,f57,f58,f60,f62,f116,f117,f162,f167,f168,f169,f170,f171,f174,f175'
   return `https://push2delay.eastmoney.com/api/qt/stock/get?secid=${secid(code)}&fltt=2&invt=2&fields=${f}`
 }
 

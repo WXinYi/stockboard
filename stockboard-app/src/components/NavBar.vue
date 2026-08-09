@@ -3,10 +3,9 @@ import { useRoute } from 'vue-router'
 import { icons } from '../icons.js'
 
 const primary = [
-  { key: 'copy', label: '抄作业', icon: 'copy' },
+  { key: 'market', label: '盘面', icon: 'market' },
   { key: 'rankings', label: '排行', icon: 'rankings' },
   { key: 'stocks', label: '重仓共识', icon: 'stocks' },
-  { key: 'auction', label: '竞价', icon: 'auction' },
 ]
 const route = useRoute()
 

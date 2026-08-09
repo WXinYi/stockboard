@@ -375,11 +375,13 @@ def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict
                          stock_bids.get(code) if stock_bids else None,
                          r.get("boards") or [], gate_counts, r.get("tag") or "", gene)
         total = sc["score"]
+        # 板块共振票数(该股所属板块中过 B1 门槛的票数, 供推送亮点行展示)
+        resonance = max((gate_counts.get(b, 0) for b in (r.get("boards") or [])), default=0)
         item = {
             "code": code, "name": name, "score": total, "tier": None, "max": sc["max"],
             "factors": sc["factors"], "sub": sc["sub"], "gene": gene,
             "boards": r.get("boards") or [], "tag": r.get("tag") or "",
-            "missing": sc["missing"],
+            "missing": sc["missing"], "resonance": resonance,
         }
         # 资金必须净买(S1>0), 否则即使总分高也是假高开; 备选同样要求资金非负
         if total >= score_threshold and sc["sub"]["S1资金"] > 0:
