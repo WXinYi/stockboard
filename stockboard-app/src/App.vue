@@ -34,9 +34,12 @@ const pageTitles = {
 }
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
+  if (route.path.startsWith('/stock/')) return '股票详情'
   return pageTitles[route.path.slice(1)] || ''
 })
 const isPlayerDetail = computed(() => route.path.startsWith('/player/'))
+const isStockDetail = computed(() => route.path.startsWith('/stock/'))
+const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value)
 
 const refreshing = ref(false)
 
@@ -56,7 +59,7 @@ async function refreshData() {
 }
 
 // 修正 Task 5 的 loading gating：loading 是 ref；刷新期间不闪全屏 loading
-const initialLoading = computed(() => loading.value.core && !isPlayerDetail.value && !refreshing.value)
+const initialLoading = computed(() => loading.value.core && !isDetailPage.value && !refreshing.value)
 
 function goBack() {
   if (window.history.length > 2) router.back()
@@ -98,7 +101,7 @@ onMounted(async () => {
     <header class="header">
       <div class="header-row">
         <div class="header-left">
-          <button v-if="isPlayerDetail" class="back-btn" @click="goBack()">←</button>
+          <button v-if="isDetailPage" class="back-btn" @click="goBack()">←</button>
           <span class="header-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
@@ -113,13 +116,15 @@ onMounted(async () => {
       </div>
     </header>
 
-    <NavBar />
+    <!-- 非一级页面(详情/嵌套页)不展示底部导航 -->
+    <NavBar v-if="!isDetailPage" />
 
     <div v-if="updateAvailable" class="update-banner" @click="refreshData()">
       📊 数据已更新 · 点击刷新
     </div>
 
-    <main class="main-content">
+    <!-- detail-page: 无底部导航, 减少底部留白; stock-page: 股票详情全宽无左右留白 -->
+    <main class="main-content" :class="{ 'detail-page': isDetailPage, 'stock-page': isStockDetail }">
       <PullToRefresh :refreshing="refreshing" @refresh="refreshData()">
         <div v-if="initialLoading" class="loading-view">
           <div class="loading-spinner"></div>
@@ -127,7 +132,7 @@ onMounted(async () => {
           <p class="loading-sub">从服务器获取最新行情</p>
         </div>
         <router-view v-else v-slot="{ Component }">
-          <KeepAlive :exclude="['PlayerDetail']">
+          <KeepAlive :exclude="['PlayerDetail', 'StockDetailPage', 'StockH5Page']">
             <component :is="Component" />
           </KeepAlive>
         </router-view>
