@@ -38,6 +38,9 @@ uv.lock
 .env.local
 .env.*.local
 
+# Visual companion mockups
+.superpowers/
+
 # Project doc (local only)
 CLAUDE.md
 *.db-shm
