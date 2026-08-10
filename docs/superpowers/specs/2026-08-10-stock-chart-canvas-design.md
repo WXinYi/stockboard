@@ -74,8 +74,9 @@
 宿主 `computeIndicators()` 产出 `indCache`,目前结构(已确认):
 ```
 indCache = {
-  ma: {n:[...]}, boll: {up, mid, lo}, volma: {n:[...]},
-  macd: {dif, dea, hist}, kdj: {k, d, j}, rsi: {n:[...]}, wr: {n:[...]},
+  ma: {5:[...], 10:[...], 20:[...], 60:[...]}, boll: {up, mid, lo},
+  volma: {5:[...], 10:[...]}, macd: {dif, dea, hist}, kdj: {k, d, j},
+  rsi: {6:[...], 12:[...], 24:[...]}, wr: {10:[...], 6:[...]},
   fractals: [{i, type:1|-1}], bis: [{from:{i,type}, to:{i,type}}],
   zhongshu: [{zg, zd, from, to}], chanSignals: [{i, type:'1buy'|'2buy'|'3buy'|'1sell'|'2sell'|'3sell'}],
   waves: {status:'ok'|'ok5'|'unknown', waves:[{i, type, label}], dir},
@@ -282,8 +283,8 @@ K 线可见窗口。`count` = 可视 K 线数,`offset` = 右端在数据中的�
 |--------|------|------|
 | `macd` | DIF 线 `AVG`、DEA 线 `SIGNAL_PURPLE`、hist 柱红绿 | 柱宽同量柱;零轴网格 |
 | `kdj` | K 线 `AVG`、D 线 `SIGNAL_PURPLE`、J 线 `WAVE` | 波动大,J 线可出界,按 0~100 映射 |
-| `rsi` | RSI6 `AVG` / RSI12 `SIGNAL_PURPLE` / RSI24 `MA20`,0~100 映射,画 30/50/70 参考虚线 | `indCache.rsi.n` 结构 |
-| `wr` | WR 线 1~2 条,0~-100 反向(上方 0,下方 -100),画 -20/-80 参考虚线 | 反向轴 |
+| `rsi` | RSI6 `AVG` / RSI12 `SIGNAL_PURPLE` / RSI24 `MA20`,0~100 映射,画 30/50/70 参考虚线 | `indCache.rsi[6]/[12]/[24]` 键控结构 |
+| `wr` | WR 线 1~2 条,值域 0~100(0=超买、100=超卖,上方 0、下方 100),画 20/80 参考虚线 | `indCache.wr[10]/[6]` 键控结构 |
 
 - 副图区左上角 label: `MACD ▾`(字色 `ACCENT`,背景 `rgba(255,255,255,.75)`,设计稿 `.cd-sublabel`)。下拉切换按钮 `subInd` 保持宿主 `<select>`,视觉上叠加在副图区左上角(现状定位逻辑保留)。
 - 副图 Y 轴: 指标有固定区间(KDJ/RSI 0~100,WR 0~-100)则固定;MACD 按窗口极值对称。
