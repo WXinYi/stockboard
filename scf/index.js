@@ -1,6 +1,6 @@
 // KPL 中转代理 — 腾讯云 SCF Web 函数（监听 9000 端口）
 // 逻辑同 worker/index.js: UA=okhttp/3.12.1 + 4 路径前缀转发 + CORS
-// 路径前缀与 vite dev proxy 一致: /kpl-hq /kpl-his /kpl-art /kpl-sec → 对应开盘啦子域
+// 路径前缀与 vite dev proxy 一致: /kpl-hq /kpl-his /kpl-art /kpl-sec /kpl-lhb → 对应开盘啦子域
 const http = require('http')
 const https = require('https')
 
@@ -9,6 +9,7 @@ const TARGETS = {
   '/kpl-his': 'https://apphis.longhuvip.com/w1/api/index.php',
   '/kpl-art': 'https://apparticle.longhuvip.com/w1/api/index.php',
   '/kpl-sec': 'https://apphwshhq.kaipanhong.com/w1/api/index.php',
+  '/kpl-lhb': 'https://applhb.longhuvip.com/w1/api/index.php',
 }
 
 const server = http.createServer((req, res) => {
