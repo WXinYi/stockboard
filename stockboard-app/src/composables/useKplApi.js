@@ -552,3 +552,58 @@ export async function fetchF10Valuation(code, silent = false) {
 export function fetchAuctionSummary() {
   return fetchAuction()
 }
+
+// ============ 详情页短线功能(2026-08-10 新增, 参数来自 jiarenmens/src/spiders/auction_spider.py 实测) ============
+
+// 完整盘口 GetStockPanKou (POST) — 含 10 级 weituo/内外盘; 字段联调验证
+// ⚠️ 盘口主源用腾讯五档(loadTencentPankou, 实测可靠), 本函数为 KPL 增强可选
+export async function fetchStockPankou(code, silent = false) {
+  const j = await postForm(HOST_HQ, { a: 'GetStockPanKou', c: 'StockL2Data', DeviceID: KPL_DEVICE, StockID: code, State: 1, ...COMMON }, silent)
+  if (!j || j.errcode !== '0') return null
+  return j
+}
+
+// 逐笔大单 GetMainMonitor_w30 (POST) — 行 [时间,价格,方向0买1卖,手数,类型?,金额]
+export async function fetchMainMonitor(code, silent = false) {
+  const j = await postForm(HOST_HQ, { a: 'GetMainMonitor_w30', c: 'StockYiDongKanPan', Order: 0, st: 20, Index: 0, Money: 2, StockID: code, IsBS: 0, DeviceID: KPL_DEVICE, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.List)) return null
+  return j.List.map(r => ({
+    time: String(r[0] || ''), price: parseFloat(r[1]),
+    side: r[2] === '0' ? '买' : '卖', vol: parseFloat(r[3]),
+    amount: parseFloat(r[5]),
+    type: parseFloat(r[3]) >= 100 ? '超大' : parseFloat(r[3]) >= 50 ? '大单' : '中单',
+  }))
+}
+
+// 涨停基因 GetZhangTingGene (GET, 免Token) — List[涨停次数,5%溢价次,次日红盘%,首板封板率%,破板率%,连板率%]
+export async function fetchZhangTingGene(code, silent = false) {
+  const url = `${HOST_HQ}?${new URLSearchParams({ a: 'GetZhangTingGene', apiv: 'w42', c: 'StockL2Data', StockID: code, PhoneOSNew: 1, DeviceID: KPL_DEVICE, VerSion: '5.21.0.0' })}`
+  const j = await getJson(url, silent)
+  if (!j || !Array.isArray(j.List) || !j.List.length) return null
+  const g = j.List[0]
+  return { ztCount: g[0], premium5: g[1], nextRedPct: g[2], firstSealPct: g[3], breakPct: g[4], lianbanPct: g[5] }
+}
+
+// 竞价分时 GetStockBid (POST) — bid[[时间,价格,买卖方向,累计量],...]
+export async function fetchStockBid(code, silent = false) {
+  const j = await postForm(HOST_HQ, { a: 'GetStockBid', c: 'StockL2Data', apiv: 'w41', StockID: code, DeviceID: KPL_DEVICE, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.bid)) return null
+  return j.bid.map(r => ({ time: String(r[0]), price: parseFloat(r[1]), side: r[2], cumVol: parseFloat(r[3]) }))
+}
+
+// 龙虎榜个股历史 GetStockList (POST) — 全市场榜单按 code 过滤(联调确认是否支持 StockID 参数)
+// ⚠️ dealer 字段: 该股当日买卖营业部名数组(游资标签用)。真实字段名以联调返回为准 ——
+//   KPL 龙虎榜返回通常含买卖营业部明细(联调时找到营业部名所在字段映射到 dealer);
+//   若接口无逐日营业部明细, dealer 置空数组, LhbStockCard 只显示净买入/机构家数(游资标签随之隐藏)。
+export async function fetchStockLhbHistory(code, silent = false) {
+  const j = await postForm(HOST_LHB, { a: 'GetStockList', st: 500, c: 'LongHuBang', Index: 0, Type: 1, Time: '', DeviceID: KPL_DEVICE, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.list)) return null
+  return j.list
+    .filter(r => String(r.ID) === String(code))
+    .map(r => ({
+      date: j.Time || '', code: String(r.ID), name: r.Name,
+      chgPct: parseFloat(String(r.IncreaseAmount).replace('%', '')),
+      buyIn: +r.BuyIn || 0, joinNum: +r.JoinNum || 0,
+      dealer: [],   // ← 联调填: 当日营业部名数组(如 ["华鑫证券上海分公司", "国泰君安南京太平南路"]); 无则空数组
+    }))
+}
