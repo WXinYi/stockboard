@@ -9,6 +9,7 @@ const KPL_TARGETS = {
   '/kpl-his': 'https://apphis.longhuvip.com/w1/api/index.php',
   '/kpl-art': 'https://apparticle.longhuvip.com/w1/api/index.php',
   '/kpl-sec': 'https://apphwshhq.kaipanhong.com/w1/api/index.php',
+  '/kpl-lhb': 'https://applhb.longhuvip.com/w1/api/index.php',
 }
 
 export default defineConfig({

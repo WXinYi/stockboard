@@ -9,6 +9,9 @@
 *:focus-visible { outline:none; }
 *::-webkit-scrollbar { display:none; }
 html { overscroll-behavior:none; -webkit-font-smoothing:antialiased; }
+/* 水平溢出兜底: 用 clip 而非 hidden, 避免破坏 sticky 定位 */
+html, body { overflow-x: clip; }
+@supports not (overflow: clip) { html, body { overflow-x: hidden; } }
 
 body {
   font-family: 'Inter', -apple-system, 'SF Pro Display', 'PingFang SC', sans-serif;
