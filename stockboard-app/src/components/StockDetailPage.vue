@@ -196,7 +196,7 @@ async function ensureChart() {
       horzLine: { color: 'rgba(41,128,185,.45)', width: 1, style: 3, labelBackgroundColor: '#2980b9' },
     },
     rightPriceScale: { borderColor: '#e5e5e5', scaleMargins: { top: 0.08, bottom: 0.12 } },
-    timeScale: { borderColor: '#e5e5e5', timeVisible: isIntraday.value, rightBarStaysOnScroll: true, minBarSpacing: 1.5 },
+    timeScale: { borderColor: '#e5e5e5', timeVisible: isIntraday.value, rightBarStaysOnScroll: false, minBarSpacing: 0.5 },
     // 手势: 滚轮/捏合缩放, 按住平移(水平); 关闭 Y 轴拖动(上下滑动手势)
     // 垂直方向交还页面滚动: 容器 touch-action: pan-y(见 .sd-chart), 单指上下滑=滚页面
     handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: false },
@@ -369,8 +369,8 @@ function renderSeries() {
   // 分时/K线统一 360(用户要求与日K同高)
   chart.applyOptions({ height: 360, timeScale: { timeVisible: isIntraday.value } })
   if (view.value === 'trend') {
-    // 分时图: 时间轴锁定禁止左右移动/缩放; 价格轴涨跌停范围在 series 就位后统一锁定(见函数末尾)
-    chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: true })
+    // 分时图: 横轴固定全天 09:30~15:00(线只画到当前时间), 右边缘不锁数据(fixRightEdge 会把范围拉回最后数据点, 令固定范围失效)
+    chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: false })
     const upP = quote.value?.upPx, downP = quote.value?.downPx
     // 左轴涨跌%坐标系: 承载 series 绑 left scale(百分比是价格的线性变换 → 与价格线视觉重合),
     // 刻度 custom formatter 显示 +X.X%; 左轴范围锁定 跌停%→涨停%(涨跌停坐标系)
@@ -391,7 +391,18 @@ function renderSeries() {
       lineColor: color, topColor: color + '33', bottomColor: color + '00',
       lineWidth: 2, priceLineVisible: false,
     })
-    area.setData(trend.value.map(p => ({ time: p.time, value: p.price })))
+    // 横轴固定全天: 主 line 追加 whitespace bar(只有 time 无 value, 不画线) 到 15:00,
+    // 让 baseIndex/时间轴锚点延伸到收盘 —— setVisibleRange 的 to 才不会被 v5 clamp 到最后一个真实数据点
+    const areaData = trend.value.map(p => ({ time: p.time, value: p.price }))
+    const lastT = areaData[areaData.length - 1]?.time
+    if (lastT) {
+      const d0 = new Date(lastT * 1000)
+      const closeTs = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate(), 15, 0) / 1000
+      if (lastT < closeTs) {
+        for (let t = lastT + 60; t <= closeTs; t += 60) areaData.push({ time: t })
+      }
+    }
+    area.setData(areaData)
     track(area)
     // 均价线: 累计成交额/累计成交量(vol=手×100), 黄色实线(用户要求不用虚线)
     let cumAmt = 0, cumVol = 0
@@ -436,7 +447,18 @@ function renderSeries() {
     })))
     track(tHist)
     setPaneStretch()
-    chart.timeScale().fitContent()
+    // 横轴固定全天 09:30~15:00(线只画到当前时间): whitespace 锚点延伸到收盘后,
+    // setVisibleRange 的 rightOffset = 15:00 - baseIndex, 视图恰好 [09:30, 15:00] 全宽
+    const first = trend.value[0]
+    if (first && first.time) {
+      const d = new Date(first.time * 1000)
+      const openTs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9, 30) / 1000
+      const closeTs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 15, 0) / 1000
+      chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: false })
+      chart.timeScale().setVisibleRange({ from: openTs, to: closeTs })
+    } else {
+      chart.timeScale().fitContent()
+    }
     // 价格轴范围锁定放最后(series 就位后 setVisibleRange 才生效, 否则被 addSeries 数据范围覆盖):
     // 右轴 跌停价~涨停价(价格) / 左轴 跌停%~涨停%(百分比) — 分时最高最低固定为当日涨跌停
     if (typeof upP === 'number' && typeof downP === 'number' && upP > downP) {
