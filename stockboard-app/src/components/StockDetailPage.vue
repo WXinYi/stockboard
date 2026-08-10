@@ -1107,7 +1107,15 @@ onUnmounted(() => {
 
 <style scoped>
 /* 全宽页面: main-content.stock-page 已去左右留白, 内部区块自行控制 padding */
-.sd-page { padding: 4px 0 12px; font-variant-numeric: tabular-nums; }  /* 数字等宽对齐(spec §7.5) */
+/* 白卡容器(设计稿 .desk): 页面玻璃底衬托, 圆角12px + 轻阴影; 不加 overflow:hidden 保 StickyQuoteBar 吸顶 */
+.sd-page {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .06);
+  margin: 0 10px;
+  padding: 4px 0 12px;
+  font-variant-numeric: tabular-nums;   /* 数字等宽对齐(spec §7.5) */
+}
 /* 基本信息: 总高控制在约 1/4 屏(用户要求) — 名称行+价格行+16格两段式紧凑排布 */
 .sd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 0 12px; flex-wrap: wrap; }
 .sd-info { margin-bottom: 8px; padding: 0 12px; }
@@ -1115,7 +1123,7 @@ onUnmounted(() => {
 /* 图表 + 右盘口 flex 行: 盘口固定宽, 图表区自适应; 内边距与图表头部对齐 */
 .sd-chart-row { display: flex; align-items: stretch; gap: 10px; padding: 0 14px; }
 .sd-chart-wrap { flex: 1; min-width: 0; position: relative; }
-.sd-pankou { flex: none; width: 180px; border-left: 1px solid #f0f0f0; padding-left: 10px; }
+.sd-pankou { flex: none; width: 180px; border-left: 1px solid #eef1f5; background: #fbfcfd; padding: 4px 10px 4px 8px; }   /* 浅色底对齐设计稿 .desk-pankou */
 .sd-name { display: flex; align-items: baseline; gap: 6px; }
 .sd-title { font-size: 16px; font-weight: 600; color: #111; }
 .sd-code { color: #999; font-size: 11px; }
@@ -1237,12 +1245,12 @@ onUnmounted(() => {
 @media (max-width: 480px) {
   .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }
   .sd-chart-row { padding: 0 10px; gap: 8px; }
-  .sd-pankou { width: 116px; padding-left: 8px; }
+  .sd-pankou { width: 116px; padding: 4px 8px; }
   .sd-cards { grid-template-columns: 1fr; margin: 0 10px 14px; }
 }
-/* 桌面端: 内层留白与其它页 main-content 水平 padding(28px) 对齐 */
+/* 桌面端: 白卡两侧 28px 留白与其它页 main-content 水平 padding 对齐 */
 @media (min-width: 768px) {
-  .sd-page { padding: 8px 0 20px; }
+  .sd-page { margin: 0 28px; padding: 8px 0 20px; }
   .sd-head, .sd-chart-head, .sd-inds, .sd-wave-note, .sd-info { padding-left: 28px; padding-right: 28px; }
   .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
   .sd-info { margin-bottom: 18px; }
