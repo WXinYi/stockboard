@@ -6,8 +6,11 @@ import { usePullRefresh } from '../composables/usePullRefresh.js'
 import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence } from '../utils/indicators.js'
 import { loadTencentPankou } from '../utils/pankou.js'
 import PankouPanel from './PankouPanel.vue'
+import BidAuctionCard from './BidAuctionCard.vue'
+import LimitGeneCard from './LimitGeneCard.vue'
 import {
   fetchBoards, fetchLimitReason, fetchMainFlow, isTradingTime,
+  fetchZhangTingGene, fetchStockBid,
   fetchInfoList,
   fetchF10Company, fetchF10Finance, fetchF10Shareholders, fetchF10Valuation,
 } from '../composables/useKplApi.js'
@@ -20,6 +23,10 @@ const code = computed(() => route.params.code)
 const qname = computed(() => route.query.name || '')
 
 const { quote, kline, trend, loading, error, loadQuote, loadKline, loadTrend } = useStockDetail(code)
+
+// ── 功能卡数据(涨停基因/竞价分时; 低频, 激活时加载一次) ──
+const gene = ref(null)   // fetchZhangTingGene 六维; null=未加载/失败(空态)
+const bid = ref(null)    // fetchStockBid 竞价序列; null=未加载/非竞价时段(空态)
 
 // ── 板块胶囊 / 涨停原因(开盘啦) ──
 const boards = ref(null)          // null=未加载失败, []或数组=成功
@@ -584,7 +591,7 @@ watch([subInd, chan, wave, () => overlays.ma, () => overlays.boll], () => {
 })
 // 下拉刷新: 仅当前激活页面响应(usePullRefresh 按激活态过滤)
 usePullRefresh(() => {
-  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true); loadInfo(true)
+  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true); loadGene(true); loadBid(true); loadInfo(true)
 })
 
 watch(code, () => {
@@ -597,6 +604,8 @@ watch(code, () => {
   indCache = null
   boards.value = null
   limitReason.value = null
+  gene.value = null
+  bid.value = null
   moreTab.value = 'info'
   infoList.value = []
   f10Company.value = null
@@ -610,6 +619,8 @@ watch(code, () => {
   loadLimit()
   loadMainFlow()
   loadPankou()
+  loadGene()
+  loadBid()
   loadInfo()
 })
 
@@ -648,6 +659,16 @@ async function loadPankou(silent = false) {
     if (r && quote.value) quote.value.pankou = r
   } catch (e) { /* 失败: 面板显示空态, 等下一个 tick */ }
   finally { pankouLoading = false }
+}
+
+// ── 涨停基因 + 竞价分时(低频: 激活加载一次, 不轮询; 失败留空态) ──
+async function loadGene(silent = false) {
+  try { gene.value = await fetchZhangTingGene(code.value, silent) }
+  catch (e) { gene.value = null }
+}
+async function loadBid(silent = false) {
+  try { bid.value = await fetchStockBid(code.value, silent) }
+  catch (e) { bid.value = null }
 }
 
 // ── 资讯 tab: 新闻|研报|公告 列表 + 正文懒加载 ──
@@ -792,7 +813,7 @@ onMounted(() => {
 onActivated(() => {
   if (!inited) {
     inited = true
-    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadPankou(); loadInfo()
+    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadPankou(); loadGene(); loadBid(); loadInfo()
   } else if (isTradingTime()) {
     loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true)
     if (view.value === 'trend') loadTrend(true)
@@ -926,6 +947,12 @@ onUnmounted(() => {
       </div>
     </div>
     <div v-else-if="boardsLoading" class="sd-boards-loading">板块加载中…</div>
+
+    <!-- 功能卡区(2 列; Task 6 补全 4 列): 竞价分时 / 涨停基因 -->
+    <div class="sd-cards">
+      <BidAuctionCard :bid="bid" :prev-close="quote?.prevClose" />
+      <LimitGeneCard :gene="gene" />
+    </div>
 
     <!-- 底部 tab 区: 📰 资讯 | 🏢 基本面(默认收起, 点开才请求) -->
     <div class="sd-more">
@@ -1113,6 +1140,9 @@ onUnmounted(() => {
 .sd-chip-str { font-size: 11px; font-weight: 600; }
 .sd-boards-loading { padding: 10px 0; text-align: center; color: #999; font-size: 12px; }
 
+/* 功能卡区: 桌面多列 / 移动堆叠; 卡内样式见 src/styles/cards.css(.feat-card) */
+.sd-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 0 14px 14px; }
+
 /* ── 底部 资讯|基本面 tab 区 ── */
 .sd-more { margin: 0 14px; }
 .sd-more-tabs { padding: 8px 0; }
@@ -1150,6 +1180,7 @@ onUnmounted(() => {
   .sd-limit, .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }
   .sd-chart-row { padding: 0 10px; gap: 8px; }
   .sd-pankou { width: 116px; padding-left: 8px; }
+  .sd-cards { grid-template-columns: 1fr; margin: 0 10px 14px; }
 }
 /* 桌面端: 内层留白与其它页 main-content 水平 padding(28px) 对齐 */
 @media (min-width: 768px) {
@@ -1158,5 +1189,6 @@ onUnmounted(() => {
   .sd-limit, .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
   .sd-info { margin-bottom: 18px; }
   .sd-chart-row { padding: 0 28px; }
+  .sd-cards { margin: 0 28px 14px; }
 }
 </style>
