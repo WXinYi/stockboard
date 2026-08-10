@@ -5,7 +5,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks,
 } from '../utils/chartDraw.js'
-import { calcMACD, calcKDJ, calcRSI, calcWR } from '../utils/indicators.js'
+import { calcMACD, calcKDJ, calcRSI, calcWR, VIEW_MAX_BARS } from '../utils/indicators.js'
 
 const props = defineProps({
   view: { type: String, required: true },          // 'trend'|'day'|'week'|'month'|'m60'
@@ -28,9 +28,20 @@ let ro = null
 
 // 光标与平移状态
 let hover = null            // {x, y, klineIdx}
-let drag = null             // K线平移 {startX, startOffset}
+let drag = null             // K线平移(桌面鼠标拖动) {startX, startOffset}
 let offset = 0              // K线窗口偏移(回看)
 let plotX = 0, plotW = 0    // 当前视图内容区 x 基准与宽(十字光标命中/分时 x 用)
+let pointers = new Map()    // 活跃指针 pointerId → {x, y}(触屏多指跟踪)
+let twoPan = null           // 双指平移基准 {startAvgX, startOffset}
+let touch = null            // 触屏单指手势 {startX, startT, lastX, lastT, peakV, mode:'swipe'|'drag'}
+
+// 手势判定: 快速甩动 = 滑动(平移窗口改可见日期); 慢移/按住 = 拖动(十字线跟手)
+const SWIPE_PXMS = 0.6      // 瞬时速度 > 600px/s → 判定滑动
+const HOLD_MS = 200         // 按下超过 200ms 仍无快速移动 → 判定拖动
+
+let hideTimer = null        // 触屏选中后无操作 → 自动隐藏十字线+宫格回实时
+let lastPointerType = ''    // 最近指针类型: 鼠标 hover 不自动隐藏, 触屏需要
+const HIDE_MS = 2500        // 无操作自动隐藏延迟
 
 // 颜色 token (spec §7.2, 唯一来源)
 const C = {
@@ -46,7 +57,6 @@ const C = {
 const FONT = '10px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
 const FONT_SM = '9px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
 const SIGNAL_LABELS = { '1buy': '1买', '2buy': '2买', '3buy': '3买', '1sell': '1卖', '2sell': '2卖', '3sell': '3卖' }
-const VIEW_MAX_BARS = { m60: 120, day: 90, week: 60, month: 40 }
 const CHAN_MAX_ZHONGSHU = 10
 const MA_COLORS = { 5: C.avg, 10: C.signal, 20: C.ma20, 60: C.ma60 }
 const BOLL_COLORS = { up: C.bollUp, mid: C.bollMid, lo: C.bollLo }
@@ -256,7 +266,7 @@ function drawKline() {
   if (props.overlays.ma) drawMALines(main, win, yMin, yMax, pw, baseI)
   if (props.overlays.boll) drawBoll(main, win, yMin, yMax, pw, baseI)
   if (props.chan && props.view !== 'm60') drawChan(main, win, yMin, yMax, pw)
-  if (props.wave && props.view !== 'm60') drawWave(main, win, yMin, yMax, pw)
+  if (props.wave) drawWave(main, win, yMin, yMax, pw)
   // 右轴
   drawKlineAxis(main, priceTicks(yMin, yMax, main))
   // 量能
@@ -614,21 +624,97 @@ function drawCrosshair() {
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) }
 
 function onPointerDown(e) {
-  if (isTrend()) return
-  drag = { startX: e.clientX, startOffset: offset }
+  const rect = canvasRef.value.getBoundingClientRect()
+  const x = e.clientX - rect.left, y = e.clientY - rect.top
+  pointers.set(e.pointerId, { x, y })
+  // 第二指落下 → 双指平移(K线视图); 期间不移动十字线
+  if (e.pointerType !== 'mouse' && pointers.size === 2) {
+    const xs = [...pointers.values()].map(p => p.x)
+    twoPan = { startAvgX: (xs[0] + xs[1]) / 2, startOffset: offset }
+    touch = null
+    drag = null
+    return
+  }
+  // 手机无 hover: 点按即选中(分时/日K)并联动宫格
+  lastPointerType = e.pointerType
+  hover = { x, y }
+  draw()
+  emitCrosshair(hover.x)
+  if (e.pointerType === 'mouse') {
+    // 桌面鼠标拖动 = 平移
+    drag = { startX: e.clientX, startOffset: offset }
+    touch = null
+  } else if (pointers.size === 1) {
+    // 触屏单指: 快甩 = 滑动平移窗口; 慢移/按住 = 拖动十字线
+    const t = performance.now()
+    touch = { startX: x, startT: t, lastX: x, lastT: t, peakV: 0, mode: null }
+    drag = null
+  }
 }
 
 function onPointerMove(e) {
   const rect = canvasRef.value.getBoundingClientRect()
   const x = e.clientX - rect.left, y = e.clientY - rect.top
-  if (drag) {
+  lastPointerType = e.pointerType
+  // 双指平移: 两指中点横向位移 → 窗口平移(向右=回看更早)
+  if (twoPan && pointers.has(e.pointerId)) {
+    pointers.set(e.pointerId, { x, y })
+    hover = null
+    const xs = [...pointers.values()].map(p => p.x)
+    const avg = (xs[0] + xs[1]) / 2
+    const kl = props.kline
+    const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
+    const { window: win } = klineWindow(kl, count, 0)
+    const bw = (plotW || canvasRef.value.clientWidth) / win.length
+    offset = clamp(twoPan.startOffset + Math.round((avg - twoPan.startAvgX) / bw), 0, Math.max(0, kl.length - win.length))
+    draw()
+    return
+  }
+  if (drag) {   // 桌面鼠标拖动 = 平移 + 十字线跟手
+    hover = { x, y }
     const kl = props.kline
     const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
     const { window: win } = klineWindow(kl, count, 0)
     const barW = (plotW || canvasRef.value.clientWidth) / win.length
-    const dOff = Math.round((drag.startX - e.clientX) / barW)
+    const dOff = Math.round((e.clientX - drag.startX) / barW)   // 向右滑=回看(更早), 向左滑=到最新
     offset = clamp(drag.startOffset + dOff, 0, Math.max(0, kl.length - win.length))
     draw()
+    emitCrosshair(x)
+    return
+  }
+  // 触屏单指: 滑动=平移窗口(改可见日期), 拖动=十字线(看该 K线数据)
+  if (touch && pointers.has(e.pointerId) && pointers.size === 1) {
+    if (isTrend()) {   // 分时整日都在视野内: 滑动/拖动都移动十字线看分钟数据, 不平移
+      hover = { x, y }
+      draw()
+      emitCrosshair(x)
+      return
+    }
+    const now = performance.now()
+    const dt = now - touch.lastT
+    const dx = x - touch.lastX
+    if (dt >= 16) {   // 事件过密(<16ms)不算速度, 避免噪声误判
+      touch.peakV = Math.max(touch.peakV, Math.abs(dx) / dt)
+      if (touch.mode === null) {
+        if (touch.peakV > SWIPE_PXMS) touch.mode = 'swipe'          // 快速甩动 → 滑动平移
+        else if (now - touch.startT > HOLD_MS) touch.mode = 'drag'  // 按住/慢移 → 拖动十字线
+      }
+    }
+    touch.lastX = x; touch.lastT = now
+    if (touch.mode === 'swipe') {
+      hover = null
+      const kl = props.kline
+      const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
+      const { window: win } = klineWindow(kl, count, 0)
+      const bw = (plotW || canvasRef.value.clientWidth) / win.length
+      offset = clamp(offset + Math.round(dx / bw), 0, Math.max(0, kl.length - win.length))   // 右滑=回看(更早), 左滑=到最新
+      draw()
+      return
+    }
+    // drag(或尚未分类, 安全默认): 十字线跟手, 宫格实时显示手指所在 K线
+    hover = { x, y }
+    draw()
+    emitCrosshair(x)
     return
   }
   hover = { x, y }
@@ -636,8 +722,43 @@ function onPointerMove(e) {
   emitCrosshair(x)
 }
 
-function onPointerUp() { drag = null }
-function onPointerLeave() { hover = null; draw(); emit('crossinfo', null) }
+function onPointerUp(e) {
+  pointers.delete(e.pointerId)
+  if (pointers.size < 2) twoPan = null
+  const wasDragging = !!drag
+  drag = null
+  if (wasDragging && e) {   // 桌面平移结束: 停在哪个位置就选中那根 K线
+    const rect = canvasRef.value.getBoundingClientRect()
+    hover = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    draw()
+    emitCrosshair(hover.x)
+  }
+  if (touch && pointers.size === 0) {
+    if (touch.mode === 'swipe') {   // 滑动结束: 清空选中, 宫格回实时
+      hover = null
+      emit('crossinfo', null)
+      draw()
+    }
+    touch = null
+  }
+}
+
+function onPointerLeave(e) {
+  if (e?.pointerType === 'touch' || e?.pointerType === 'pen') return   // 手机点按后保留光标
+  hover = null; draw(); emit('crossinfo', null)
+}
+
+function onPointerCancel(e) {
+  pointers.delete(e?.pointerId)
+  if (pointers.size < 2) twoPan = null
+  touch = null
+  drag = null
+  hover = null
+  draw()
+  emit('crossinfo', null)
+}
+
+function onContextMenu(e) { e.preventDefault() }   // 长按不弹复制/粘贴菜单
 
 function onWheel(e) {
   if (isTrend()) return
@@ -645,23 +766,60 @@ function onWheel(e) {
   const kl = props.kline
   const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
   const maxOff = Math.max(0, kl.length - count)
-  offset = clamp(offset + (e.deltaY > 0 ? 3 : -3), 0, maxOff)
+  offset = clamp(offset + (e.deltaY < 0 ? 3 : -3), 0, maxOff)   // 滚轮上=回看, 下=到最新(与拖动手势同向)
   draw()
 }
 
 function emitCrosshair(x) {
-  if (isTrend()) { emit('crossinfo', null); return }
+  const send = info => {
+    emit('crossinfo', info)
+    clearTimeout(hideTimer)
+    if (info && lastPointerType !== 'mouse') {
+      // 触屏选中后无操作 → 自动隐藏(十字线消失 + 宫格回实时); 鼠标 hover 不隐藏
+      hideTimer = setTimeout(() => {
+        hover = null
+        draw()
+        emit('crossinfo', null)
+      }, HIDE_MS)
+    }
+  }
+  if (isTrend()) {   // 分时: 显示所选分钟数据(日内累计 高/低/成交额)
+    const t = props.trend
+    if (!t.length) { send(null); return }
+    const w = plotW || canvasRef.value.clientWidth
+    const x0 = plotX || 0
+    const i = clamp(Math.floor((x - x0) / w * t.length), 0, t.length - 1)
+    const p = t[i]
+    let hi = -Infinity, lo = Infinity, cVol = 0, cAmt = 0
+    for (let k = 0; k <= i; k++) {
+      const q = t[k]
+      if (q.price > hi) hi = q.price
+      if (q.price < lo) lo = q.price
+      cVol += q.vol || 0
+      cAmt += q.amount || 0
+    }
+    const prevClose = props.quote?.prevClose ?? (t[0] ? t[0].price : p.price)
+    const chg = p.price - prevClose
+    send({
+      time: p.time, open: t[0] ? t[0].price : p.price, high: hi, low: lo, close: p.price,
+      prevClose, amount: cAmt, volume: cVol,
+      chg, chgPct: prevClose ? chg / prevClose * 100 : 0,
+      point: { x, y: hover?.y ?? 0, w: canvasRef.value.clientWidth, h: canvasRef.value.clientHeight },
+    })
+    return
+  }
+  // 日K/周K/月K/60分
   const kl = props.kline
-  if (!kl.length) return
+  if (!kl.length) { send(null); return }
   const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
-  const { window: win, offset: off } = klineWindow(kl, count, offset)
+  const { window: win } = klineWindow(kl, count, offset)
   const w = plotW || canvasRef.value.clientWidth
   const i = clamp(Math.floor((x - plotX) / w * win.length), 0, win.length - 1)
   const k = win[i]
   const gI = kl.indexOf(k)
   const prevClose = gI > 0 ? kl[gI - 1].close : k.open
   const chg = k.close - prevClose
-  emit('crossinfo', {
+  send({
     time: k.time, open: k.open, high: k.high, low: k.low, close: k.close,
     prevClose, amount: k.volume * 100 * k.close, volume: k.volume,
     chg, chgPct: prevClose ? chg / prevClose * 100 : 0,
@@ -674,7 +832,7 @@ watch(() => [props.view, props.trend, props.kline, props.quote, props.subInd, pr
 }, { deep: true })
 
 // 切视图/换股(清空 kline)时重置平移偏移: 每个视图默认显示最近 N 根
-watch(() => props.view, () => { offset = 0 })
+watch(() => props.view, () => { offset = 0; hover = null; emit('crossinfo', null) })
 watch(() => props.kline, () => { if (!props.kline.length) offset = 0 })
 
 onMounted(() => {
@@ -691,7 +849,8 @@ onBeforeUnmount(() => { ro?.disconnect() })
   <div ref="wrapRef" class="scc-wrap">
     <canvas ref="canvasRef" class="scc-canvas"
       @pointerdown="onPointerDown" @pointermove="onPointerMove"
-      @pointerup="onPointerUp" @pointerleave="onPointerLeave"
+      @pointerup="onPointerUp" @pointerleave="onPointerLeave" @pointercancel="onPointerCancel"
+      @contextmenu="onContextMenu"
       @wheel.prevent="onWheel"></canvas>
   </div>
 </template>
@@ -703,6 +862,10 @@ onBeforeUnmount(() => { ro?.disconnect() })
   height: 100%;
   min-height: 280px;
   touch-action: pan-y;
+  -webkit-touch-callout: none;   /* 手机长按不弹复制/粘贴/查询菜单 */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 .scc-canvas {
   position: absolute;
@@ -711,6 +874,9 @@ onBeforeUnmount(() => { ro?.disconnect() })
   height: 100%;
   display: block;
   cursor: crosshair;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 @media (min-width: 481px) {
   .scc-wrap { min-height: 360px; }

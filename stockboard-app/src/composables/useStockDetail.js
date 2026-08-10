@@ -156,15 +156,20 @@ export function useStockDetail(code) {
       const rows = (box && box.data && box.data.data) || []
       const dateStr = (box && box.data && box.data.date) || ''
       // 行格式 "HHMM price vol amount" → 组装 {time, price, vol, amount}; 时间用 UTC-naive 秒(中国时区渲染)
-      // vol=手(100股), amount=元 → 累计均价 = Σamount / (Σvol×100) (渲染层计算)
-      trend.value = rows.map(r => {
+      // 注意: 腾讯接口的 vol/amount 是当日累计值(单调递增) → 相邻行差值才是该分钟量
+      // 渲染层均价线 = Σ(分钟vol) 累加即还原累计值 → 累计均价 = Σamount / (Σvol×100)
+      trend.value = rows.map((r, idx) => {
         const [hhmm, price, vol, amount] = String(r).split(' ')
         let time = 0
         if (dateStr && hhmm && hhmm.length === 4) {
           const y = +dateStr.slice(0, 4), mo = +dateStr.slice(4, 6) - 1, d = +dateStr.slice(6, 8)
           time = Date.UTC(y, mo, d, +hhmm.slice(0, 2), +hhmm.slice(2, 4)) / 1000
         }
-        return { time, price: parseFloat(price), vol: parseFloat(vol) || 0, amount: parseFloat(amount) || 0 }
+        const rawVol = parseFloat(vol) || 0, rawAmt = parseFloat(amount) || 0
+        const prev = idx > 0 ? String(rows[idx - 1]).split(' ') : null
+        const dVol = idx > 0 ? (parseFloat(prev[2]) || 0) : 0
+        const dAmt = idx > 0 ? (parseFloat(prev[3]) || 0) : 0
+        return { time, price: parseFloat(price), vol: Math.max(0, rawVol - dVol), amount: Math.max(0, rawAmt - dAmt) }
       })
     } catch (e) {
       if (!silent) error.value = '分时加载失败'

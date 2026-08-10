@@ -2,6 +2,9 @@
 // 所有函数返回与 kline 等长的数组, 周期不足处为 null
 // 口径: 通达信/同花顺常用公式, 定位为参考
 
+// 各视图默认展示的 K 线根数(图表可视区大小, 波浪/缠论等按此窗口计算标记)
+export const VIEW_MAX_BARS = { m60: 120, day: 90, week: 60, month: 40 }
+
 function sma(vals, n) {
   const out = []
   let sum = 0

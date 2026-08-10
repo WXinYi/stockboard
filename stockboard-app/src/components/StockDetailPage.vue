@@ -3,7 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, onUnmounted, reactive,
 import { useRoute, useRouter } from 'vue-router'
 import { useStockDetail } from '../composables/useStockDetail.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
-import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence } from '../utils/indicators.js'
+import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence, VIEW_MAX_BARS } from '../utils/indicators.js'
 import { loadTencentPankou, fmtHand } from '../utils/pankou.js'
 import PankouPanel from './PankouPanel.vue'
 import BidAuctionCard from './BidAuctionCard.vue'
@@ -110,14 +110,21 @@ const indCache = computed(() => {
     ma: calcMA(kl), boll: calcBOLL(kl), volma: calcVOLMA(kl),
     macd, kdj: calcKDJ(kl), rsi: calcRSI(kl), wr: calcWR(kl),
     fractals, bis, zhongshu, chanSignals,
-    waves: calcWaves(kl), divergences: calcDivergence(kl, macd),
+    // 波浪只按默认可视窗口(最近 VIEW_MAX_BARS 根)计算, 保证标记落在用户当前看到的区间;
+    // 波浪点是离散标记, 全历史搜索最后一段有效 5+3 常常在可视区外 → 状态提示"已识别"但图上无标记
+    waves: (() => {
+      const count = Math.min(VIEW_MAX_BARS[view.value] || 60, kl.length)
+      const w = calcWaves(kl.slice(-count))
+      if (w.waves.length) for (const p of w.waves) p.i += kl.length - count  // 切片索引 → 全局索引
+      return w
+    })(), divergences: calcDivergence(kl, macd),
     // 图例速查: bar 索引 → 分型类型 / 买卖点类型
     fractalAt: new Map(fractals.map(f => [f.i, f.type])),
     signalAt: new Map(chanSignals.map(s => [s.i, s.type])),
   }
 })
 
-// 波浪判定结果提示(无法判定时明示, 始终标注参考); m60 不画波浪但保留状态文本
+// 波浪判定结果提示(无法判定时明示, 始终标注参考); 波浪按可视窗口计算, 状态与图上标记一致
 const waveNote = computed(() => {
   const ws = indCache.value?.waves
   if (!wave.value || view.value === 'trend') return ''
@@ -156,15 +163,15 @@ const crossInfo = ref(null)
 const cursorTip = ref(null)
 function tipDate(t) {
   if (typeof t === 'string') return t            // 日线 time 为 'YYYY-MM-DD'
-  if (typeof t === 'number') {                    // 分钟线 time 为 UTC 秒
+  if (typeof t === 'number') {                    // 分钟线 time 为 UTC-naive 秒 → getUTC* 显示本意墙钟时间(不随时区偏移)
     const d = new Date(t * 1000)
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
   }
   return ''
 }
 function onCrosshairFromCanvas(info) {
-  // 分时视图/移出图表 → 恢复当日实时; K线视图 → 16 格显示光标处该日数据
-  if (view.value === 'trend' || !info || info.time === undefined) { crossInfo.value = null; cursorTip.value = null; return }
+  // 无选中/移出图表 → 恢复当日实时; 有选中(分时某分钟/日K某根) → 宫格显示对应数据
+  if (!info || info.time === undefined) { crossInfo.value = null; cursorTip.value = null; return }
   crossInfo.value = info
   // 浮卡定位: 光标右下方, 收进图表右/下边界内(卡宽约96px)
   if (info.point) {
