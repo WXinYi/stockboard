@@ -5,6 +5,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks,
 } from '../utils/chartDraw.js'
+import { calcMACD, calcKDJ, calcRSI, calcWR } from '../utils/indicators.js'
 
 const props = defineProps({
   view: { type: String, required: true },          // 'trend'|'day'|'week'|'month'|'m60'
@@ -110,8 +111,11 @@ function drawTrend() {
   drawAvgLine(main, t, prevClose, yMin, yMax)
   // 4. 量能
   drawTrendVolume(vol, t, prevClose)
-  // 5. 副图(分时按 subInd 走伪K线)
-  if (sub && props.subInd !== 'none') drawSubPane(sub, t.map(p => ({ ...p, open: p.price, close: p.price, high: p.price, low: p.price, volume: p.vol })))
+  // 5. 副图(分时按 subInd 走伪K线: 指标由本组件从分时数据现算, 宿主 indCache 为空)
+  if (sub && props.subInd !== 'none') {
+    const tkl = t.map(p => ({ open: p.price, high: p.price, low: p.price, close: p.price, volume: p.vol }))
+    drawSubPane(sub, tkl, { macd: calcMACD(tkl), kdj: calcKDJ(tkl), rsi: calcRSI(tkl), wr: calcWR(tkl) })
+  }
   // 6. 时间轴
   drawTimeAxis(rects, timeTicks(t, w, true), true)
 }
@@ -495,18 +499,17 @@ function drawVolLine(vol, vals, win, w, color) {
   ctx.stroke()
 }
 
-// 副图指标 (Task 4 补全)
-function drawSubPane(sub, win) {
+// 副图指标: ic 缺省取宿主 indCache; 分时视图由 drawTrend 现算传入
+function drawSubPane(sub, win, ic = props.indCache) {
   const s = props.subInd
-  if (s === 'none' || !props.indCache) return
-  const ic = props.indCache
+  if (s === 'none' || !ic) return
   const w = canvasRef.value.clientWidth
   ctx.font = FONT_SM
   ctx.fillStyle = C.axisText
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   if (s === 'macd' && ic.macd) {
-    drawSubMacd(sub, win, w)
+    drawSubMacd(sub, win, w, ic.macd)
     ctx.fillText('MACD', sub.x + 4, sub.y + 3)
   } else if (s === 'kdj' && ic.kdj) {
     drawSubOsc(sub, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j })
@@ -520,8 +523,7 @@ function drawSubPane(sub, win) {
   }
 }
 
-function drawSubMacd(sub, win, w) {
-  const m = props.indCache.macd
+function drawSubMacd(sub, win, w, m) {
   const histMax = Math.max(...m.hist.map(Math.abs).filter(Number.isFinite), 1)
   const barW = Math.max(1, w / win.length * 0.6)
   const midY = sub.y + sub.height / 2
@@ -653,15 +655,19 @@ function emitCrosshair(x) {
   const chg = k.close - prevClose
   emit('crossinfo', {
     time: k.time, open: k.open, high: k.high, low: k.low, close: k.close,
-    prevClose, amount: k.volume * 100 * k.close,
+    prevClose, amount: k.volume * 100 * k.close, volume: k.volume,
     chg, chgPct: prevClose ? chg / prevClose * 100 : 0,
-    point: { x, y: hover?.y ?? 0 },
+    point: { x, y: hover?.y ?? 0, w: canvasRef.value.clientWidth, h: canvasRef.value.clientHeight },
   })
 }
 
 watch(() => [props.view, props.trend, props.kline, props.quote, props.subInd, props.chan, props.wave, props.overlays.ma, props.overlays.boll, props.indCache], () => {
   draw()
 }, { deep: true })
+
+// 切视图/换股(清空 kline)时重置平移偏移: 每个视图默认显示最近 N 根
+watch(() => props.view, () => { offset = 0 })
+watch(() => props.kline, () => { if (!props.kline.length) offset = 0 })
 
 onMounted(() => {
   setupCanvas()

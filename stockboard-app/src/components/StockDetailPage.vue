@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStockDetail } from '../composables/useStockDetail.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
@@ -12,6 +12,7 @@ import BigOrderCard from './BigOrderCard.vue'
 import LhbStockCard from './LhbStockCard.vue'
 import ZtHistoryCard from './ZtHistoryCard.vue'
 import StickyQuoteBar from './StickyQuoteBar.vue'
+import StockChartCanvas from './StockChartCanvas.vue'
 import {
   fetchBoards, fetchLimitReason, fetchMainFlow, isTradingTime,
   fetchZhangTingGene, fetchStockBid, fetchMainMonitor, fetchStockLhbHistory,
@@ -95,38 +96,36 @@ const subInds = [
 ]
 const chan = ref(false)   // 缠论标记开关(分型/笔/中枢/三类买卖点)
 const wave = ref(false)   // 波浪理论标记开关(1-2-3-4-5-A-B-C)
-const waveNote = ref('')  // 波浪判定结果提示(无法判定时明示)
-const SIGNAL_LABELS = { '1buy': '1买', '2buy': '2买', '3buy': '3买', '1sell': '1卖', '2sell': '2卖', '3sell': '3卖' }
-const CHAN_MAX_ZHONGSHU = 10   // 最多画最近 10 个中枢(每个中枢2条线, 防止 series 过多)
 
-const chartEl = ref(null)
-let chart = null
+// 指标缓存(computed: kline 变化即重算, 画布/波浪提示共用; 分时视图无 K 线 → null)
+const indCache = computed(() => {
+  const kl = kline.value
+  if (!kl.length || view.value === 'trend') return null
+  const macd = calcMACD(kl)
+  const fractals = calcFractals(kl)
+  const bis = calcBis(kl)
+  const zhongshu = calcZhongshu(kl, bis)
+  const chanSignals = calcChanSignals(kl, macd, bis, zhongshu)
+  return {
+    ma: calcMA(kl), boll: calcBOLL(kl), volma: calcVOLMA(kl),
+    macd, kdj: calcKDJ(kl), rsi: calcRSI(kl), wr: calcWR(kl),
+    fractals, bis, zhongshu, chanSignals,
+    waves: calcWaves(kl), divergences: calcDivergence(kl, macd),
+    // 图例速查: bar 索引 → 分型类型 / 买卖点类型
+    fractalAt: new Map(fractals.map(f => [f.i, f.type])),
+    signalAt: new Map(chanSignals.map(s => [s.i, s.type])),
+  }
+})
 
-// 图表高度: 方案B = 图表区宽×0.62 clamp(桌面 220~420, 移动 220~280); 与 CSS 内联高度联动
-const chartH = ref(360)
-function recomputeChartHeight() {
-  const w = chartEl.value ? chartEl.value.clientWidth : (window.innerWidth || 360)
-  const mobile = window.innerWidth <= 480
-  const raw = w * 0.62
-  chartH.value = Math.round(mobile ? Math.min(Math.max(raw, 220), 280) : Math.min(Math.max(raw, 220), 420))
-  return chartH.value
-}
-let series = []          // 当前所有 series(切视图/指标时整体移除重建)
-let markerPlugins = []   // 已挂载的 marker 插件(移除 series 前先 detach)
-let indCache = null      // 当前 kline 的指标缓存(图例用, 避免每次 hover 重算)
-
-// lightweight-charts v5: 便捷方法已移除, 统一 addSeries(def, opts, paneIndex)
-let AreaSeriesDef = null
-let CandlestickSeriesDef = null
-let HistogramSeriesDef = null
-let LineSeriesDef = null
-let LineStyleDef = null
-let createSeriesMarkersFn = null
-
-// 各K线视图默认显示最近 N 根, 留出缩放/拖动空间
-const VIEW_MAX_BARS = { m60: 120, day: 90, week: 60, month: 40 }
-const MA_COLORS = { 5: '#f2a900', 10: '#9b59b6', 20: '#27ae60', 60: '#2980b9' }
-const BOLL_COLORS = { up: '#e74c3c', mid: '#f39c12', lo: '#27ae60' }
+// 波浪判定结果提示(无法判定时明示, 始终标注参考); m60 不画波浪但保留状态文本
+const waveNote = computed(() => {
+  const ws = indCache.value?.waves
+  if (!wave.value || view.value === 'trend') return ''
+  if (!ws) return '波浪:计算中…'
+  if (ws.status === 'ok') return `波浪:${ws.dir === 1 ? '上升' : '下跌'}推动 5浪+ABC 已识别(参考)`
+  if (ws.status === 'ok5') return `波浪:${ws.dir === 1 ? '上升' : '下跌'}推动 5浪已识别, 调整浪未确认(参考)`
+  return '波浪:无法判定(参考)'
+})
 
 function fmt(v, digits = 2) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(digits) : '—' }
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
@@ -150,40 +149,7 @@ const upColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
 
 function goH5() { router.push('/stock/' + code.value + '/h5') }
 
-function onResize() {
-  if (!chart || !chartEl.value) return
-  const h = recomputeChartHeight()
-  chart.applyOptions({ width: chartEl.value.clientWidth, height: h })
-}
-
-// ── 指标缓存 ──
-function computeIndicators() {
-  const kl = kline.value
-  const macd = calcMACD(kl)
-  const fractals = calcFractals(kl)
-  const bis = calcBis(kl)
-  const zhongshu = calcZhongshu(kl, bis)
-  const chanSignals = calcChanSignals(kl, macd, bis, zhongshu)
-  indCache = {
-    ma: calcMA(kl), boll: calcBOLL(kl), volma: calcVOLMA(kl),
-    macd, kdj: calcKDJ(kl), rsi: calcRSI(kl), wr: calcWR(kl),
-    fractals, bis, zhongshu, chanSignals,
-    waves: calcWaves(kl), divergences: calcDivergence(kl, macd),
-    // 图例速查: bar 索引 → 分型类型 / 买卖点类型
-    fractalAt: new Map(fractals.map(f => [f.i, f.type])),
-    signalAt: new Map(chanSignals.map(s => [s.i, s.type])),
-  }
-}
-
 // ── 图表悬浮图例(十字光标联动) ──
-function fmtCandleTime(t) {
-  if (typeof t === 'number') {
-    const d = new Date(t * 1000)
-    const p = n => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-  }
-  return String(t)
-}
 // 光标处 K线数据 → 顶部 16 格联动(今开/最高/最低/昨收/成交额); null = 无光标, 显示当日实时
 const crossInfo = ref(null)
 // 光标浮卡: 在光标右下方显示该日 开/高/低/收/涨跌/量(轻量小卡, 不遮挡 K线)
@@ -196,427 +162,38 @@ function tipDate(t) {
   }
   return ''
 }
-function onCrosshair(param) {
+function onCrosshairFromCanvas(info) {
   // 分时视图/移出图表 → 恢复当日实时; K线视图 → 16 格显示光标处该日数据
-  if (view.value === 'trend' || !param || param.time === undefined) { crossInfo.value = null; cursorTip.value = null; return }
-  const arr = kline.value
-  const i = Math.min(Math.round(param.logical), arr.length - 1)
-  const k = arr[i]
-  crossInfo.value = k ? (() => {
-    const prevClose = i > 0 ? arr[i - 1].close : k.open
-    const chg = k.close - prevClose
-    return {
-      open: k.open, high: k.high, low: k.low, close: k.close, prevClose,
-      amount: k.volume * 100 * k.close,   // 额 = 手×100股×收盘价 近似(腾讯K线无成交额字段)
-      chg, chgPct: prevClose ? (chg / prevClose * 100) : 0,   // 头部大价格联动(颜色随光标K线涨跌)
-    }
-  })() : null
+  if (view.value === 'trend' || !info || info.time === undefined) { crossInfo.value = null; cursorTip.value = null; return }
+  crossInfo.value = info
   // 浮卡定位: 光标右下方, 收进图表右/下边界内(卡宽约96px)
-  if (k && param.point) {
-    const w = chartEl.value?.clientWidth || 360
-    const h = chartH.value
+  if (info.point) {
+    const w = info.point.w || 360
+    const h = info.point.h || 280
     cursorTip.value = {
-      x: Math.min(param.point.x + 12, w - 100),
-      y: Math.min(param.point.y + 14, h - 96),
-      date: tipDate(k.time),
-      open: k.open, high: k.high, low: k.low, close: k.close,
-      chgPct: crossInfo.value.chgPct, volume: k.volume,
+      x: Math.min(info.point.x + 12, w - 100),
+      y: Math.min(info.point.y + 14, h - 96),
+      date: tipDate(info.time),
+      open: info.open, high: info.high, low: info.low, close: info.close,
+      chgPct: info.chgPct, volume: info.volume,
     }
   } else {
     cursorTip.value = null
   }
 }
 
-// ── 图表创建/series 管理 ──
-async function ensureChart() {
-  if (chart || !chartEl.value) return
-  const m = await import('lightweight-charts')
-  AreaSeriesDef = m.AreaSeries
-  CandlestickSeriesDef = m.CandlestickSeries
-  HistogramSeriesDef = m.HistogramSeries
-  LineSeriesDef = m.LineSeries
-  LineStyleDef = m.LineStyle
-  createSeriesMarkersFn = m.createSeriesMarkers
-  recomputeChartHeight()
-  chart = m.createChart(chartEl.value, {
-    width: chartEl.value.clientWidth || 360,
-    height: chartH.value,
-    layout: { background: { type: m.ColorType.Solid, color: '#ffffff' }, textColor: '#666', fontSize: 11 },
-    grid: { vertLines: { color: '#f3f3f3' }, horzLines: { color: '#f3f3f3' } },
-    crosshair: {
-      mode: m.CrosshairMode.Normal,
-      vertLine: { color: 'rgba(41,128,185,.45)', width: 1, style: 3, labelBackgroundColor: '#2980b9' },
-      horzLine: { color: 'rgba(41,128,185,.45)', width: 1, style: 3, labelBackgroundColor: '#2980b9' },
-    },
-    rightPriceScale: { borderColor: '#e5e5e5', scaleMargins: { top: 0.08, bottom: 0.12 } },
-    timeScale: { borderColor: '#e5e5e5', timeVisible: isIntraday.value, rightBarStaysOnScroll: false, minBarSpacing: 0.5 },
-    // 手势: 滚轮/捏合缩放, 按住平移(水平); 关闭 Y 轴拖动(上下滑动手势)
-    // 垂直方向交还页面滚动: 容器 touch-action: pan-y(见 .sd-chart), 单指上下滑=滚页面
-    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: false },
-    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-  })
-  chart.subscribeCrosshairMove(onCrosshair)
-  window.addEventListener('resize', onResize)
-}
-
-function track(s) { series.push(s) }
-
-function removeAllSeries() {
-  for (const s of series) { try { chart.removeSeries(s) } catch {} }
-  series = []
-  for (const p of markerPlugins) { try { p.detach() } catch {} }
-  markerPlugins = []
-}
-
-// 主图:量:副图 = 3:1:1(spec §3 方案B); 无副图时主图:量 = 2.2:1
-function setPaneStretch() {
-  const panes = chart.panes()
-  if (panes.length >= 3) { panes[0].setStretchFactor(3); panes[1].setStretchFactor(1); panes[2].setStretchFactor(1) }
-  else if (panes.length === 2) { panes[0].setStretchFactor(2.2); panes[1].setStretchFactor(1) }
-}
-
-// 折线数据(过滤 null)
-function linePoints(vals) {
-  const kl = kline.value
-  const pts = []
-  for (let i = 0; i < kl.length; i++) if (vals[i] !== null && vals[i] !== undefined) pts.push({ time: kl[i].time, value: vals[i] })
-  return pts
-}
-
-function addMaLines() {
-  for (const n of [5, 10, 20, 60]) {
-    const pts = linePoints(indCache.ma[n])
-    if (!pts.length) continue
-    const line = chart.addSeries(LineSeriesDef, { color: MA_COLORS[n], lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
-    line.setData(pts)
-    track(line)
-  }
-}
-
-function addBollLines() {
-  for (const key of ['up', 'mid', 'lo']) {
-    const pts = linePoints(indCache.boll[key])
-    if (!pts.length) continue
-    const line = chart.addSeries(LineSeriesDef, { color: BOLL_COLORS[key], lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false })
-    line.setData(pts)
-    track(line)
-  }
-}
-
-// ── marker 统一收集: 一个 series 只能挂一个 markers 插件, 缠论与波浪标记合并进同一数组 ──
-// 缠论标记: 分型箭头(顶/底) + 三类买卖点(圆点+文字, 红卖绿买) + 背离(顶背离橙/底背离蓝紫)
-function addChanMarkers(out) {
-  const kl = kline.value
-  const fs = indCache.fractals
-  const sigAt = indCache.signalAt
-  const divMap = new Map(indCache.divergences.map(d => [d.i, d.type]))
-  for (const f of fs) {
-    const isTop = f.type === 1
-    const s = sigAt.get(f.i)
-    const dv = divMap.get(f.i)
-    if (dv) {
-      // 背离优先: 圆点 + 文字(顶背离/底背离), 比普通分型更醒目
-      out.push({ time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: 'circle', color: dv === 'top' ? '#e67e22' : '#5b2c8f', size: 1.7, text: dv === 'top' ? '顶背离' : '底背离' })
-    } else {
-      out.push(s
-        ? { time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: 'circle', color: isTop ? '#c0392b' : '#16a085', size: 1.3, text: SIGNAL_LABELS[s] }
-        : { time: kl[f.i].time, position: isTop ? 'aboveBar' : 'belowBar', shape: isTop ? 'arrowDown' : 'arrowUp', color: isTop ? '#c0392b' : '#16a085', size: 1 })
-    }
-  }
-}
-
-// 波浪标记: 1-2-3-4-5-A-B-C 数字标签(顶红底绿, 大圆点+文字更清晰), 无法判定则不画并在 waveNote 明示
-function addWaveMarkers(out) {
-  const w = indCache.waves
-  if (w.status !== 'ok' && w.status !== 'ok5') return
-  const kl = kline.value
-  for (const p of w.waves) {
-    out.push({ time: kl[p.i].time, position: p.type === 1 ? 'aboveBar' : 'belowBar', shape: 'circle', color: p.type === 1 ? '#c0392b' : '#16a085', size: 1.5, text: p.label })
-  }
-}
-
-// 笔: 一条实线折线连接分型极值(相邻笔共享端点, 顺序连接即为笔链); 2px 深紫保证可见
-function addChanLines() {
-  const kl = kline.value
-  const bis = indCache.bis
-  if (!bis.length) return
-  const pts = []
-  let lastI = -1
-  for (const b of bis) {
-    if (b.from.i !== lastI) pts.push({ time: kl[b.from.i].time, value: b.from.type === 1 ? kl[b.from.i].high : kl[b.from.i].low })
-    pts.push({ time: kl[b.to.i].time, value: b.to.type === 1 ? kl[b.to.i].high : kl[b.to.i].low })
-    lastI = b.to.i
-  }
-  const line = chart.addSeries(LineSeriesDef, {
-    color: '#7d3c98', lineWidth: 2, lineStyle: LineStyleDef.Solid,
-    priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-  })
-  line.setData(pts)
-  track(line)
-}
-
-// 中枢: 上沿 ZG / 下沿 ZD 各一条水平线段(setData 不支持断点, 每中枢两条 2 点线); 1.5px 实线
-function addZhongshuLines() {
-  const kl = kline.value
-  const zs = indCache.zhongshu.slice(-CHAN_MAX_ZHONGSHU)
-  for (const z of zs) {
-    const t1 = kl[z.from].time, t2 = kl[z.to].time
-    for (const v of [z.zg, z.zd]) {
-      const line = chart.addSeries(LineSeriesDef, {
-        color: '#7d3c98', lineWidth: 1.5, lineStyle: LineStyleDef.Solid,
-        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-      })
-      line.setData([{ time: t1, value: v }, { time: t2, value: v }])
-      track(line)
-    }
-  }
-}
-
-// 成交量副屏(pane 1): 柱状图(红涨绿跌) + VOL5/10 均量线
-function addVolumePane() {
-  const kl = kline.value
-  const vol = chart.addSeries(HistogramSeriesDef, { priceFormat: { type: 'volume' } }, 1)
-  vol.setData(kl.map(k => ({
-    time: k.time, value: k.volume,
-    color: k.close >= k.open ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
-  })))
-  track(vol)
-  for (const n of [5, 10]) {
-    const pts = linePoints(indCache.volma[n])
-    if (!pts.length) continue
-    const line = chart.addSeries(LineSeriesDef, { color: n === 5 ? '#f2a900' : '#9b59b6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 1)
-    line.setData(pts)
-    track(line)
-  }
-}
-
-// 副屏指标(pane 2)
-function addSubLine(vals, color) {
-  const pts = linePoints(vals)
-  if (!pts.length) return
-  const line = chart.addSeries(LineSeriesDef, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 2)
-  line.setData(pts)
-  track(line)
-}
-
-function addSubIndicator() {
-  const s = subInd.value
-  if (s === 'none') return
-  const kl = kline.value
-  if (s === 'macd') {
-    const m = indCache.macd
-    addSubLine(m.dif, '#f2a900')
-    addSubLine(m.dea, '#9b59b6')
-    const hist = chart.addSeries(HistogramSeriesDef, {}, 2)
-    hist.setData(kl.map((k, i) => ({ time: k.time, value: m.hist[i], color: m.hist[i] >= 0 ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)' })))
-    track(hist)
-  } else if (s === 'kdj') { addSubLine(indCache.kdj.k, '#f2a900'); addSubLine(indCache.kdj.d, '#9b59b6'); addSubLine(indCache.kdj.j, '#27ae60') }
-  else if (s === 'rsi') { addSubLine(indCache.rsi[6], '#f2a900'); addSubLine(indCache.rsi[12], '#9b59b6'); addSubLine(indCache.rsi[24], '#27ae60') }
-  else if (s === 'cci') { addSubLine(indCache.cci, '#f2a900') }
-  else if (s === 'wr') { addSubLine(indCache.wr[10], '#f2a900'); addSubLine(indCache.wr[6], '#9b59b6') }
-  else if (s === 'obv') { addSubLine(indCache.obv, '#f2a900') }
-}
-
-// 分时副屏(pane 2): 按 subInd 渲染(macd/kdj/rsi/wr), 与K线共用指标选择器
-// 每分钟为一个价格点, 构造高=低=收盘的伪K线喂给指标纯函数
-function addTrendSubIndicator() {
-  const s = subInd.value
-  if (s === 'none') return
-  const t = trend.value
-  if (!t.length) return
-  const tkl = t.map(p => ({ open: p.price, high: p.price, low: p.price, close: p.price, volume: p.vol }))
-  const line = (vals, color) => {
-    const pts = []
-    for (let i = 0; i < vals.length; i++) {
-      if (Number.isFinite(vals[i])) pts.push({ time: t[i].time, value: vals[i] })
-    }
-    if (!pts.length) return
-    const l = chart.addSeries(LineSeriesDef, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 2)
-    l.setData(pts)
-    track(l)
-  }
-  const hist = (vals) => {
-    const h = chart.addSeries(HistogramSeriesDef, {}, 2)
-    h.setData(t.map((p, i) => ({
-      time: p.time, value: Number.isFinite(vals[i]) ? vals[i] : 0,
-      color: vals[i] >= 0 ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
-    })))
-    track(h)
-  }
-  if (s === 'macd') {
-    const m = calcMACD(tkl)
-    line(m.dif, '#f2a900'); line(m.dea, '#9b59b6'); hist(m.hist)
-  } else if (s === 'kdj') {
-    const k = calcKDJ(tkl)
-    line(k.k, '#f2a900'); line(k.d, '#9b59b6'); line(k.j, '#27ae60')
-  } else if (s === 'rsi') {
-    const r = calcRSI(tkl)
-    line(r[6], '#f2a900'); line(r[12], '#9b59b6'); line(r[24], '#27ae60')
-  } else if (s === 'wr') {
-    const w = calcWR(tkl)
-    line(w[10], '#f2a900'); line(w[6], '#9b59b6')
-  }
-}
-
-function renderSeries() {
-  if (!chart) return
-  removeAllSeries()
-  // 分时/K线同高 = 方案B(clamp 图表区宽×0.62)
-  recomputeChartHeight()
-  chart.applyOptions({ height: chartH.value, timeScale: { timeVisible: isIntraday.value } })
-  if (view.value === 'trend') {
-    // 分时图: 横轴固定全天 09:30~15:00(线只画到当前时间), 右边缘不锁数据(fixRightEdge 会把范围拉回最后数据点, 令固定范围失效)
-    chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: false })
-    const upP = quote.value?.upPx, downP = quote.value?.downPx
-    // 左轴涨跌%坐标系: 承载 series 绑 left scale(百分比是价格的线性变换 → 与价格线视觉重合),
-    // 刻度 custom formatter 显示 +X.X%; 左轴范围锁定 跌停%→涨停%(涨跌停坐标系)
-    // v5 要点: leftPriceScale.visible 在 chart 级; 刻度渲染依赖 scale 上有可见 series(透明色即可)
-    chart.applyOptions({ leftPriceScale: { visible: true, minimumWidth: 48 } })
-    const prevClose = quote.value?.prevClose
-    if (typeof prevClose === 'number' && prevClose > 0) {
-      const pctLine = chart.addSeries(LineSeriesDef, {
-        priceScaleId: 'left',
-        color: 'rgba(0,0,0,0)', lineWidth: 1,
-        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-        priceFormat: { type: 'custom', formatter: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%' },
-      })
-      pctLine.setData(trend.value.map(p => ({ time: p.time, value: +(((p.price - prevClose) / prevClose) * 100).toFixed(2) })))
-    }
-    const color = upColor.value
-    const area = chart.addSeries(AreaSeriesDef, {
-      lineColor: color, topColor: color + '33', bottomColor: color + '00',
-      lineWidth: 2, priceLineVisible: false,
-    })
-    // 横轴固定全天: 主 line 追加 whitespace bar(只有 time 无 value, 不画线) 到 15:00,
-    // 让 baseIndex/时间轴锚点延伸到收盘 —— setVisibleRange 的 to 才不会被 v5 clamp 到最后一个真实数据点
-    const areaData = trend.value.map(p => ({ time: p.time, value: p.price }))
-    const lastT = areaData[areaData.length - 1]?.time
-    if (lastT) {
-      const d0 = new Date(lastT * 1000)
-      const closeTs = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate(), 15, 0) / 1000
-      if (lastT < closeTs) {
-        for (let t = lastT + 60; t <= closeTs; t += 60) areaData.push({ time: t })
-      }
-    }
-    area.setData(areaData)
-    track(area)
-    // 均价线: 累计成交额/累计成交量(vol=手×100), 黄色实线(用户要求不用虚线)
-    let cumAmt = 0, cumVol = 0
-    const avgPoints = []
-    for (const p of trend.value) {
-      cumAmt += p.amount
-      cumVol += p.vol
-      if (cumVol > 0) avgPoints.push({ time: p.time, value: +(cumAmt / (cumVol * 100)).toFixed(3) })
-    }
-    if (avgPoints.length) {
-      const avg = chart.addSeries(LineSeriesDef, {
-        color: '#f2a900', lineWidth: 1,
-        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-      })
-      avg.setData(avgPoints)
-    }
-    // 分时成交量副屏(pane 1): 每分钟柱状, 红涨绿跌(相对昨收)
-    const volSer = chart.addSeries(HistogramSeriesDef, { priceFormat: { type: 'volume' } }, 1)
-    volSer.setData(trend.value.map(p => ({
-      time: p.time, value: p.vol,
-      color: typeof prevClose === 'number' && p.price >= prevClose ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
-    })))
-    track(volSer)
-    // 分时副屏(pane 2): 按 subInd 渲染(macd/kdj/rsi/wr, 与K线共用指标选择器)
-    addTrendSubIndicator()
-    setPaneStretch()
-    // 横轴固定全天 09:30~15:00(线只画到当前时间): whitespace 锚点延伸到收盘后,
-    // setVisibleRange 的 rightOffset = 15:00 - baseIndex, 视图恰好 [09:30, 15:00] 全宽
-    const first = trend.value[0]
-    if (first && first.time) {
-      const d = new Date(first.time * 1000)
-      const openTs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9, 30) / 1000
-      const closeTs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 15, 0) / 1000
-      chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: false })
-      chart.timeScale().setVisibleRange({ from: openTs, to: closeTs })
-    } else {
-      chart.timeScale().fitContent()
-    }
-    // 价格轴范围锁定放最后(series 就位后 setVisibleRange 才生效, 否则被 addSeries 数据范围覆盖):
-    // 右轴 跌停价~涨停价(价格) / 左轴 跌停%~涨停%(百分比) — 分时最高最低固定为当日涨跌停
-    if (typeof upP === 'number' && typeof downP === 'number' && upP > downP) {
-      const rs = chart.priceScale('right')
-      rs.applyOptions({ autoScale: false })
-      rs.setVisibleRange({ from: downP, to: upP })
-      if (typeof prevClose === 'number' && prevClose > 0) {
-        const ls = chart.priceScale('left')
-        ls.applyOptions({ autoScale: false })
-        ls.setVisibleRange({
-          from: +(((downP - prevClose) / prevClose) * 100).toFixed(2),
-          to: +(((upP - prevClose) / prevClose) * 100).toFixed(2),
-        })
-      }
-    }
-  } else {
-    if (!kline.value.length) return
-    // K 线: 恢复时间轴可移动/缩放 + Y 轴自动 + 隐藏左轴(分时锁定设置不影响 K 线)
-    chart.timeScale().applyOptions({ fixLeftEdge: false, fixRightEdge: false })
-    chart.priceScale('right').applyOptions({ autoScale: true })
-    chart.applyOptions({ leftPriceScale: { visible: false } })
-    computeIndicators()
-    // pane0 蜡烛
-    const candle = chart.addSeries(CandlestickSeriesDef, {
-      upColor: '#e74c3c', downColor: '#27ae60',
-      borderVisible: false, wickUpColor: '#e74c3c', wickDownColor: '#27ae60',
-    })
-    candle.setData(kline.value.map(k => ({ time: k.time, open: k.open, high: k.high, low: k.low, close: k.close })))
-    track(candle)
-    // 主图叠加
-    if (overlays.ma) addMaLines()
-    if (overlays.boll) addBollLines()
-    // 缠论: 笔 + 中枢(先画线, 再画 marker, 保证标记盖在最上层)
-    if (chan.value) { addChanLines(); addZhongshuLines() }
-    // marker 统一收集: 缠论分型/买卖点 + 波浪标签 → 单个 markers 插件
-    const markersAll = []
-    if (chan.value) addChanMarkers(markersAll)
-    if (wave.value) addWaveMarkers(markersAll)
-    if (markersAll.length) {
-      // v5: createSeriesMarkers 创建即自动挂载到 series(detach 用于移除), 只需记录插件供清理
-      markerPlugins.push(createSeriesMarkersFn(candle, markersAll))
-    }
-    // 波浪判定提示(无法判定时明示, 始终标注参考): ok=完整5+3, ok5=5浪推动(调整未确认)
-    const ws = indCache.waves.status
-    waveNote.value = ws === 'ok'
-      ? `波浪:${indCache.waves.dir === 1 ? '上升' : '下跌'}推动 5浪+ABC 已识别(参考)`
-      : ws === 'ok5'
-        ? `波浪:${indCache.waves.dir === 1 ? '上升' : '下跌'}推动 5浪已识别, 调整浪未确认(参考)`
-        : '波浪:无法判定(参考)'
-    // 成交量 + 副屏指标
-    addVolumePane()
-    addSubIndicator()
-    setPaneStretch()
-    // K线默认显示最近 N 根, 可缩放/拖动看更早数据
-    const n = kline.value.length
-    const max = VIEW_MAX_BARS[view.value] || 60
-    const vis = Math.min(n, max)
-    if (vis > 0) chart.timeScale().setVisibleLogicalRange({ from: n - vis, to: n - 1 })
-  }
-  crossInfo.value = null   // 重绘后无光标 → 16 格恢复当日实时
-}
 
 async function loadChart() {
   if (view.value === 'trend') await loadTrend()
   else await loadKline(view.value, adjust.value)
-  await nextTick()
-  await ensureChart()
-  renderSeries()
+  // 数据就绪后: indCache 为 computed(kline 变化即重算), StockChartCanvas 监听 props 自动重绘
 }
 
 watch([view, adjust], () => { loadChart() })
-// 行情异步到达后重绘: 左轴%/分时Y轴锁定依赖 prevClose/upPx/downPx, 首帧 renderSeries 时 quote 可能未就绪
+// 行情异步到达(prevClose/upPx/downPx 决定分时双轴与涨跌停线): 画布监听 quote prop 自动重绘
 watch(quote, (q) => {
-  if (chart) renderSeries()
   // 盘口未就绪时补拉(首次加载/失败后); 已加载则 useStockDetail 刷新保留, 不重复触发
   if (q && !q.pankou) loadPankou(true)
-})
-// 指标/叠加/缠论/波浪切换只重绘, 不重新拉数据
-watch([subInd, chan, wave, () => overlays.ma, () => overlays.boll], () => {
-  if (chart) renderSeries()
 })
 // 下拉刷新: 仅当前激活页面响应(usePullRefresh 按激活态过滤)
 usePullRefresh(() => {
@@ -626,11 +203,10 @@ usePullRefresh(() => {
 watch(code, () => {
   // 路由离开详情页(code 变 undefined)时不重载, 否则跳板块/盘面页会发一堆无效请求
   if (!code.value) return
-  // 同一路由记录复用组件实例: 切 code 先清空旧数据并销毁旧图表, 否则残留上一只股票的行情/图表
+  // 同一路由记录复用组件实例: 切 code 先清空旧数据, 否则残留上一只股票的行情/图表
   quote.value = null
   kline.value = []
   trend.value = []
-  indCache = null
   boards.value = null
   limitReason.value = null
   gene.value = null
@@ -643,7 +219,6 @@ watch(code, () => {
   f10Finance.value = null
   f10Holders.value = null
   f10Valuation.value = []
-  if (chart) { chart.remove(); chart = null; series = []; markerPlugins = [] }
   loadQuote()
   loadChart()
   loadBoards()
@@ -836,7 +411,7 @@ function tick(fn) { if (!isTradingTime()) { stopTimers(); return } fn() }
 async function refreshChartSilent() {
   if (view.value === 'trend') await loadTrend(true)
   else await loadKline(view.value, adjust.value, true)
-  if (chart) renderSeries()
+  // 数据更新后 indCache 重算 + 画布自动重绘
 }
 function onVisibility() {
   if (document.hidden) { stopTimers(); return }
@@ -858,18 +433,14 @@ onActivated(() => {
     loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadPankou(); loadGene(); loadBid(); loadBigOrder(); loadLhb(); loadInfo()
   } else if (isTradingTime()) {
     loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true)
-    if (view.value === 'trend') loadTrend(true)
-    if (chart) renderSeries()
   }
   startTimers()
 })
 onDeactivated(() => { stopTimers() })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', onResize)
   document.removeEventListener('visibilitychange', onVisibility)
   stopTimers()
-  if (chart) { chart.remove(); chart = null }
 })
 </script>
 
@@ -961,7 +532,12 @@ onUnmounted(() => {
             {{ error || '图表数据加载失败' }}
             <button class="sd-retry" @click="loadChart">重试</button>
           </div>
-          <div v-else ref="chartEl" class="sd-chart" :class="{ kline: isKline }" :style="{ height: chartH + 'px' }">
+          <div v-else class="sd-chart">
+            <StockChartCanvas
+              :view="view" :kline="kline" :trend="trend" :quote="quote"
+              :overlays="overlays" :chan="chan" :wave="wave"
+              :sub-ind="subInd" :ind-cache="indCache"
+              @crossinfo="onCrosshairFromCanvas" />
             <!-- 副图指标切换: 定位在副图(pane 2)区域左上角的下拉按钮; 分时视图同样可用 -->
             <select v-model="subInd" class="sd-subind-select" title="切换副图指标">
               <option v-for="s in subInds" :key="s.key" :value="s.key">{{ s.label }}</option>
@@ -1155,9 +731,12 @@ onUnmounted(() => {
 .sd-wave-note { font-size: 11px; color: #d35400; margin-bottom: 6px; padding: 0 14px; }
 .sd-isep { width: 1px; background: #e5e5e5; margin: 0 2px; flex: none; }
 
-/* touch-action: pan-y !important — 覆盖 lightweight-charts 内联 none: 垂直手势交还页面滚动(上下滑=滚页面), 水平拖动/双指缩放仍归图表
-   ⚠️ 外层高度由 inline style 绑定 chartH(与 createChart/applyOptions 高度一致), 保证内层 canvas 不溢出遮挡下方内容 */
-.sd-chart { position: relative; width: 100%; touch-action: pan-y !important; }
+/* 图表容器: height 100% 令 StockChartCanvas(.scc-wrap height:100%) 填充到与右盘口同高(flex stretch 已定高);
+   垂直手势交还页面滚动(上下滑=滚页面), 水平拖动/缩放归画布组件处理 */
+.sd-chart { position: relative; width: 100%; height: 100%; min-height: 280px; touch-action: pan-y !important; }
+@media (min-width: 481px) {
+  .sd-chart { min-height: 360px; }
+}
 /* 副图指标下拉: 定位在副图(pane 2)区域左上角, 半透明底避免挡K线 */
 .sd-subind-select {
   position: absolute;
