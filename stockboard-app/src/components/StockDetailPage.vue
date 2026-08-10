@@ -8,9 +8,12 @@ import { loadTencentPankou } from '../utils/pankou.js'
 import PankouPanel from './PankouPanel.vue'
 import BidAuctionCard from './BidAuctionCard.vue'
 import LimitGeneCard from './LimitGeneCard.vue'
+import BigOrderCard from './BigOrderCard.vue'
+import LhbStockCard from './LhbStockCard.vue'
+import ZtHistoryCard from './ZtHistoryCard.vue'
 import {
   fetchBoards, fetchLimitReason, fetchMainFlow, isTradingTime,
-  fetchZhangTingGene, fetchStockBid,
+  fetchZhangTingGene, fetchStockBid, fetchMainMonitor, fetchStockLhbHistory,
   fetchInfoList,
   fetchF10Company, fetchF10Finance, fetchF10Shareholders, fetchF10Valuation,
 } from '../composables/useKplApi.js'
@@ -27,13 +30,14 @@ const { quote, kline, trend, loading, error, loadQuote, loadKline, loadTrend } =
 // ── 功能卡数据(涨停基因/竞价分时; 低频, 激活时加载一次) ──
 const gene = ref(null)   // fetchZhangTingGene 六维; null=未加载/失败(空态)
 const bid = ref(null)    // fetchStockBid 竞价序列; null=未加载/非竞价时段(空态)
+const orders = ref(null)       // fetchMainMonitor 逐笔大单; null=未加载/失败(空态), 15s 轮询
+const lhbHistory = ref(null)   // fetchStockLhbHistory 上榜历史; null=未加载/失败(空态), 激活加载一次
 
 // ── 板块胶囊 / 涨停原因(开盘啦) ──
 const boards = ref(null)          // null=未加载失败, []或数组=成功
 const boardsLoading = ref(false)
 const boardsMore = ref(false)
 const limitReason = ref(null)     // {zsCodes, reason} 或 null(接口无数据)
-const limitMore = ref(false)
 // 仅当日涨停才展示涨停原因: GetDayZhangTing 对非涨停股也返回"最近一次涨停原因"(如茅台返回7月17日) →
 // 用行情涨停价口径判断: 现价 >= 涨停价; KPL 主源缺失(降级源)时退用涨幅 ≥9.8%
 const isLimitUp = computed(() => {
@@ -591,7 +595,7 @@ watch([subInd, chan, wave, () => overlays.ma, () => overlays.boll], () => {
 })
 // 下拉刷新: 仅当前激活页面响应(usePullRefresh 按激活态过滤)
 usePullRefresh(() => {
-  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true); loadGene(true); loadBid(true); loadInfo(true)
+  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true); loadGene(true); loadBid(true); loadBigOrder(true); loadLhb(true); loadInfo(true)
 })
 
 watch(code, () => {
@@ -606,6 +610,8 @@ watch(code, () => {
   limitReason.value = null
   gene.value = null
   bid.value = null
+  orders.value = null
+  lhbHistory.value = null
   moreTab.value = 'info'
   infoList.value = []
   f10Company.value = null
@@ -621,6 +627,8 @@ watch(code, () => {
   loadPankou()
   loadGene()
   loadBid()
+  loadBigOrder()
+  loadLhb()
   loadInfo()
 })
 
@@ -669,6 +677,15 @@ async function loadGene(silent = false) {
 async function loadBid(silent = false) {
   try { bid.value = await fetchStockBid(code.value, silent) }
   catch (e) { bid.value = null }
+}
+// ── 大单监控(15s 轮询) + 龙虎榜个股历史(激活加载一次) ──
+async function loadBigOrder(silent = false) {
+  try { orders.value = await fetchMainMonitor(code.value, silent) }
+  catch (e) { orders.value = null }
+}
+async function loadLhb(silent = false) {
+  try { lhbHistory.value = await fetchStockLhbHistory(code.value, silent) }
+  catch (e) { lhbHistory.value = null }
 }
 
 // ── 资讯 tab: 新闻|研报|公告 列表 + 正文懒加载 ──
@@ -774,7 +791,6 @@ const peStats = computed(() => {
 
 // ── 导航/工具 ──
 function goBoard(bkCode, name) { router.push({ path: '/board/' + bkCode, query: { name } }) }
-function firstLine(s) { if (!s) return ''; const i = s.indexOf('\n'); return i > 0 ? s.slice(0, i) : s }
 function shortDate(s) { return s ? String(s).slice(0, 10) : '' }
 
 // ── 盘中轮询: 5s 报价 / 15s 主力+图表 / 30s 板块+涨停原因; 全部 silent, 仅交易时段 ──
@@ -785,6 +801,7 @@ function startTimers() {
   timers.quote = setInterval(() => tick(() => loadQuote(true)), 5000)
   timers.pankou = setInterval(() => tick(() => loadPankou(true)), 5000)
   timers.mainFlow = setInterval(() => tick(() => loadMainFlow(true)), 15000)
+  timers.bigOrder = setInterval(() => tick(() => loadBigOrder(true)), 15000)
   timers.chart = setInterval(() => tick(refreshChartSilent), 15000)
   timers.board = setInterval(() => tick(() => loadBoards(true)), 30000)
   timers.limit = setInterval(() => tick(() => loadLimit(true)), 30000)
@@ -800,7 +817,7 @@ function onVisibility() {
   if (document.hidden) { stopTimers(); return }
   if (!isTradingTime()) return
   startTimers()
-  loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true)
+  loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true); loadBigOrder(true)
 }
 
 // KeepAlive 组件首次挂载时 onMounted+onActivated 双触发 → 加载只在 onActivated 做(inited 分支)
@@ -813,7 +830,7 @@ onMounted(() => {
 onActivated(() => {
   if (!inited) {
     inited = true
-    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadPankou(); loadGene(); loadBid(); loadInfo()
+    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadPankou(); loadGene(); loadBid(); loadBigOrder(); loadLhb(); loadInfo()
   } else if (isTradingTime()) {
     loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true)
     if (view.value === 'trend') loadTrend(true)
@@ -921,18 +938,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 涨停原因(仅当日涨停显示: 现价≥涨停价; 开盘啦 GetDayZhangTing) -->
-    <div v-if="isLimitUp && limitReason" class="sd-limit">
-      <div class="sd-limit-head">
-        <strong class="sd-limit-title">📌 涨停原因</strong>
-        <button v-if="limitReason.reason && limitReason.reason.length > 60" class="sd-limit-toggle" @click="limitMore = !limitMore">{{ limitMore ? '收起 ▴' : '更多 ▾' }}</button>
-      </div>
-      <p class="sd-limit-text">{{ limitMore ? limitReason.reason : firstLine(limitReason.reason) }}</p>
-      <div v-if="limitReason.zsCodes && limitReason.zsCodes.length" class="sd-limit-codes">
-        <span v-for="c in limitReason.zsCodes" :key="c" class="sd-mini-chip" @click="goBoard(c, boardNameById[c] || c)">{{ boardNameById[c] || c }}</span>
-      </div>
-    </div>
-
     <!-- 所属板块胶囊(开盘啦 GetFeaturedSection, 强度%红涨绿跌) -->
     <div v-if="boards && boards.length" class="sd-boards">
       <div class="sd-boards-head">
@@ -948,10 +953,13 @@ onUnmounted(() => {
     </div>
     <div v-else-if="boardsLoading" class="sd-boards-loading">板块加载中…</div>
 
-    <!-- 功能卡区(2 列; Task 6 补全 4 列): 竞价分时 / 涨停基因 -->
+    <!-- 功能卡区(4 列, 移动堆叠): 竞价分时 / 涨停基因 / 大单监控 / 龙虎榜; 第二行涨停原因全宽 -->
     <div class="sd-cards">
       <BidAuctionCard :bid="bid" :prev-close="quote?.prevClose" />
       <LimitGeneCard :gene="gene" />
+      <BigOrderCard :orders="orders" />
+      <LhbStockCard :history="lhbHistory" />
+      <ZtHistoryCard v-if="isLimitUp && limitReason" class="sd-card-wide" :reason="limitReason" :board-map="boardNameById" @go-board="goBoard" />
     </div>
 
     <!-- 底部 tab 区: 📰 资讯 | 🏢 基本面(默认收起, 点开才请求) -->
@@ -1120,15 +1128,6 @@ onUnmounted(() => {
 .sd-cell.minor .lbl { font-size: 9px; }
 .sd-cell.minor .val { font-size: 10px; color: #666; }
 
-/* ── 涨停原因块 ── */
-.sd-limit { margin: 0 14px 14px; background: #fff7f5; border: 1px solid #f5dcd5; border-radius: 10px; padding: 10px 12px; }
-.sd-limit-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.sd-limit-title { font-size: 13px; color: #c0392b; }
-.sd-limit-toggle { margin-left: auto; border: none; background: none; color: #2980b9; font-size: 12px; cursor: pointer; flex: none; }
-.sd-limit-text { font-size: 12px; color: #555; line-height: 1.7; margin: 0 0 8px; }
-.sd-limit-codes { display: flex; flex-wrap: wrap; gap: 6px; }
-.sd-mini-chip { background: #fdecea; color: #c0392b; font-size: 11px; padding: 2px 8px; border-radius: 20px; cursor: pointer; }
-
 /* ── 所属板块胶囊 ── */
 .sd-boards { margin: 0 14px 14px; }
 .sd-boards-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -1140,8 +1139,9 @@ onUnmounted(() => {
 .sd-chip-str { font-size: 11px; font-weight: 600; }
 .sd-boards-loading { padding: 10px 0; text-align: center; color: #999; font-size: 12px; }
 
-/* 功能卡区: 桌面多列 / 移动堆叠; 卡内样式见 src/styles/cards.css(.feat-card) */
-.sd-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 0 14px 14px; }
+/* 功能卡区: 4 列(移动堆叠); 卡内样式见 src/styles/cards.css(.feat-card) */
+.sd-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 14px 14px; }
+.sd-card-wide { grid-column: 1 / -1; }   /* 第二行涨停原因卡全宽 */
 
 /* ── 底部 资讯|基本面 tab 区 ── */
 .sd-more { margin: 0 14px; }
@@ -1177,7 +1177,7 @@ onUnmounted(() => {
 .sd-svg-scale { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
 
 @media (max-width: 480px) {
-  .sd-limit, .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }
+  .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }
   .sd-chart-row { padding: 0 10px; gap: 8px; }
   .sd-pankou { width: 116px; padding-left: 8px; }
   .sd-cards { grid-template-columns: 1fr; margin: 0 10px 14px; }
@@ -1186,7 +1186,7 @@ onUnmounted(() => {
 @media (min-width: 768px) {
   .sd-page { padding: 8px 0 20px; }
   .sd-head, .sd-chart-head, .sd-inds, .sd-wave-note, .sd-info { padding-left: 28px; padding-right: 28px; }
-  .sd-limit, .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
+  .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
   .sd-info { margin-bottom: 18px; }
   .sd-chart-row { padding: 0 28px; }
   .sd-cards { margin: 0 28px 14px; }
