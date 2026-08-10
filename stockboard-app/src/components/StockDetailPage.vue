@@ -87,6 +87,16 @@ const CHAN_MAX_ZHONGSHU = 10   // 最多画最近 10 个中枢(每个中枢2条�
 
 const chartEl = ref(null)
 let chart = null
+
+// 图表高度: 方案B = 图表区宽×0.62 clamp(桌面 220~420, 移动 220~280); 与 CSS 内联高度联动
+const chartH = ref(360)
+function recomputeChartHeight() {
+  const w = chartEl.value ? chartEl.value.clientWidth : (window.innerWidth || 360)
+  const mobile = window.innerWidth <= 480
+  const raw = w * 0.62
+  chartH.value = Math.round(mobile ? Math.min(Math.max(raw, 220), 280) : Math.min(Math.max(raw, 220), 420))
+  return chartH.value
+}
 let series = []          // 当前所有 series(切视图/指标时整体移除重建)
 let markerPlugins = []   // 已挂载的 marker 插件(移除 series 前先 detach)
 let indCache = null      // 当前 kline 的指标缓存(图例用, 避免每次 hover 重算)
@@ -126,7 +136,11 @@ const upColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
 
 function goH5() { router.push('/stock/' + code.value + '/h5') }
 
-function onResize() { if (chart && chartEl.value) chart.applyOptions({ width: chartEl.value.clientWidth }) }
+function onResize() {
+  if (!chart || !chartEl.value) return
+  const h = recomputeChartHeight()
+  chart.applyOptions({ width: chartEl.value.clientWidth, height: h })
+}
 
 // ── 指标缓存 ──
 function computeIndicators() {
@@ -185,9 +199,10 @@ async function ensureChart() {
   LineSeriesDef = m.LineSeries
   LineStyleDef = m.LineStyle
   createSeriesMarkersFn = m.createSeriesMarkers
+  recomputeChartHeight()
   chart = m.createChart(chartEl.value, {
     width: chartEl.value.clientWidth || 360,
-    height: 360,
+    height: chartH.value,
     layout: { background: { type: m.ColorType.Solid, color: '#ffffff' }, textColor: '#666', fontSize: 11 },
     grid: { vertLines: { color: '#f3f3f3' }, horzLines: { color: '#f3f3f3' } },
     crosshair: {
@@ -215,10 +230,11 @@ function removeAllSeries() {
   markerPlugins = []
 }
 
+// 主图:量:副图 = 3:1:1(spec §3 方案B); 无副图时主图:量 = 2.2:1
 function setPaneStretch() {
   const panes = chart.panes()
-  if (panes.length >= 3) { panes[0].setStretchFactor(2.2); panes[1].setStretchFactor(0.6); panes[2].setStretchFactor(1.0) }
-  else if (panes.length === 2) { panes[0].setStretchFactor(2.2); panes[1].setStretchFactor(0.7) }
+  if (panes.length >= 3) { panes[0].setStretchFactor(3); panes[1].setStretchFactor(1); panes[2].setStretchFactor(1) }
+  else if (panes.length === 2) { panes[0].setStretchFactor(2.2); panes[1].setStretchFactor(1) }
 }
 
 // 折线数据(过滤 null)
@@ -363,11 +379,53 @@ function addSubIndicator() {
   else if (s === 'obv') { addSubLine(indCache.obv, '#f2a900') }
 }
 
+// 分时副屏(pane 2): 按 subInd 渲染(macd/kdj/rsi/wr), 与K线共用指标选择器
+// 每分钟为一个价格点, 构造高=低=收盘的伪K线喂给指标纯函数
+function addTrendSubIndicator() {
+  const s = subInd.value
+  if (s === 'none') return
+  const t = trend.value
+  if (!t.length) return
+  const tkl = t.map(p => ({ open: p.price, high: p.price, low: p.price, close: p.price, volume: p.vol }))
+  const line = (vals, color) => {
+    const pts = []
+    for (let i = 0; i < vals.length; i++) {
+      if (Number.isFinite(vals[i])) pts.push({ time: t[i].time, value: vals[i] })
+    }
+    if (!pts.length) return
+    const l = chart.addSeries(LineSeriesDef, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 2)
+    l.setData(pts)
+    track(l)
+  }
+  const hist = (vals) => {
+    const h = chart.addSeries(HistogramSeriesDef, {}, 2)
+    h.setData(t.map((p, i) => ({
+      time: p.time, value: Number.isFinite(vals[i]) ? vals[i] : 0,
+      color: vals[i] >= 0 ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
+    })))
+    track(h)
+  }
+  if (s === 'macd') {
+    const m = calcMACD(tkl)
+    line(m.dif, '#f2a900'); line(m.dea, '#9b59b6'); hist(m.hist)
+  } else if (s === 'kdj') {
+    const k = calcKDJ(tkl)
+    line(k.k, '#f2a900'); line(k.d, '#9b59b6'); line(k.j, '#27ae60')
+  } else if (s === 'rsi') {
+    const r = calcRSI(tkl)
+    line(r[6], '#f2a900'); line(r[12], '#9b59b6'); line(r[24], '#27ae60')
+  } else if (s === 'wr') {
+    const w = calcWR(tkl)
+    line(w[10], '#f2a900'); line(w[6], '#9b59b6')
+  }
+}
+
 function renderSeries() {
   if (!chart) return
   removeAllSeries()
-  // 分时/K线统一 360(用户要求与日K同高)
-  chart.applyOptions({ height: 360, timeScale: { timeVisible: isIntraday.value } })
+  // 分时/K线同高 = 方案B(clamp 图表区宽×0.62)
+  recomputeChartHeight()
+  chart.applyOptions({ height: chartH.value, timeScale: { timeVisible: isIntraday.value } })
   if (view.value === 'trend') {
     // 分时图: 横轴固定全天 09:30~15:00(线只画到当前时间), 右边缘不锁数据(fixRightEdge 会把范围拉回最后数据点, 令固定范围失效)
     chart.timeScale().applyOptions({ rightOffset: 0, fixLeftEdge: true, fixRightEdge: false })
@@ -426,26 +484,8 @@ function renderSeries() {
       color: typeof prevClose === 'number' && p.price >= prevClose ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
     })))
     track(volSer)
-    // 分时 MACD 副屏(pane 2): 分钟收盘价序列算 DIF/DEA/柱
-    const tm = calcMACD(trend.value.map(p => ({ close: p.price })))
-    const tLine = (vals, color) => {
-      const pts = []
-      for (let i = 0; i < vals.length; i++) {
-        if (Number.isFinite(vals[i])) pts.push({ time: trend.value[i].time, value: vals[i] })
-      }
-      if (!pts.length) return
-      const line = chart.addSeries(LineSeriesDef, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, 2)
-      line.setData(pts)
-      track(line)
-    }
-    tLine(tm.dif, '#f2a900')
-    tLine(tm.dea, '#9b59b6')
-    const tHist = chart.addSeries(HistogramSeriesDef, {}, 2)
-    tHist.setData(trend.value.map((p, i) => ({
-      time: p.time, value: Number.isFinite(tm.hist[i]) ? tm.hist[i] : 0,
-      color: tm.hist[i] >= 0 ? 'rgba(231,76,60,.55)' : 'rgba(39,174,96,.55)',
-    })))
-    track(tHist)
+    // 分时副屏(pane 2): 按 subInd 渲染(macd/kdj/rsi/wr, 与K线共用指标选择器)
+    addTrendSubIndicator()
     setPaneStretch()
     // 横轴固定全天 09:30~15:00(线只画到当前时间): whitespace 锚点延伸到收盘后,
     // setVisibleRange 的 rightOffset = 15:00 - baseIndex, 视图恰好 [09:30, 15:00] 全宽
@@ -826,9 +866,9 @@ onUnmounted(() => {
         {{ error || '图表数据加载失败' }}
         <button class="sd-retry" @click="loadChart">重试</button>
       </div>
-      <div v-else ref="chartEl" class="sd-chart" :class="{ kline: isKline }">
-        <!-- 副图指标切换: 定位在副图(pane 2)区域左上角的下拉按钮 -->
-        <select v-if="isKline" v-model="subInd" class="sd-subind-select" title="切换副图指标">
+      <div v-else ref="chartEl" class="sd-chart" :class="{ kline: isKline }" :style="{ height: chartH + 'px' }">
+        <!-- 副图指标切换: 定位在副图(pane 2)区域左上角的下拉按钮; 分时视图同样可用 -->
+        <select v-model="subInd" class="sd-subind-select" title="切换副图指标">
           <option v-for="s in subInds" :key="s.key" :value="s.key">{{ s.label }}</option>
         </select>
       </div>
@@ -962,7 +1002,7 @@ onUnmounted(() => {
 
 <style scoped>
 /* 全宽页面: main-content.stock-page 已去左右留白, 内部区块自行控制 padding */
-.sd-page { padding: 4px 0 12px; }
+.sd-page { padding: 4px 0 12px; font-variant-numeric: tabular-nums; }  /* 数字等宽对齐(spec §7.5) */
 /* 基本信息: 总高控制在约 1/4 屏(用户要求) — 名称行+价格行+16格两段式紧凑排布 */
 .sd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 0 12px; flex-wrap: wrap; }
 .sd-info { margin-bottom: 8px; padding: 0 12px; }
@@ -999,9 +1039,8 @@ onUnmounted(() => {
 .sd-isep { width: 1px; background: #e5e5e5; margin: 0 2px; flex: none; }
 
 /* touch-action: pan-y !important — 覆盖 lightweight-charts 内联 none: 垂直手势交还页面滚动(上下滑=滚页面), 水平拖动/双指缩放仍归图表
-   ⚠️ 外层高度必须与 renderSeries 内联高度一致(分时/K线均为 360), 否则内层 canvas 溢出遮住下方涨停原因块 */
-.sd-chart { position: relative; width: 100%; height: 360px; touch-action: pan-y !important; }
-.sd-chart.kline { height: 360px; }
+   ⚠️ 外层高度由 inline style 绑定 chartH(与 createChart/applyOptions 高度一致), 保证内层 canvas 不溢出遮挡下方内容 */
+.sd-chart { position: relative; width: 100%; touch-action: pan-y !important; }
 /* 副图指标下拉: 定位在副图(pane 2)区域左上角, 半透明底避免挡K线 */
 .sd-subind-select {
   position: absolute;
