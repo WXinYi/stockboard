@@ -30,6 +30,7 @@ let ro = null
 let hover = null            // {x, y, klineIdx}
 let drag = null             // K线平移 {startX, startOffset}
 let offset = 0              // K线窗口偏移(回看)
+let plotX = 0, plotW = 0    // 当前视图内容区 x 基准与宽(十字光标命中/分时 x 用)
 
 // 颜色 token (spec §7.2, 唯一来源)
 const C = {
@@ -96,6 +97,8 @@ function drawTrend() {
   const upP = quote.upPx, downP = quote.downPx
   const axis = priceTicksTrend(upP, downP, prevClose, main)
   const yMin = downP, yMax = upP
+  plotX = main.x; plotW = main.width
+  const x0 = main.x, w0 = main.width   // 分时 x 以内容区为基准, 避免线/量柱/副图越过 y 轴带
 
   // 1. 网格 + 昨收 + 涨跌停线
   drawGrid(main)
@@ -107,17 +110,17 @@ function drawTrend() {
   // 2. 左右双轴刻度
   drawTrendAxis(axis, main, rects)
   // 3. 分时线 + 均价线
-  drawTrendLine(main, t, prevClose, yMin, yMax)
-  drawAvgLine(main, t, prevClose, yMin, yMax)
+  drawTrendLine(main, t, prevClose, yMin, yMax, x0, w0)
+  drawAvgLine(main, t, prevClose, yMin, yMax, x0, w0)
   // 4. 量能
-  drawTrendVolume(vol, t, prevClose)
+  drawTrendVolume(vol, t, prevClose, x0, w0)
   // 5. 副图(分时按 subInd 走伪K线: 指标由本组件从分时数据现算, 宿主 indCache 为空)
   if (sub && props.subInd !== 'none') {
     const tkl = t.map(p => ({ open: p.price, high: p.price, low: p.price, close: p.price, volume: p.vol }))
-    drawSubPane(sub, tkl, { macd: calcMACD(tkl), kdj: calcKDJ(tkl), rsi: calcRSI(tkl), wr: calcWR(tkl) })
+    drawSubPane(sub, tkl, { macd: calcMACD(tkl), kdj: calcKDJ(tkl), rsi: calcRSI(tkl), wr: calcWR(tkl) }, x0, w0, 0)
   }
   // 6. 时间轴
-  drawTimeAxis(rects, timeTicks(t, w, true), true)
+  drawTimeAxis(rects, timeTicks(t, w0, true), true, x0)
 }
 
 function drawGrid(rect) {
@@ -162,15 +165,15 @@ function drawTrendAxis(axis, main, rects) {
   }
 }
 
-function drawTrendLine(main, t, prevClose, yMin, yMax) {
+function drawTrendLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
   if (!ctx || !t.length) return
-  const w = canvasRef.value.clientWidth
+  const w = w0 || canvasRef.value.clientWidth
   ctx.strokeStyle = C.up
   ctx.lineWidth = 1.2
   ctx.setLineDash([])
   ctx.beginPath()
   t.forEach((p, i) => {
-    const x = idxToX(i, w, t.length)
+    const x = x0 + idxToX(i, w, t.length)
     const y = priceToY(p.price, yMin, yMax, main)
     if (i === 0) ctx.moveTo(x, y)
     else ctx.lineTo(x, y)
@@ -187,51 +190,50 @@ function drawTrendLine(main, t, prevClose, yMin, yMax) {
   ctx.fillText('─ 均价', avgX, main.y + 3)
 }
 
-function drawAvgLine(main, t, prevClose, yMin, yMax) {
+function drawAvgLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
   if (!ctx || !t.length) return
-  const w = canvasRef.value.clientWidth
+  const w = w0 || canvasRef.value.clientWidth
   let cumAmt = 0, cumVol = 0
-  const pts = []
-  for (const p of t) {
-    cumAmt += p.amount
-    cumVol += p.vol
-    if (cumVol > 0) pts.push(+(cumAmt / (cumVol * 100)).toFixed(3))
-  }
-  if (!pts.length) return
   ctx.strokeStyle = C.avg
-  ctx.lineWidth = 1
+  ctx.lineWidth = 1.2
   ctx.beginPath()
-  pts.forEach((v, i) => {
-    const x = idxToX(i, w, t.length)
+  let started = false
+  for (let i = 0; i < t.length; i++) {
+    cumAmt += t[i].amount || 0
+    cumVol += t[i].vol || 0
+    if (cumVol <= 0) continue
+    const v = cumAmt / (cumVol * 100)
+    if (!Number.isFinite(v)) continue
+    const x = x0 + idxToX(i, w, t.length)
     const y = priceToY(v, yMin, yMax, main)
-    if (i === 0) ctx.moveTo(x, y)
+    if (!started) { ctx.moveTo(x, y); started = true }
     else ctx.lineTo(x, y)
-  })
+  }
   ctx.stroke()
 }
 
-function drawTrendVolume(vol, t, prevClose) {
+function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   if (!ctx || !t.length) return
-  const w = canvasRef.value.clientWidth
+  const w = w0 || canvasRef.value.clientWidth
   const maxVol = Math.max(...t.map(p => p.vol), 1)
   const barW = Math.max(1, w / t.length * 0.6)
   for (let i = 0; i < t.length; i++) {
     const p = t[i]
-    const x = idxToX(i, w, t.length) - barW / 2
+    const x = x0 + idxToX(i, w, t.length) - barW / 2
     const h = (p.vol / maxVol) * (vol.height - 4)
     ctx.fillStyle = typeof prevClose === 'number' && p.price >= prevClose ? C.volUp : C.volDown
     ctx.fillRect(x, vol.y + vol.height - h - 2, barW, h)
   }
 }
 
-function drawTimeAxis(rects, ticks, isIntraday) {
+function drawTimeAxis(rects, ticks, isIntraday, x0 = 0) {
   if (!ctx) return
   const bottom = rects.sub ? rects.sub.y + rects.sub.height : rects.vol.y + rects.vol.height
   ctx.font = FONT_SM
   ctx.fillStyle = C.timeText
   ctx.textBaseline = 'top'
   ctx.textAlign = 'center'
-  for (const t of ticks) ctx.fillText(t.label, t.x, bottom + 3)
+  for (const t of ticks) ctx.fillText(t.label, t.x + x0, bottom + 3)
 }
 
 // ─────────────── K 线视图 (Task 3 补全) ───────────────
@@ -244,22 +246,25 @@ function drawKline() {
   const { main, vol, sub } = rects
   const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
   const { window: win, offset: off } = klineWindow(kl, count, offset)
+  const baseI = kl.length - win.length - off   // win[0] ↔ 全局索引(指标数组与 kline 同索引)
   const { yMin, yMax } = range(win)
+  plotX = main.x; plotW = main.width
+  const pw = main.width   // 内容区宽, 蜡烛/MACD 不进右轴带
   // 蜡烛
-  drawCandles(main, win, yMin, yMax, w)
+  drawCandles(main, win, yMin, yMax, pw)
   // 叠加
-  if (props.overlays.ma) drawMALines(main, win, yMin, yMax, w)
-  if (props.overlays.boll) drawBoll(main, win, yMin, yMax, w)
-  if (props.chan && props.view !== 'm60') drawChan(main, win, yMin, yMax, w)
-  if (props.wave && props.view !== 'm60') drawWave(main, win, yMin, yMax, w)
+  if (props.overlays.ma) drawMALines(main, win, yMin, yMax, pw, baseI)
+  if (props.overlays.boll) drawBoll(main, win, yMin, yMax, pw, baseI)
+  if (props.chan && props.view !== 'm60') drawChan(main, win, yMin, yMax, pw)
+  if (props.wave && props.view !== 'm60') drawWave(main, win, yMin, yMax, pw)
   // 右轴
   drawKlineAxis(main, priceTicks(yMin, yMax, main))
   // 量能
-  drawVolumePane(vol, win, w)
+  drawVolumePane(vol, win, pw, baseI)
   // 副图
-  if (sub && props.subInd !== 'none') drawSubPane(sub, win)
+  if (sub && props.subInd !== 'none') drawSubPane(sub, win, props.indCache, main.x, pw, baseI)
   // 时间轴
-  drawTimeAxis(rects, timeTicks(win, w, false), false)
+  drawTimeAxis(rects, timeTicks(win, pw, false), false, main.x)
   // 存窗口供 crosshair/emit
   offset = off
 }
@@ -300,27 +305,27 @@ function drawCandles(main, win, yMin, yMax, w) {
   }
 }
 
-function drawMALines(main, win, yMin, yMax, w) {
+function drawMALines(main, win, yMin, yMax, w, baseI = 0) {
   const ic = props.indCache
   if (!ic?.ma) return
   for (const n of [5, 10, 20, 60]) {
     const vals = ic.ma[n]
     if (!vals) continue
-    drawValueLine(main, vals, win, yMin, yMax, w, MA_COLORS[n], 1)
+    drawValueLine(main, vals, win, yMin, yMax, w, MA_COLORS[n], 1, 'solid', baseI)
   }
 }
 
-function drawBoll(main, win, yMin, yMax, w) {
+function drawBoll(main, win, yMin, yMax, w, baseI = 0) {
   const ic = props.indCache
   if (!ic?.boll) return
   for (const key of ['up', 'mid', 'lo']) {
     const vals = ic.boll[key]
     if (!vals) continue
-    drawValueLine(main, vals, win, yMin, yMax, w, BOLL_COLORS[key], 1, key === 'mid' ? 'dashed' : 'solid')
+    drawValueLine(main, vals, win, yMin, yMax, w, BOLL_COLORS[key], 1, key === 'mid' ? 'dashed' : 'solid', baseI)
   }
 }
 
-function drawValueLine(main, vals, win, yMin, yMax, w, color, lw, style = 'solid') {
+function drawValueLine(main, vals, win, yMin, yMax, w, color, lw, style = 'solid', baseI = 0) {
   if (!ctx) return
   ctx.strokeStyle = color
   ctx.lineWidth = lw
@@ -328,7 +333,7 @@ function drawValueLine(main, vals, win, yMin, yMax, w, color, lw, style = 'solid
   ctx.beginPath()
   let started = false
   for (let i = 0; i < win.length; i++) {
-    const v = vals[i]
+    const v = vals[baseI + i]
     if (v === null || v === undefined || !Number.isFinite(v)) continue
     const x = idxToX(i, w, win.length)
     const y = priceToY(v, yMin, yMax, main)
@@ -458,7 +463,7 @@ function drawKlineAxis(main, ticks) {
   for (const t of ticks) ctx.fillText(String(t.label), main.x + main.width + 5, t.y)
 }
 
-function drawVolumePane(vol, win, w) {
+function drawVolumePane(vol, win, w, baseI = 0) {
   if (!ctx) return
   const maxVol = Math.max(...win.map(k => k.volume), 1)
   const barW = Math.max(1, w / win.length * 0.6)
@@ -475,12 +480,12 @@ function drawVolumePane(vol, win, w) {
     for (const n of [5, 10]) {
       const vals = ic.volma[n]
       if (!vals) continue
-      drawVolLine(vol, vals, win, w, n === 5 ? C.avg : C.signal)
+      drawVolLine(vol, vals, win, w, n === 5 ? C.avg : C.signal, baseI)
     }
   }
 }
 
-function drawVolLine(vol, vals, win, w, color) {
+function drawVolLine(vol, vals, win, w, color, baseI = 0) {
   if (!ctx) return
   const maxVol = Math.max(...win.map(k => k.volume), 1)
   ctx.strokeStyle = color
@@ -489,7 +494,7 @@ function drawVolLine(vol, vals, win, w, color) {
   ctx.beginPath()
   let started = false
   for (let i = 0; i < win.length; i++) {
-    const v = vals[i]
+    const v = vals[baseI + i]
     if (v === null || v === undefined || !Number.isFinite(v)) continue
     const x = idxToX(i, w, win.length)
     const y = vol.y + vol.height - 2 - (v / maxVol) * (vol.height - 4)
@@ -500,38 +505,41 @@ function drawVolLine(vol, vals, win, w, color) {
 }
 
 // 副图指标: ic 缺省取宿主 indCache; 分时视图由 drawTrend 现算传入
-function drawSubPane(sub, win, ic = props.indCache) {
+function drawSubPane(sub, win, ic = props.indCache, x0 = 0, w0 = 0, baseI = 0) {
   const s = props.subInd
   if (s === 'none' || !ic) return
-  const w = canvasRef.value.clientWidth
+  const w = w0 || canvasRef.value.clientWidth
   ctx.font = FONT_SM
   ctx.fillStyle = C.axisText
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   if (s === 'macd' && ic.macd) {
-    drawSubMacd(sub, win, w, ic.macd)
+    drawSubMacd(sub, win, w, ic.macd, x0, baseI)
     ctx.fillText('MACD', sub.x + 4, sub.y + 3)
   } else if (s === 'kdj' && ic.kdj) {
-    drawSubOsc(sub, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j })
+    drawSubOsc(sub, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j }, x0, baseI)
     ctx.fillText('KDJ', sub.x + 4, sub.y + 3)
   } else if (s === 'rsi' && ic.rsi) {
-    drawSubOsc(sub, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] })
+    drawSubOsc(sub, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] }, x0, baseI)
     ctx.fillText('RSI', sub.x + 4, sub.y + 3)
   } else if (s === 'wr' && ic.wr) {
-    drawSubOsc(sub, win, w, { 10: ic.wr[10], 6: ic.wr[6] })
+    drawSubOsc(sub, win, w, { 10: ic.wr[10], 6: ic.wr[6] }, x0, baseI)
     ctx.fillText('WR', sub.x + 4, sub.y + 3)
   }
 }
 
-function drawSubMacd(sub, win, w, m) {
-  const histMax = Math.max(...m.hist.map(Math.abs).filter(Number.isFinite), 1)
+function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0) {
+  // DIF/DEA 峰值可能大于 |hist|(分时伪K数值大) → 缩放取三者最大, 否则线溢出副图进入量图
+  const segMax = arr => arr ? Math.max(...arr.slice(baseI, baseI + win.length).map(Math.abs).filter(Number.isFinite), 0) : 0
+  const scaleMax = Math.max(segMax(m.hist), segMax(m.dif), segMax(m.dea), 1)
   const barW = Math.max(1, w / win.length * 0.6)
   const midY = sub.y + sub.height / 2
+  const halfH = sub.height / 2 - 2
   for (let i = 0; i < win.length; i++) {
-    const v = m.hist[i]
+    const v = m.hist[baseI + i]
     if (!Number.isFinite(v)) continue
-    const x = idxToX(i, w, win.length) - barW / 2
-    const h = (Math.abs(v) / histMax) * (sub.height / 2 - 2)
+    const x = x0 + idxToX(i, w, win.length) - barW / 2
+    const h = (Math.abs(v) / scaleMax) * halfH
     ctx.fillStyle = v >= 0 ? C.histUp : C.histDown
     ctx.fillRect(x, v >= 0 ? midY - h : midY, barW, h)
   }
@@ -543,10 +551,10 @@ function drawSubMacd(sub, win, w, m) {
     ctx.beginPath()
     let started = false
     for (let i = 0; i < win.length; i++) {
-      const v = vals[i]
+      const v = vals[baseI + i]
       if (!Number.isFinite(v)) continue
-      const x = idxToX(i, w, win.length)
-      const y = midY - (v / histMax) * (sub.height / 2 - 2)
+      const x = x0 + idxToX(i, w, win.length)
+      const y = midY - (v / scaleMax) * halfH
       if (!started) { ctx.moveTo(x, y); started = true }
       else ctx.lineTo(x, y)
     }
@@ -556,7 +564,7 @@ function drawSubMacd(sub, win, w, m) {
   lc(m.dea, C.signal)
 }
 
-function drawSubOsc(sub, win, w, lines) {
+function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0) {
   const entries = Object.entries(lines)
   const colors = [C.avg, C.signal, '#27ae60']
   entries.forEach(([_, vals], idx) => {
@@ -567,9 +575,9 @@ function drawSubOsc(sub, win, w, lines) {
     ctx.beginPath()
     let started = false
     for (let i = 0; i < win.length; i++) {
-      const v = vals[i]
+      const v = vals[baseI + i]
       if (v === null || v === undefined || !Number.isFinite(v)) continue
-      const x = idxToX(i, w, win.length)
+      const x = x0 + idxToX(i, w, win.length)
       const y = sub.y + sub.height - 2 - (v / 100) * (sub.height - 4)
       if (!started) { ctx.moveTo(x, y); started = true }
       else ctx.lineTo(x, y)
@@ -617,7 +625,7 @@ function onPointerMove(e) {
     const kl = props.kline
     const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
     const { window: win } = klineWindow(kl, count, 0)
-    const barW = canvasRef.value.clientWidth / win.length
+    const barW = (plotW || canvasRef.value.clientWidth) / win.length
     const dOff = Math.round((drag.startX - e.clientX) / barW)
     offset = clamp(drag.startOffset + dOff, 0, Math.max(0, kl.length - win.length))
     draw()
@@ -647,8 +655,8 @@ function emitCrosshair(x) {
   if (!kl.length) return
   const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
   const { window: win, offset: off } = klineWindow(kl, count, offset)
-  const w = canvasRef.value.clientWidth
-  const i = clamp(Math.floor((x - 0) / w * win.length), 0, win.length - 1)
+  const w = plotW || canvasRef.value.clientWidth
+  const i = clamp(Math.floor((x - plotX) / w * win.length), 0, win.length - 1)
   const k = win[i]
   const gI = kl.indexOf(k)
   const prevClose = gI > 0 ? kl[gI - 1].close : k.open
