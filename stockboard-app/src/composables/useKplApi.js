@@ -151,6 +151,7 @@ export async function fetchKplQuote(code, silent = false) {
     totalCap: r.market_value, floatCap: r.circulation_value,
     mainFlowYi: null,   // 由 fetchMainFlow 独立覆盖
     upPx: r.up_px, downPx: r.down_px, avgPx: r.avg_px,
+    quoteTime: typeof j.time === 'string' ? j.time : '',   // 数据时效展示(字段缺失则空)
   }
 }
 

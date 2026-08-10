@@ -4,13 +4,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStockDetail } from '../composables/useStockDetail.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence } from '../utils/indicators.js'
-import { loadTencentPankou } from '../utils/pankou.js'
+import { loadTencentPankou, fmtHand } from '../utils/pankou.js'
 import PankouPanel from './PankouPanel.vue'
 import BidAuctionCard from './BidAuctionCard.vue'
 import LimitGeneCard from './LimitGeneCard.vue'
 import BigOrderCard from './BigOrderCard.vue'
 import LhbStockCard from './LhbStockCard.vue'
 import ZtHistoryCard from './ZtHistoryCard.vue'
+import StickyQuoteBar from './StickyQuoteBar.vue'
 import {
   fetchBoards, fetchLimitReason, fetchMainFlow, isTradingTime,
   fetchZhangTingGene, fetchStockBid, fetchMainMonitor, fetchStockLhbHistory,
@@ -185,9 +186,19 @@ function fmtCandleTime(t) {
 }
 // 光标处 K线数据 → 顶部 16 格联动(今开/最高/最低/昨收/成交额); null = 无光标, 显示当日实时
 const crossInfo = ref(null)
+// 光标浮卡: 在光标右下方显示该日 开/高/低/收/涨跌/量(轻量小卡, 不遮挡 K线)
+const cursorTip = ref(null)
+function tipDate(t) {
+  if (typeof t === 'string') return t            // 日线 time 为 'YYYY-MM-DD'
+  if (typeof t === 'number') {                    // 分钟线 time 为 UTC 秒
+    const d = new Date(t * 1000)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  return ''
+}
 function onCrosshair(param) {
-  // 分时视图/移出图表 → 恢复当日实时; K线视图 → 16 格显示光标处该日数据(图内不悬浮, 不遮挡 K线)
-  if (view.value === 'trend' || !param || param.time === undefined) { crossInfo.value = null; return }
+  // 分时视图/移出图表 → 恢复当日实时; K线视图 → 16 格显示光标处该日数据
+  if (view.value === 'trend' || !param || param.time === undefined) { crossInfo.value = null; cursorTip.value = null; return }
   const arr = kline.value
   const i = Math.min(Math.round(param.logical), arr.length - 1)
   const k = arr[i]
@@ -200,6 +211,20 @@ function onCrosshair(param) {
       chg, chgPct: prevClose ? (chg / prevClose * 100) : 0,   // 头部大价格联动(颜色随光标K线涨跌)
     }
   })() : null
+  // 浮卡定位: 光标右下方, 收进图表右/下边界内(卡宽约96px)
+  if (k && param.point) {
+    const w = chartEl.value?.clientWidth || 360
+    const h = chartH.value
+    cursorTip.value = {
+      x: Math.min(param.point.x + 12, w - 100),
+      y: Math.min(param.point.y + 14, h - 96),
+      date: tipDate(k.time),
+      open: k.open, high: k.high, low: k.low, close: k.close,
+      chgPct: crossInfo.value.chgPct, volume: k.volume,
+    }
+  } else {
+    cursorTip.value = null
+  }
 }
 
 // ── 图表创建/series 管理 ──
@@ -850,6 +875,9 @@ onUnmounted(() => {
 
 <template>
   <div class="sd-page">
+    <!-- 吸顶报价条: 滚动时固定, 名称/代码+复制/现价/涨跌幅/数据时效 -->
+    <StickyQuoteBar :quote="quote" :cross-info="crossInfo" :code="String(code)" />
+
     <!-- 顶部: 名称 + 代码 + H5 入口 -->
     <div class="sd-head">
       <div class="sd-name">
@@ -861,7 +889,9 @@ onUnmounted(() => {
 
     <!-- 基本信息(无卡片, 扁平区块) -->
     <div class="sd-info">
-      <div v-if="loading.quote" class="sd-loading">行情加载中…</div>
+      <div v-if="loading.quote" class="sd-sk sd-sk-quote">
+        <div class="sd-sk-block" style="height: 100%"></div>
+      </div>
       <template v-else-if="quote">
         <div class="sd-price-row">
           <span class="sd-price" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ fmt(crossInfo ? crossInfo.close : quote.price) }}</span>
@@ -922,7 +952,11 @@ onUnmounted(() => {
       <!-- 图表 + 右盘口 flex 行(桌面盘口 180 / 移动 116) -->
       <div class="sd-chart-row">
         <div class="sd-chart-wrap">
-          <div v-if="loading.chart && !kline.length && !trend.length" class="sd-loading">图表加载中…</div>
+          <div v-if="loading.chart && !kline.length && !trend.length" class="sd-sk">
+            <div class="sd-sk-block" style="height: 60%"></div>
+            <div class="sd-sk-block" style="height: 20%"></div>
+            <div class="sd-sk-block" style="height: 20%"></div>
+          </div>
           <div v-else-if="!loading.chart && !kline.length && !trend.length" class="sd-error">
             {{ error || '图表数据加载失败' }}
             <button class="sd-retry" @click="loadChart">重试</button>
@@ -932,6 +966,16 @@ onUnmounted(() => {
             <select v-model="subInd" class="sd-subind-select" title="切换副图指标">
               <option v-for="s in subInds" :key="s.key" :value="s.key">{{ s.label }}</option>
             </select>
+          </div>
+          <!-- 光标浮卡: 显示该日 开/高/低/收/涨跌/量 -->
+          <div v-if="cursorTip" class="sd-tip" :style="{ left: cursorTip.x + 'px', top: cursorTip.y + 'px' }">
+            <div class="sd-tip-date">{{ cursorTip.date }}</div>
+            <div class="sd-tip-row"><span>开</span><b>{{ fmt(cursorTip.open) }}</b></div>
+            <div class="sd-tip-row"><span>高</span><b>{{ fmt(cursorTip.high) }}</b></div>
+            <div class="sd-tip-row"><span>低</span><b>{{ fmt(cursorTip.low) }}</b></div>
+            <div class="sd-tip-row"><span>收</span><b :style="{ color: cursorTip.chgPct >= 0 ? '#e74c3c' : '#27ae60' }">{{ fmt(cursorTip.close) }}</b></div>
+            <div class="sd-tip-row"><span>涨跌</span><b :style="{ color: cursorTip.chgPct >= 0 ? '#e74c3c' : '#27ae60' }">{{ (cursorTip.chgPct >= 0 ? '+' : '') + cursorTip.chgPct.toFixed(2) + '%' }}</b></div>
+            <div class="sd-tip-row"><span>量</span><b>{{ fmtHand(cursorTip.volume) }}</b></div>
           </div>
         </div>
         <PankouPanel class="sd-pankou" :code="code" :quote="quote" />
@@ -1070,7 +1114,7 @@ onUnmounted(() => {
 .sd-chart-block { margin-bottom: 14px; }
 /* 图表 + 右盘口 flex 行: 盘口固定宽, 图表区自适应; 内边距与图表头部对齐 */
 .sd-chart-row { display: flex; align-items: stretch; gap: 10px; padding: 0 14px; }
-.sd-chart-wrap { flex: 1; min-width: 0; }
+.sd-chart-wrap { flex: 1; min-width: 0; position: relative; }
 .sd-pankou { flex: none; width: 180px; border-left: 1px solid #f0f0f0; padding-left: 10px; }
 .sd-name { display: flex; align-items: baseline; gap: 6px; }
 .sd-title { font-size: 16px; font-weight: 600; color: #111; }
@@ -1121,6 +1165,20 @@ onUnmounted(() => {
   max-width: 96px;
 }
 .sd-loading { padding: 40px 0; text-align: center; color: #999; font-size: 13px; }
+/* 骨架屏: 灰块微光脉动(报价/图表加载时替代"加载中…"文字) */
+.sd-sk { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 4px 0; }
+.sd-sk-quote { height: 44px; }
+.sd-sk-block { background: #eef1f5; border-radius: 6px; animation: sdPulse 1.4s ease-in-out infinite; }
+@keyframes sdPulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+/* 光标浮卡: 定位在光标右下方, 白底细边框, 不遮挡 K线 */
+.sd-tip {
+  position: absolute; z-index: 12; pointer-events: none;
+  width: 96px; background: rgba(255, 255, 255, .96); border: 1px solid #e0e3e8;
+  border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, .08); padding: 6px 8px;
+}
+.sd-tip-date { font-size: 10px; color: #2980b9; font-weight: 600; margin-bottom: 3px; }
+.sd-tip-row { display: flex; justify-content: space-between; font-size: 10px; color: #666; line-height: 1.6; }
+.sd-tip-row b { font-weight: 600; color: #333; }
 .sd-error { padding: 40px 0; text-align: center; color: #c0392b; font-size: 13px; }
 .sd-retry { margin-left: 8px; border: 1px solid #2980b9; background: #fff; color: #2980b9; font-size: 12px; padding: 4px 12px; border-radius: 8px; cursor: pointer; }
 

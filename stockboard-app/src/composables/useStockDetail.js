@@ -38,6 +38,7 @@ function parseTencentQuote(raw) {
     turnover: parseFloat(p[38]), peTtm: parseFloat(p[39]),
     floatCapYi: parseFloat(p[44]), totalCapYi: parseFloat(p[45]),
     pb: parseFloat(p[46]), volumeRatio: parseFloat(p[49]),
+    quoteTime: p[30],   // 时间(YYYYMMDDHHMMSS 或 HHMMSS), 数据时效展示
     mainFlowYi: null,
   }
 }
@@ -84,6 +85,7 @@ export function useStockDetail(code) {
         // f62 主力净流入(亿); 数值异常(如 -)则置 null 隐藏
         mainFlowYi: (typeof d.f62 === 'number' && isFinite(d.f62) && Math.abs(d.f62) < 10000) ? d.f62 : null,
         upPx: null, downPx: null, avgPx: null,   // 东财无这三项, 涨跌停价按板规则推算
+        quoteTime: d.f86,   // 时间(HHMMSS), 数据时效展示
         pankou: prevPankou,
       }
       const lim = calcLimitPx(quote.value.prevClose, getCode(), d.f58)
