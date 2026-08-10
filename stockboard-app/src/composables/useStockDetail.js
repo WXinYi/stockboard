@@ -60,11 +60,13 @@ export function useStockDetail(code) {
     // silent=true 轮询刷新: 不置 loading/error, 失败保留旧数据等下个 tick 重试
     if (!silent) loading.value.quote = true
     if (!silent) error.value = ''
+    // 盘口(PankouPanel)由独立 5s 轮询填充; quote 每次刷新重建对象 → 保留旧 pankou 避免面板闪烁
+    const prevPankou = quote.value?.pankou
     try {
       // 主源: 开盘啦行情快照(免Token, 覆盖沪深北, 含量比/振幅/涨停跌停价/均价)
       const q = await fetchKplQuote(getCode(), silent)
       if (q) {
-        quote.value = { ...q, mainFlowYi: quote.value?.mainFlowYi ?? null }  // 主力由独立轮询覆盖, 不覆盖
+        quote.value = { ...q, mainFlowYi: quote.value?.mainFlowYi ?? null, pankou: prevPankou }  // 主力由独立轮询覆盖, 不覆盖
         if (!silent) loading.value.quote = false
         return
       }
@@ -82,6 +84,7 @@ export function useStockDetail(code) {
         // f62 主力净流入(亿); 数值异常(如 -)则置 null 隐藏
         mainFlowYi: (typeof d.f62 === 'number' && isFinite(d.f62) && Math.abs(d.f62) < 10000) ? d.f62 : null,
         upPx: null, downPx: null, avgPx: null,   // 东财无这三项, 涨跌停价按板规则推算
+        pankou: prevPankou,
       }
       const lim = calcLimitPx(quote.value.prevClose, getCode(), d.f58)
       quote.value.upPx = lim.up
@@ -94,7 +97,7 @@ export function useStockDetail(code) {
         const raw = await loadScriptVar(qqQuoteUrl(c), 'v_' + qqPrefix(c) + c)
         const q = parseTencentQuote(raw)
         if (!q) throw new Error('腾讯行情解析失败')
-        quote.value = q
+        quote.value = { ...q, pankou: prevPankou }
         const lim = calcLimitPx(q.prevClose, c, q.name)
         quote.value.upPx = lim.up
         quote.value.downPx = lim.down

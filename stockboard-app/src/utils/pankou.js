@@ -27,6 +27,25 @@ export function parsePankouTencent(raw) {
   }
 }
 
+// 委比/委差: 委差 = Σ买量 - Σ卖量; 委比 = 委差 / 总挂单量 × 100(无量返回 null)
+export function calcWeiBi(pk) {
+  if (!pk) return { weiCha: 0, weiBi: null }
+  const bv = (pk.buy || []).reduce((s, b) => s + (b.vol || 0), 0)
+  const sv = (pk.sell || []).reduce((s, b) => s + (b.vol || 0), 0)
+  const weiCha = bv - sv
+  const total = bv + sv
+  return { weiCha, weiBi: total === 0 ? null : +(weiCha / total * 100).toFixed(2) }
+}
+
+// 手数格式化(盘口挂单量): 亿/万带单位, 小量原样取整
+export function fmtHand(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '—'
+  const a = Math.abs(v)
+  if (a >= 1e8) return (v / 1e8).toFixed(1) + '亿'
+  if (a >= 1e4) return (v / 1e4).toFixed(1) + '万'
+  return String(Math.round(v))
+}
+
 // 动态加载腾讯行情脚本变量(与 useStockDetail 的 loadScriptVar 同款)
 export function loadTencentPankou(code, silent = false) {
   const pfx = /^(6|5|9|11|10)/.test(code) ? 'sh' : /^(4|8|92)/.test(code) ? 'bj' : 'sz'

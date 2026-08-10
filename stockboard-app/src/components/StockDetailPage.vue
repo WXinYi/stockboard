@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStockDetail } from '../composables/useStockDetail.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence } from '../utils/indicators.js'
+import { loadTencentPankou } from '../utils/pankou.js'
+import PankouPanel from './PankouPanel.vue'
 import {
   fetchBoards, fetchLimitReason, fetchMainFlow, isTradingTime,
   fetchInfoList,
@@ -571,14 +573,18 @@ async function loadChart() {
 
 watch([view, adjust], () => { loadChart() })
 // 行情异步到达后重绘: 左轴%/分时Y轴锁定依赖 prevClose/upPx/downPx, 首帧 renderSeries 时 quote 可能未就绪
-watch(quote, () => { if (chart) renderSeries() })
+watch(quote, (q) => {
+  if (chart) renderSeries()
+  // 盘口未就绪时补拉(首次加载/失败后); 已加载则 useStockDetail 刷新保留, 不重复触发
+  if (q && !q.pankou) loadPankou(true)
+})
 // 指标/叠加/缠论/波浪切换只重绘, 不重新拉数据
 watch([subInd, chan, wave, () => overlays.ma, () => overlays.boll], () => {
   if (chart) renderSeries()
 })
 // 下拉刷新: 仅当前激活页面响应(usePullRefresh 按激活态过滤)
 usePullRefresh(() => {
-  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadInfo(true)
+  loadQuote(true); loadChart(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true); loadInfo(true)
 })
 
 watch(code, () => {
@@ -603,6 +609,7 @@ watch(code, () => {
   loadBoards()
   loadLimit()
   loadMainFlow()
+  loadPankou()
   loadInfo()
 })
 
@@ -629,6 +636,18 @@ async function loadMainFlow(silent = false) {
     const res = await fetchMainFlow(code.value, silent)
     if (res && quote.value) quote.value.mainFlowYi = res.zlJe / 1e8
   } catch (e) { /* 失败保留旧值 */ }
+}
+
+// ── 右盘口(腾讯五档, 5s 轮询; 数据并入 quote.pankou, useStockDetail 刷新 quote 时保留) ──
+let pankouLoading = false
+async function loadPankou(silent = false) {
+  if (pankouLoading) return
+  pankouLoading = true
+  try {
+    const r = await loadTencentPankou(code.value, silent)
+    if (r && quote.value) quote.value.pankou = r
+  } catch (e) { /* 失败: 面板显示空态, 等下一个 tick */ }
+  finally { pankouLoading = false }
 }
 
 // ── 资讯 tab: 新闻|研报|公告 列表 + 正文懒加载 ──
@@ -743,6 +762,7 @@ function startTimers() {
   if (Object.keys(timers).length) return
   if (!isTradingTime()) return
   timers.quote = setInterval(() => tick(() => loadQuote(true)), 5000)
+  timers.pankou = setInterval(() => tick(() => loadPankou(true)), 5000)
   timers.mainFlow = setInterval(() => tick(() => loadMainFlow(true)), 15000)
   timers.chart = setInterval(() => tick(refreshChartSilent), 15000)
   timers.board = setInterval(() => tick(() => loadBoards(true)), 30000)
@@ -759,7 +779,7 @@ function onVisibility() {
   if (document.hidden) { stopTimers(); return }
   if (!isTradingTime()) return
   startTimers()
-  loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true)
+  loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true)
 }
 
 // KeepAlive 组件首次挂载时 onMounted+onActivated 双触发 → 加载只在 onActivated 做(inited 分支)
@@ -772,9 +792,9 @@ onMounted(() => {
 onActivated(() => {
   if (!inited) {
     inited = true
-    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadInfo()
+    loadQuote(); loadChart(); loadBoards(); loadLimit(); loadMainFlow(); loadPankou(); loadInfo()
   } else if (isTradingTime()) {
-    loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true)
+    loadQuote(true); refreshChartSilent(); loadBoards(true); loadLimit(true); loadMainFlow(true); loadPankou(true)
     if (view.value === 'trend') loadTrend(true)
     if (chart) renderSeries()
   }
@@ -861,16 +881,22 @@ onUnmounted(() => {
         <button v-if="showAdjust" :class="['sd-ibtn', { on: adjust === '' }]" @click="adjust = ''">不复权</button>
       </div>
       <div v-if="wave" class="sd-wave-note">{{ waveNote || '波浪:计算中…' }}</div>
-      <div v-if="loading.chart && !kline.length && !trend.length" class="sd-loading">图表加载中…</div>
-      <div v-else-if="!loading.chart && !kline.length && !trend.length" class="sd-error">
-        {{ error || '图表数据加载失败' }}
-        <button class="sd-retry" @click="loadChart">重试</button>
-      </div>
-      <div v-else ref="chartEl" class="sd-chart" :class="{ kline: isKline }" :style="{ height: chartH + 'px' }">
-        <!-- 副图指标切换: 定位在副图(pane 2)区域左上角的下拉按钮; 分时视图同样可用 -->
-        <select v-model="subInd" class="sd-subind-select" title="切换副图指标">
-          <option v-for="s in subInds" :key="s.key" :value="s.key">{{ s.label }}</option>
-        </select>
+      <!-- 图表 + 右盘口 flex 行(桌面盘口 180 / 移动 116) -->
+      <div class="sd-chart-row">
+        <div class="sd-chart-wrap">
+          <div v-if="loading.chart && !kline.length && !trend.length" class="sd-loading">图表加载中…</div>
+          <div v-else-if="!loading.chart && !kline.length && !trend.length" class="sd-error">
+            {{ error || '图表数据加载失败' }}
+            <button class="sd-retry" @click="loadChart">重试</button>
+          </div>
+          <div v-else ref="chartEl" class="sd-chart" :class="{ kline: isKline }" :style="{ height: chartH + 'px' }">
+            <!-- 副图指标切换: 定位在副图(pane 2)区域左上角的下拉按钮; 分时视图同样可用 -->
+            <select v-model="subInd" class="sd-subind-select" title="切换副图指标">
+              <option v-for="s in subInds" :key="s.key" :value="s.key">{{ s.label }}</option>
+            </select>
+          </div>
+        </div>
+        <PankouPanel class="sd-pankou" :code="code" :quote="quote" />
       </div>
     </div>
 
@@ -1007,6 +1033,10 @@ onUnmounted(() => {
 .sd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 0 12px; flex-wrap: wrap; }
 .sd-info { margin-bottom: 8px; padding: 0 12px; }
 .sd-chart-block { margin-bottom: 14px; }
+/* 图表 + 右盘口 flex 行: 盘口固定宽, 图表区自适应; 内边距与图表头部对齐 */
+.sd-chart-row { display: flex; align-items: stretch; gap: 10px; padding: 0 14px; }
+.sd-chart-wrap { flex: 1; min-width: 0; }
+.sd-pankou { flex: none; width: 180px; border-left: 1px solid #f0f0f0; padding-left: 10px; }
 .sd-name { display: flex; align-items: baseline; gap: 6px; }
 .sd-title { font-size: 16px; font-weight: 600; color: #111; }
 .sd-code { color: #999; font-size: 11px; }
@@ -1118,6 +1148,8 @@ onUnmounted(() => {
 
 @media (max-width: 480px) {
   .sd-limit, .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }
+  .sd-chart-row { padding: 0 10px; gap: 8px; }
+  .sd-pankou { width: 116px; padding-left: 8px; }
 }
 /* 桌面端: 内层留白与其它页 main-content 水平 padding(28px) 对齐 */
 @media (min-width: 768px) {
@@ -1125,5 +1157,6 @@ onUnmounted(() => {
   .sd-head, .sd-chart-head, .sd-inds, .sd-wave-note, .sd-info { padding-left: 28px; padding-right: 28px; }
   .sd-limit, .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
   .sd-info { margin-bottom: 18px; }
+  .sd-chart-row { padding: 0 28px; }
 }
 </style>

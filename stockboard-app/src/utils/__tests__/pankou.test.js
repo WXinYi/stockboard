@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { parsePankouTencent } from '../pankou.js'
+import { parsePankouTencent, calcWeiBi, fmtHand } from '../pankou.js'
 
 // 真实返回 fixture(腾讯 qt.gtimg.cn GBK→UTF8, 字段 88 个)
 const RAW = readFileSync(fileURLToPath(new URL('./fixtures/pankou-sz000938.txt', import.meta.url)), 'utf-8')
@@ -33,5 +33,25 @@ describe('parsePankouTencent', () => {
     expect(parsePankouTencent('short~string')).toBeNull()
     expect(parsePankouTencent(null)).toBeNull()
     expect(parsePankouTencent(undefined)).toBeNull()
+  })
+})
+
+describe('calcWeiBi 委比委差', () => {
+  it('委差=买量-卖量, 委比=委差/总量', () => {
+    const r = calcWeiBi({ buy: [{ px: 10, vol: 100 }, { px: 9, vol: 50 }], sell: [{ px: 11, vol: 80 }, { px: 12, vol: 20 }] })
+    expect(r.weiCha).toBe(50)
+    expect(r.weiBi).toBeCloseTo(20)
+  })
+  it('无挂单/空入参返回 null', () => {
+    expect(calcWeiBi(null).weiBi).toBeNull()
+    expect(calcWeiBi({ buy: [], sell: [] }).weiBi).toBeNull()
+  })
+})
+
+describe('fmtHand 手数格式化', () => {
+  it('万/亿带单位, 小量原样', () => {
+    expect(fmtHand(12345)).toBe('1.2万')
+    expect(fmtHand(800)).toBe('800')
+    expect(fmtHand(2e8)).toBe('2.0亿')
   })
 })
