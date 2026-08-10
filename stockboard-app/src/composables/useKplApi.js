@@ -13,6 +13,7 @@ const HOST_HQ = DEV_PROXY ? '/kpl-hq' : PROD_PROXY + '/kpl-hq'    // 实时行�
 const HOST_HIS = DEV_PROXY ? '/kpl-his' : PROD_PROXY + '/kpl-his' // 历史/复盘/股东
 const HOST_ART = DEV_PROXY ? '/kpl-art' : PROD_PROXY + '/kpl-art' // 内容/F10
 const HOST_SECTION = DEV_PROXY ? '/kpl-sec' : PROD_PROXY + '/kpl-sec' // 板块归属
+const HOST_LHB = DEV_PROXY ? '/kpl-lhb' : PROD_PROXY + '/kpl-lhb'     // 龙虎榜
 const COMMON = { PhoneOSNew: 1, VerSion: '6.2.20.2', Red: 0, apiv: 'w47' }
 
 function withTimeout(promise, ms = 8000) {
@@ -359,6 +360,88 @@ export async function fetchInstitutionIncrease(reportDate, isBX = false, silent 
     bkCode: String(r[0]), bkName: r[1], addAmt: yi(r[2]), count: parseFloat(r[3]),
     totalAmt: yi(r[4]), ratio: parseFloat(r[5]), avgRatio: parseFloat(r[6]), totalMv: yi(r[7]),
   }))
+}
+
+// 市场情绪 #11 ChangeStatistics (POST) — info[] 按 Day 倒序(最新在前), 字段: strong强度 ztjs涨停 lbgd连板高度 df_num跌停 Day
+export async function fetchMarketMood(silent = false) {
+  const j = await postForm(HOST_HIS, { a: 'ChangeStatistics', st: 100, c: 'HisHomeDingPan', Index: 0, DeviceID: KPL_DEVICE, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.info)) {
+    if (silent) return null
+    throw new Error('市场情绪失败')
+  }
+  return j.info.map(r => ({
+    day: String(r.Day || ''), strong: +r.strong || 0, zt: +r.ztjs || 0,
+    lbgd: +r.lbgd || 0, df: +r.df_num || 0,
+  }))
+}
+
+// 赚钱效应展开 #29 GetMoneyDetail (POST) — Detail 键 -5..-1(亏) 1..5(赚) 各档家数 + num 总数; ttag 赚钱效应值
+export async function fetchMoneyEffect(day, silent = false) {
+  const j = await postForm(HOST_HIS, { a: 'GetMoneyDetail', c: 'Emotion', Day: day || '', DeviceID: KPL_DEVICE, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON }, silent)
+  if (!j || !j.Detail) {
+    if (silent) return null
+    throw new Error('赚钱效应失败')
+  }
+  const d = j.Detail
+  const tier = (k) => +d[k] || 0
+  return {
+    day: j.Day || day || '', num: +d.num || 0, ttag: parseFloat(j.ttag),
+    // 涨/跌两端分开: 大赚5档 大亏5档
+    gain: [tier('5'), tier('4'), tier('3'), tier('2'), tier('1')],
+    loss: [tier('-5'), tier('-4'), tier('-3'), tier('-2'), tier('-1')],
+  }
+}
+
+// 盘面亮点 #30 GetPMSL_PMLD (POST) — List[] {TimeMin(Unix), TagID, ZSCode板块代码, Detail播报文本, TagName标签, ZSName板块名, StockList[[code,name]]}
+export async function fetchMarketHighlights(silent = false) {
+  const j = await postForm(HOST_HQ, { a: 'GetPMSL_PMLD', st: 30, c: 'FuPanLa', Index: 0, DeviceID: KPL_DEVICE, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.List)) {
+    if (silent) return null
+    throw new Error('盘面亮点失败')
+  }
+  return j.List.map(r => ({
+    time: r.TimeMin, tagName: r.TagName || '', tagId: r.TagID,
+    bkCode: String(r.ZSCode || ''), bkName: r.ZSName || '',
+    detail: r.Detail || '',
+    stocks: (r.StockList || []).map(s => ({ code: String(s[0]), name: s[1] })),
+  }))
+}
+
+// 板块标注 #9 GetPoint (POST) — list[] {Time(Unix), Plate标注文本, PlateCode, PlateName, PlateJE成交额, PlateZDF涨跌幅, Color}
+export async function fetchBoardAnnotations(silent = false) {
+  const j = await postForm(HOST_HQ, { a: 'GetPoint', c: 'ConceptionPoint', DeviceID: KPL_DEVICE, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.list)) {
+    if (silent) return null
+    throw new Error('板块标注失败')
+  }
+  return j.list.map(r => {
+    const zdf = parseFloat(r.PlateZDF)
+    return {
+      time: r.Time, text: r.Plate || '',
+      bkCode: String(r.PlateCode || ''), bkName: r.PlateName || '',
+      je: parseFloat(r.PlateJE) || 0, zdf: Number.isFinite(zdf) ? zdf : null,   // 非板块标注 PlateZDF 为空串 → null, 避免 NaN%
+      color: String(r.Color || '0'),
+    }
+  }).filter(x => x.text)   // 过滤空文本行(个别行只有涨跌提示)
+}
+
+// 龙虎榜 #49 GetStockList (POST) — list[] {ID, Name, IncreaseAmount涨幅%, BuyIn净买入(元,可负), JoinNum机构家数, Turnover成交额, CircPrice流通市值, Amplitude振幅, TurnoverRatio换手率, Capitalization总市值}
+export async function fetchLhbList(silent = false) {
+  const j = await postForm(HOST_LHB, { a: 'GetStockList', st: 500, c: 'LongHuBang', Index: 0, Type: 1, Time: '', DeviceID: KPL_DEVICE, Token: KPL_TOKEN, UserID: KPL_USERID, ...COMMON }, silent)
+  if (!j || !Array.isArray(j.list)) {
+    if (silent) return null
+    throw new Error('龙虎榜失败')
+  }
+  return {
+    time: j.Time || '',
+    list: j.list.map(r => ({
+      code: String(r.ID), name: r.Name,
+      chgPct: parseFloat(String(r.IncreaseAmount).replace('%', '')),
+      buyIn: +r.BuyIn || 0, joinNum: +r.JoinNum || 0,
+      turnover: +r.Turnover || 0, circMv: +r.CircPrice || 0, totalMv: +r.Capitalization || 0,
+      amplitude: parseFloat(r.Amplitude), turnoverRatio: parseFloat(r.TurnoverRatio),
+    })).sort((a, b) => b.buyIn - a.buyIn),   // 净买入降序, 榜首更聚焦
+  }
 }
 
 // ============ 个股组 (详情页 资讯|基本面 tab) ============

@@ -37,6 +37,7 @@ const pageTitles = {
 const marketSectionTitles = {
   auction: '竞价抢筹', wind: '最强风口', ladder: '涨停天梯', reasons: '涨停原因',
   newhighs: '百日新高', global: '外围市场', institution: '机构增仓',
+  mood: '市场情绪', live: '盘面动态', lhb: '龙虎榜',
 }
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
