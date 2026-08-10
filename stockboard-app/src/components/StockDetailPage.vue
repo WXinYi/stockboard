@@ -554,7 +554,7 @@ onUnmounted(() => {
             <div class="sd-tip-row"><span>量</span><b>{{ fmtHand(cursorTip.volume) }}</b></div>
           </div>
         </div>
-        <PankouPanel class="sd-pankou" :code="code" :quote="quote" />
+        <PankouPanel v-if="view === 'trend'" class="sd-pankou" :code="code" :quote="quote" />
       </div>
     </div>
 
