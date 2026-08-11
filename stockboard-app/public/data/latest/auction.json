@@ -1,5 +1,5 @@
 {
- "date": "2026-08-07",
+ "date": "2026-08-10",
  "generated_at": "09:25",
  "env": {
   "pass": true,
@@ -7,236 +7,405 @@
    "环境正常"
   ],
   "data": {
-   "strong": 41,
-   "lbgd": 5,
-   "capacity_ratio": 1.0536378020833883,
-   "red_ratio": 0.5296735905044511,
+   "strong": 31,
+   "lbgd": 6,
+   "capacity_ratio": 0.9469614575556272,
+   "red_ratio": 0.7451914270012823,
    "bid_count": [
-    158,
-    194,
+    223,
+    265,
     50,
-    52,
-    1
+    46,
+    3
    ]
   }
  },
  "boards": [
   {
-   "code": "801660",
-   "name": "通信",
-   "burst": 6.5,
-   "amount": 1701307452.0,
-   "main_net": 225334297.0,
+   "code": "801045",
+   "name": "医药",
+   "burst": 44.1,
+   "amount": 1319195574.0,
+   "main_net": -49912366.0,
    "src": "爆量+强度",
-   "strength": 1667.0
+   "strength": 2542.0
   },
   {
-   "code": "801001",
-   "name": "芯片",
-   "burst": 6.1,
-   "amount": 1673815866.0,
-   "main_net": 183045502.0,
-   "src": "爆量+强度",
-   "strength": 1731.0
-  },
-  {
-   "code": "801080",
-   "name": "煤炭",
-   "burst": 6.0,
-   "amount": 302637544.0,
-   "main_net": -76484918.0,
+   "code": "801723",
+   "name": "创新药",
+   "burst": 25.9,
+   "amount": 938300007.0,
+   "main_net": -93460119.0,
    "src": "爆量L2",
    "strength": 0.0
   },
   {
-   "code": "801003",
-   "name": "5G",
-   "burst": 4.8,
-   "amount": 531892262.0,
-   "main_net": 36888692.0,
+   "code": "801001",
+   "name": "芯片",
+   "burst": 23.6,
+   "amount": 2303394231.0,
+   "main_net": -72499971.0,
+   "src": "爆量+强度",
+   "strength": 439.0
+  },
+  {
+   "code": "801351",
+   "name": "科创板",
+   "burst": 15.5,
+   "amount": 455096340.0,
+   "main_net": 20174237.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801250",
-   "name": "并购重组",
+   "code": "801787",
+   "name": "实控人变更",
    "burst": 0.0,
-   "amount": 3483155580.0,
-   "main_net": 15241193.0,
+   "amount": 660916594.0,
+   "main_net": 6384299.0,
    "src": "强度",
-   "strength": 1927.0
+   "strength": 525.0
   },
   {
-   "code": "801139",
-   "name": "培育钻石",
+   "code": "803029",
+   "name": "物理AI",
    "burst": 0.0,
-   "amount": 109064779.0,
-   "main_net": 15383815.0,
+   "amount": 598088587.0,
+   "main_net": 3413853.0,
    "src": "强度",
-   "strength": 896.0
+   "strength": 523.0
   },
   {
-   "code": "801178",
-   "name": "储能",
+   "code": "801095",
+   "name": "游戏",
    "burst": 0.0,
-   "amount": 2846871710.0,
-   "main_net": 22279170.0,
+   "amount": 448931154.0,
+   "main_net": 12229111.0,
    "src": "强度",
-   "strength": 302.0
+   "strength": 308.0
   },
   {
-   "code": "801694",
-   "name": "非金属材料",
+   "code": "801422",
+   "name": "小金属概念",
    "burst": 0.0,
-   "amount": 498778764.0,
-   "main_net": 13678396.0,
+   "amount": 2580859967.0,
+   "main_net": 18387735.0,
    "src": "强度",
-   "strength": 18.0
+   "strength": 48.0
   }
  ],
  "candidates": [
   {
-   "code": "001267",
-   "name": "汇绿生态",
-   "score": 11,
+   "code": "002900",
+   "name": "哈三联",
+   "score": 12,
    "tier": "core",
    "max": 15,
    "factors": {
-    "bid_price": 42.69,
-    "bid_pct": 5.67,
-    "bid_net": 11540226.0,
-    "turnover": 0.45,
-    "vol_ratio": 1.61,
-    "circ_mv": 16518303902.0,
-    "bid_vol_last": 6567.0
+    "bid_price": 14.83,
+    "bid_pct": 6.08,
+    "bid_net": 839417.0,
+    "turnover": 1.36,
+    "vol_ratio": 6.75,
+    "circ_mv": 1623383005.0,
+    "bid_vol_last": 19664.0
    },
    "sub": {
     "S1资金": 2,
     "S2形态": 2,
     "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
+    "S4身位": 1,
+    "S5量比": 2,
     "S6基因": 2
    },
    "gene": {
     "pass": true,
-    "reason": "基因正常(封板74%/破板26%)",
+    "reason": "基因正常(封板88%/破板12%)",
     "data": {
-     "limit_count": 22,
-     "premium_5pct": 11,
-     "next_red_pct": 94.1176,
-     "seal_pct": 73.913,
-     "break_pct": 26.087,
-     "consecutive_pct": 15.7895
+     "limit_count": 9,
+     "premium_5pct": 5,
+     "next_red_pct": 100.0,
+     "seal_pct": 87.5,
+     "break_pct": 12.5,
+     "consecutive_pct": 25.0
     }
    },
    "boards": [
-    "通信"
+    "医药"
    ],
-   "tag": "6天5板",
+   "tag": "昨日首板",
    "missing": [],
-   "resonance": 32
+   "resonance": 26
   },
   {
-   "code": "003036",
-   "name": "泰坦股份",
+   "code": "301230",
+   "name": "泓博医药",
    "score": 11,
    "tier": "core",
    "max": 15,
    "factors": {
-    "bid_price": 53.66,
-    "bid_pct": 3.52,
-    "bid_net": 243405.0,
-    "turnover": 0.26,
-    "vol_ratio": 0.95,
-    "circ_mv": 3660733226.0,
-    "bid_vol_last": 1355.0
+    "bid_price": 35.1,
+    "bid_pct": 6.97,
+    "bid_net": 6786522.0,
+    "turnover": 0.88,
+    "vol_ratio": 20.44,
+    "circ_mv": 3473415446.0,
+    "bid_vol_last": 4211.0
    },
    "sub": {
-    "S1资金": 1,
-    "S2形态": 3,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板85%/破板15%)",
-    "data": {
-     "limit_count": 21,
-     "premium_5pct": 12,
-     "next_red_pct": 82.3529,
-     "seal_pct": 85.0,
-     "break_pct": 15.0,
-     "consecutive_pct": 20.0
-    }
-   },
-   "boards": [
-    "通信"
-   ],
-   "tag": "昨5天3板",
-   "missing": [],
-   "resonance": 32
-  },
-  {
-   "code": "605366",
-   "name": "宏柏新材",
-   "score": 10,
-   "tier": "core",
-   "max": 15,
-   "factors": {
-    "bid_price": 8.46,
-    "bid_pct": 2.48,
-    "bid_net": 1062434.0,
-    "turnover": 0.29,
-    "vol_ratio": 2.31,
-    "circ_mv": 3913126682.0,
-    "bid_vol_last": 4209.0
-   },
-   "sub": {
-    "S1资金": 1,
+    "S1资金": 3,
     "S2形态": 2,
     "S3共振": 3,
     "S4身位": 1,
-    "S5量比": 1,
+    "S5量比": 0,
     "S6基因": 2
    },
    "gene": {
     "pass": true,
     "reason": "基因正常(封板100%/破板0%)",
     "data": {
-     "limit_count": 13,
-     "premium_5pct": 4,
-     "next_red_pct": 88.8889,
+     "limit_count": 3,
+     "premium_5pct": 3,
+     "next_red_pct": 100.0,
      "seal_pct": 100.0,
      "break_pct": 0.0,
-     "consecutive_pct": 20.0
+     "consecutive_pct": 0.0
     }
    },
    "boards": [
-    "通信"
+    "医药"
    ],
    "tag": "昨日首板",
    "missing": [],
-   "resonance": 32
+   "resonance": 26
+  },
+  {
+   "code": "300363",
+   "name": "博腾股份",
+   "score": 10,
+   "tier": "core",
+   "max": 15,
+   "factors": {
+    "bid_price": 21.65,
+    "bid_pct": 4.26,
+    "bid_net": 4916994.0,
+    "turnover": 0.55,
+    "vol_ratio": 16.31,
+    "circ_mv": 6835495547.0,
+    "bid_vol_last": 7500.0
+   },
+   "sub": {
+    "S1资金": 2,
+    "S2形态": 2,
+    "S3共振": 3,
+    "S4身位": 1,
+    "S5量比": 0,
+    "S6基因": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板100%/破板0%)",
+    "data": {
+     "limit_count": 1,
+     "premium_5pct": 1,
+     "next_red_pct": 100.0,
+     "seal_pct": 100.0,
+     "break_pct": 0.0,
+     "consecutive_pct": 0.0
+    }
+   },
+   "boards": [
+    "医药"
+   ],
+   "tag": "昨日首板",
+   "missing": [],
+   "resonance": 26
+  },
+  {
+   "code": "002821",
+   "name": "凯莱英",
+   "score": 10,
+   "tier": "core",
+   "max": 15,
+   "factors": {
+    "bid_price": 176.0,
+    "bid_pct": 4.49,
+    "bid_net": 1422000.0,
+    "turnover": 0.17,
+    "vol_ratio": 5.38,
+    "circ_mv": 34908458640.0,
+    "bid_vol_last": 1515.0
+   },
+   "sub": {
+    "S1资金": 1,
+    "S2形态": 0,
+    "S3共振": 3,
+    "S4身位": 2,
+    "S5量比": 2,
+    "S6基因": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板100%/破板0%)",
+    "data": {
+     "limit_count": 8,
+     "premium_5pct": 4,
+     "next_red_pct": 85.7143,
+     "seal_pct": 100.0,
+     "break_pct": 0.0,
+     "consecutive_pct": 14.2857
+    }
+   },
+   "boards": [
+    "医药"
+   ],
+   "tag": "昨4天2板",
+   "missing": [],
+   "resonance": 26
+  },
+  {
+   "code": "300534",
+   "name": "陇神戎发",
+   "score": 10,
+   "tier": "core",
+   "max": 15,
+   "factors": {
+    "bid_price": 15.88,
+    "bid_pct": 1.34,
+    "bid_net": 12102885.0,
+    "turnover": 0.96,
+    "vol_ratio": 1.21,
+    "circ_mv": 2990830641.0,
+    "bid_vol_last": 12552.0
+   },
+   "sub": {
+    "S1资金": 3,
+    "S2形态": 2,
+    "S3共振": 3,
+    "S4身位": 0,
+    "S5量比": 0,
+    "S6基因": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板100%/破板0%)",
+    "data": {
+     "limit_count": 3,
+     "premium_5pct": 3,
+     "next_red_pct": 100.0,
+     "seal_pct": 100.0,
+     "break_pct": 0.0,
+     "consecutive_pct": 0.0
+    }
+   },
+   "boards": [
+    "医药"
+   ],
+   "tag": "",
+   "missing": [],
+   "resonance": 26
+  },
+  {
+   "code": "688183",
+   "name": "生益电子",
+   "score": 10,
+   "tier": "core",
+   "max": 15,
+   "factors": {
+    "bid_price": 112.32,
+    "bid_pct": 1.83,
+    "bid_net": 2570070.0,
+    "turnover": 0.05,
+    "vol_ratio": 3.78,
+    "circ_mv": 30683633086.0,
+    "bid_vol_last": 600.0
+   },
+   "sub": {
+    "S1资金": 1,
+    "S2形态": 3,
+    "S3共振": 3,
+    "S4身位": 0,
+    "S5量比": 2,
+    "S6基因": 1
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板67%/破板33%)",
+    "data": {
+     "limit_count": 2,
+     "premium_5pct": 1,
+     "next_red_pct": 100.0,
+     "seal_pct": 66.6667,
+     "break_pct": 33.3333,
+     "consecutive_pct": 0.0
+    }
+   },
+   "boards": [
+    "科创板"
+   ],
+   "tag": "",
+   "missing": [],
+   "resonance": 23
   }
  ],
  "watch": [
   {
-   "code": "002281",
-   "name": "光迅科技",
+   "code": "002437",
+   "name": "誉衡药业",
    "score": 9,
    "tier": "watch",
    "max": 15,
    "factors": {
-    "bid_price": 193.04,
-    "bid_pct": 3.71,
-    "bid_net": 34838440.0,
+    "bid_price": 3.43,
+    "bid_pct": 5.45,
+    "bid_net": 9743660.0,
+    "turnover": 0.61,
+    "vol_ratio": 82.85,
+    "circ_mv": 7108782534.0,
+    "bid_vol_last": 136396.0
+   },
+   "sub": {
+    "S1资金": 3,
+    "S2形态": 0,
+    "S3共振": 3,
+    "S4身位": 1,
+    "S5量比": 0,
+    "S6基因": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板75%/破板25%)",
+    "data": {
+     "limit_count": 4,
+     "premium_5pct": 2,
+     "next_red_pct": 100.0,
+     "seal_pct": 75.0,
+     "break_pct": 25.0,
+     "consecutive_pct": 33.3333
+    }
+   },
+   "boards": [
+    "医药",
+    "创新药"
+   ],
+   "tag": "昨日首板",
+   "missing": [],
+   "resonance": 26
+  },
+  {
+   "code": "000739",
+   "name": "普洛药业",
+   "score": 9,
+   "tier": "watch",
+   "max": 15,
+   "factors": {
+    "bid_price": 23.25,
+    "bid_pct": 4.1,
+    "bid_net": 3655489.0,
     "turnover": 0.18,
-    "vol_ratio": 3.06,
-    "circ_mv": 92252052000.0,
-    "bid_vol_last": 6267.0
+    "vol_ratio": 5.77,
+    "circ_mv": 12643917649.0,
+    "bid_vol_last": 6576.0
    },
    "sub": {
     "S1资金": 1,
@@ -248,46 +417,130 @@
    },
    "gene": {
     "pass": true,
-    "reason": "基因正常(封板67%/破板33%)",
+    "reason": "基因正常(封板60%/破板40%)",
     "data": {
-     "limit_count": 13,
-     "premium_5pct": 7,
+     "limit_count": 3,
+     "premium_5pct": 1,
      "next_red_pct": 100.0,
-     "seal_pct": 66.6667,
-     "break_pct": 33.3333,
-     "consecutive_pct": 9.09091
+     "seal_pct": 60.0,
+     "break_pct": 40.0,
+     "consecutive_pct": 0.0
     }
    },
    "boards": [
-    "通信",
-    "芯片",
-    "5G"
+    "医药",
+    "创新药"
    ],
-   "tag": "4天2板",
+   "tag": "昨4天2板",
    "missing": [],
-   "resonance": 32
+   "resonance": 26
   },
   {
-   "code": "601208",
-   "name": "东材科技",
+   "code": "001257",
+   "name": "盛龙股份",
    "score": 9,
    "tier": "watch",
    "max": 15,
    "factors": {
-    "bid_price": 45.94,
-    "bid_pct": 1.51,
-    "bid_net": 5629392.0,
-    "turnover": 0.05,
-    "vol_ratio": 0.45,
-    "circ_mv": 35412346784.0,
-    "bid_vol_last": 18821.0
+    "bid_price": 26.85,
+    "bid_pct": 4.69,
+    "bid_net": 1186175.0,
+    "turnover": 0.55,
+    "vol_ratio": 3.6,
+    "circ_mv": 3677053478.0,
+    "bid_vol_last": 1686.0
+   },
+   "sub": {
+    "S1资金": 1,
+    "S2形态": 3,
+    "S3共振": 2,
+    "S4身位": 0,
+    "S5量比": 2,
+    "S6基因": 1
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板67%/破板33%)",
+    "data": {
+     "limit_count": 6,
+     "premium_5pct": 2,
+     "next_red_pct": 100.0,
+     "seal_pct": 66.6667,
+     "break_pct": 33.3333,
+     "consecutive_pct": 66.6667
+    }
+   },
+   "boards": [
+    "小金属概念"
+   ],
+   "tag": "",
+   "missing": [],
+   "resonance": 2
+  },
+  {
+   "code": "688166",
+   "name": "博瑞医药",
+   "score": 8,
+   "tier": "watch",
+   "max": 15,
+   "factors": {
+    "bid_price": 37.41,
+    "bid_pct": 3.33,
+    "bid_net": 4778755.0,
+    "turnover": 0.21,
+    "vol_ratio": 4.55,
+    "circ_mv": 10209726021.0,
+    "bid_vol_last": 1464.0
+   },
+   "sub": {
+    "S1资金": 1,
+    "S2形态": 0,
+    "S3共振": 3,
+    "S4身位": 0,
+    "S5量比": 2,
+    "S6基因": 2
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板100%/破板0%)",
+    "data": {
+     "limit_count": 2,
+     "premium_5pct": 1,
+     "next_red_pct": 100.0,
+     "seal_pct": 100.0,
+     "break_pct": 0.0,
+     "consecutive_pct": 0.0
+    }
+   },
+   "boards": [
+    "医药",
+    "科创板"
+   ],
+   "tag": "",
+   "missing": [],
+   "resonance": 26
+  },
+  {
+   "code": "300480",
+   "name": "光力科技",
+   "score": 8,
+   "tier": "watch",
+   "max": 15,
+   "factors": {
+    "bid_price": 35.13,
+    "bid_pct": 2.0,
+    "bid_net": 3378375.0,
+    "turnover": 0.1,
+    "vol_ratio": 2.17,
+    "circ_mv": 8234298704.0,
+    "bid_vol_last": 482.0
    },
    "sub": {
     "S1资金": 1,
     "S2形态": 3,
     "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
+    "S4身位": 0,
+    "S5量比": 1,
     "S6基因": 0
    },
    "gene": {
@@ -296,688 +549,268 @@
     "data": null
    },
    "boards": [
-    "通信"
-   ],
-   "tag": "4天3板",
-   "missing": [],
-   "resonance": 32
-  },
-  {
-   "code": "002971",
-   "name": "和远气体",
-   "score": 9,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 45.38,
-    "bid_pct": 6.64,
-    "bid_net": 2599810.0,
-    "turnover": 0.68,
-    "vol_ratio": 2.19,
-    "circ_mv": 5501750988.0,
-    "bid_vol_last": 4588.0
-   },
-   "sub": {
-    "S1资金": 1,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 1,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板83%/破板17%)",
-    "data": {
-     "limit_count": 17,
-     "premium_5pct": 6,
-     "next_red_pct": 80.0,
-     "seal_pct": 83.3333,
-     "break_pct": 16.6667,
-     "consecutive_pct": 30.7692
-    }
-   },
-   "boards": [
-    "芯片"
-   ],
-   "tag": "昨2连板",
-   "missing": [],
-   "resonance": 17
-  },
-  {
-   "code": "688549",
-   "name": "中巨芯",
-   "score": 9,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 28.77,
-    "bid_pct": 1.18,
-    "bid_net": 24499036.0,
-    "turnover": 0.55,
-    "vol_ratio": 1.64,
-    "circ_mv": 14653107630.0,
-    "bid_vol_last": 21634.0
-   },
-   "sub": {
-    "S1资金": 3,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
-    "S6基因": 1
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板60%/破板40%)",
-    "data": {
-     "limit_count": 4,
-     "premium_5pct": 3,
-     "next_red_pct": 100.0,
-     "seal_pct": 60.0,
-     "break_pct": 40.0,
-     "consecutive_pct": 33.3333
-    }
-   },
-   "boards": [
-    "芯片"
-   ],
-   "tag": "昨2连板",
-   "missing": [],
-   "resonance": 17
-  },
-  {
-   "code": "002975",
-   "name": "博杰股份",
-   "score": 9,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 97.94,
-    "bid_pct": 2.35,
-    "bid_net": 9840338.0,
-    "turnover": 0.49,
-    "vol_ratio": 1.41,
-    "circ_mv": 10693927468.0,
-    "bid_vol_last": 1457.0
-   },
-   "sub": {
-    "S1资金": 2,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板83%/破板17%)",
-    "data": {
-     "limit_count": 19,
-     "premium_5pct": 10,
-     "next_red_pct": 86.6667,
-     "seal_pct": 83.3333,
-     "break_pct": 16.6667,
-     "consecutive_pct": 17.6471
-    }
-   },
-   "boards": [
-    "芯片"
-   ],
-   "tag": "昨3连板",
-   "missing": [],
-   "resonance": 17
-  },
-  {
-   "code": "002674",
-   "name": "兴业科技",
-   "score": 9,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 28.33,
-    "bid_pct": 1.4,
-    "bid_net": 14757400.0,
-    "turnover": 0.87,
-    "vol_ratio": 1.31,
-    "circ_mv": 4096705035.0,
-    "bid_vol_last": 4546.0
-   },
-   "sub": {
-    "S1资金": 3,
-    "S2形态": 2,
-    "S3共振": 3,
-    "S4身位": 0,
-    "S5量比": 0,
-    "S6基因": 1
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板64%/破板36%)",
-    "data": {
-     "limit_count": 13,
-     "premium_5pct": 5,
-     "next_red_pct": 100.0,
-     "seal_pct": 63.6364,
-     "break_pct": 36.3636,
-     "consecutive_pct": 25.0
-    }
-   },
-   "boards": [
     "芯片"
    ],
    "tag": "",
    "missing": [],
-   "resonance": 17
-  },
-  {
-   "code": "603823",
-   "name": "百合花",
-   "score": 9,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 65.9,
-    "bid_pct": 3.49,
-    "bid_net": 8233384.0,
-    "turnover": 0.38,
-    "vol_ratio": 1.17,
-    "circ_mv": 9003239350.0,
-    "bid_vol_last": 2680.0
-   },
-   "sub": {
-    "S1资金": 2,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板82%/破板18%)",
-    "data": {
-     "limit_count": 18,
-     "premium_5pct": 9,
-     "next_red_pct": 100.0,
-     "seal_pct": 82.3529,
-     "break_pct": 17.6471,
-     "consecutive_pct": 18.75
-    }
-   },
-   "boards": [
-    "芯片"
-   ],
-   "tag": "昨4天3板",
-   "missing": [],
-   "resonance": 17
-  },
-  {
-   "code": "002203",
-   "name": "海亮股份",
-   "score": 8,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 20.8,
-    "bid_pct": 3.49,
-    "bid_net": 1197379.0,
-    "turnover": 0.04,
-    "vol_ratio": 5.74,
-    "circ_mv": 27350525384.0,
-    "bid_vol_last": 2708.0
-   },
-   "sub": {
-    "S1资金": 1,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 0,
-    "S5量比": 2,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板88%/破板12%)",
-    "data": {
-     "limit_count": 8,
-     "premium_5pct": 6,
-     "next_red_pct": 100.0,
-     "seal_pct": 87.5,
-     "break_pct": 12.5,
-     "consecutive_pct": 14.2857
-    }
-   },
-   "boards": [
-    "通信"
-   ],
-   "tag": "",
-   "missing": [],
-   "resonance": 32
-  },
-  {
-   "code": "600601",
-   "name": "方正科技",
-   "score": 8,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 12.87,
-    "bid_pct": 1.97,
-    "bid_net": 6631885.0,
-    "turnover": 0.23,
-    "vol_ratio": 3.55,
-    "circ_mv": 35362102785.0,
-    "bid_vol_last": 52878.0
-   },
-   "sub": {
-    "S1资金": 1,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 1,
-    "S5量比": 2,
-    "S6基因": 1
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板62%/破板38%)",
-    "data": {
-     "limit_count": 9,
-     "premium_5pct": 4,
-     "next_red_pct": 87.5,
-     "seal_pct": 61.5385,
-     "break_pct": 38.4615,
-     "consecutive_pct": 12.5
-    }
-   },
-   "boards": [
-    "通信"
-   ],
-   "tag": "昨日首板",
-   "missing": [],
-   "resonance": 32
-  },
-  {
-   "code": "300903",
-   "name": "科翔股份",
-   "score": 8,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 72.33,
-    "bid_pct": 4.79,
-    "bid_net": 5304381.0,
-    "turnover": 0.31,
-    "vol_ratio": 2.11,
-    "circ_mv": 21438079217.0,
-    "bid_vol_last": 3106.0
-   },
-   "sub": {
-    "S1资金": 1,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 1,
-    "S5量比": 1,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板71%/破板29%)",
-    "data": {
-     "limit_count": 5,
-     "premium_5pct": 5,
-     "next_red_pct": 100.0,
-     "seal_pct": 71.4286,
-     "break_pct": 28.5714,
-     "consecutive_pct": 0.0
-    }
-   },
-   "boards": [
-    "通信"
-   ],
-   "tag": "昨日首板",
-   "missing": [],
-   "resonance": 32
-  },
-  {
-   "code": "600183",
-   "name": "生益科技",
-   "score": 8,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 139.98,
-    "bid_pct": 2.95,
-    "bid_net": 16951400.0,
-    "turnover": 0.08,
-    "vol_ratio": 1.84,
-    "circ_mv": 171572433210.0,
-    "bid_vol_last": 16572.0
-   },
-   "sub": {
-    "S1资金": 1,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
-    "S6基因": 2
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板93%/破板7%)",
-    "data": {
-     "limit_count": 13,
-     "premium_5pct": 7,
-     "next_red_pct": 100.0,
-     "seal_pct": 92.8571,
-     "break_pct": 7.14286,
-     "consecutive_pct": 0.0
-    }
-   },
-   "boards": [
-    "通信"
-   ],
-   "tag": "4天2板",
-   "missing": [],
-   "resonance": 32
-  },
-  {
-   "code": "002428",
-   "name": "云南锗业",
-   "score": 8,
-   "tier": "watch",
-   "max": 15,
-   "factors": {
-    "bid_price": 100.08,
-    "bid_pct": 6.62,
-    "bid_net": 44194752.0,
-    "turnover": 0.78,
-    "vol_ratio": 0.6,
-    "circ_mv": 52279512678.0,
-    "bid_vol_last": 19461.0
-   },
-   "sub": {
-    "S1资金": 2,
-    "S2形态": 0,
-    "S3共振": 3,
-    "S4身位": 2,
-    "S5量比": 0,
-    "S6基因": 1
-   },
-   "gene": {
-    "pass": true,
-    "reason": "基因正常(封板65%/破板35%)",
-    "data": {
-     "limit_count": 20,
-     "premium_5pct": 13,
-     "next_red_pct": 100.0,
-     "seal_pct": 65.2174,
-     "break_pct": 34.7826,
-     "consecutive_pct": 17.6471
-    }
-   },
-   "boards": [
-    "芯片"
-   ],
-   "tag": "昨3连板",
-   "missing": [],
-   "resonance": 17
+   "resonance": 29
   }
  ],
  "empty_reason": null,
  "rejected": [
   {
-   "code": "300711",
-   "name": "广哈通信",
-   "reason": "评分8/15 低于备选线7"
+   "code": "688073",
+   "name": "毕得医药",
+   "reason": "竞价涨幅10.37% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "301251",
-   "name": "威尔高",
-   "reason": "评分6/15 低于备选线7"
-  },
-  {
-   "code": "603328",
-   "name": "依顿电子",
-   "reason": "首板破板率60% > 40%"
-  },
-  {
-   "code": "002194",
-   "name": "武汉凡谷",
-   "reason": "评分8/15 低于备选线7"
-  },
-  {
-   "code": "603228",
-   "name": "景旺电子",
-   "reason": "竞价涨幅8.50% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "000889",
-   "name": "中嘉博创",
-   "reason": "竞价涨幅0.24% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "600330",
-   "name": "天通股份",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "301511",
-   "name": "德福科技",
-   "reason": "首板破板率50% > 40%"
-  },
-  {
-   "code": "000823",
-   "name": "超声电子",
-   "reason": "评分6/15 低于备选线7"
-  },
-  {
-   "code": "301217",
-   "name": "铜冠铜箔",
-   "reason": "首板封板率29% < 30%；首板破板率71% > 40%"
-  },
-  {
-   "code": "688662",
-   "name": "富信科技",
-   "reason": "首板破板率43% > 40%"
-  },
-  {
-   "code": "688630",
-   "name": "芯碁微装",
-   "reason": "竞价涨幅0.44% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300757",
-   "name": "罗博特科",
-   "reason": "首板破板率50% > 40%"
-  },
-  {
-   "code": "603186",
-   "name": "华正新材",
-   "reason": "评分6/15 低于备选线7"
-  },
-  {
-   "code": "603738",
-   "name": "泰晶科技",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300548",
-   "name": "长芯博创",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "000063",
-   "name": "中兴通讯",
-   "reason": "竞价涨幅0.23% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "688167",
-   "name": "炬光科技",
-   "reason": "竞价涨幅0.96% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002552",
-   "name": "宝鼎科技",
-   "reason": "竞价涨幅8.62% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002463",
-   "name": "沪电股份",
-   "reason": "评分7/15 低于备选线7"
-  },
-  {
-   "code": "688668",
-   "name": "鼎通科技",
-   "reason": "评分5/15 低于备选线7"
-  },
-  {
-   "code": "002938",
-   "name": "鹏鼎控股",
-   "reason": "评分3/15 低于备选线7"
-  },
-  {
-   "code": "300394",
-   "name": "天孚通信",
+   "code": "002589",
+   "name": "瑞康医药",
    "reason": "评分4/15 低于备选线7"
   },
   {
-   "code": "002579",
-   "name": "中京电子",
-   "reason": "竞价涨幅-1.65% 不在抢筹区间[1%,7%]"
+   "code": "301080",
+   "name": "百普赛斯",
+   "reason": "竞价涨幅18.73% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "300502",
-   "name": "新易盛",
+   "code": "688293",
+   "name": "奥浦迈",
+   "reason": "首板封板率0% < 30%"
+  },
+  {
+   "code": "600267",
+   "name": "海正药业",
    "reason": "评分4/15 低于备选线7"
   },
   {
-   "code": "002491",
-   "name": "通鼎互联",
-   "reason": "首板破板率42% > 40%"
+   "code": "300725",
+   "name": "药石科技",
+   "reason": "首板封板率0% < 30%"
   },
   {
-   "code": "603256",
-   "name": "宏和科技",
+   "code": "600196",
+   "name": "复星医药",
+   "reason": "评分4/15 低于备选线7"
+  },
+  {
+   "code": "688758",
+   "name": "赛分科技",
+   "reason": "评分4/15 低于备选线7"
+  },
+  {
+   "code": "000989",
+   "name": "九芝堂",
    "reason": "竞价涨幅0.42% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "002792",
-   "name": "通宇通讯",
+   "code": "688046",
+   "name": "药康生物",
    "reason": "竞价涨幅10.00% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "688519",
-   "name": "南亚新材",
-   "reason": "竞价涨幅0.14% 不在抢筹区间[1%,7%]"
+   "code": "000963",
+   "name": "华东医药",
+   "reason": "首板封板率0% < 30%"
   },
   {
-   "code": "002080",
-   "name": "中材科技",
-   "reason": "评分6/15 低于备选线7"
+   "code": "688202",
+   "name": "美迪西",
+   "reason": "首板封板率0% < 30%"
   },
   {
-   "code": "688143",
-   "name": "长盈通",
-   "reason": "竞价涨幅-0.12% 不在抢筹区间[1%,7%]"
+   "code": "603127",
+   "name": "昭衍新药",
+   "reason": "首板破板率43% > 40%"
   },
   {
-   "code": "002636",
-   "name": "金安国纪",
-   "reason": "竞价涨幅0.85% 不在抢筹区间[1%,7%]"
+   "code": "301047",
+   "name": "义翘神州",
+   "reason": "竞价涨幅10.54% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "301526",
-   "name": "国际复材",
-   "reason": "评分5/15 低于备选线7"
-  },
-  {
-   "code": "300620",
-   "name": "光库科技",
-   "reason": "评分4/15 低于备选线7"
-  },
-  {
-   "code": "603083",
-   "name": "剑桥科技",
-   "reason": "评分4/15 低于备选线7"
-  },
-  {
-   "code": "002475",
-   "name": "立讯精密",
-   "reason": "竞价涨幅0.41% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "000988",
-   "name": "华工科技",
-   "reason": "评分4/15 低于备选线7"
-  },
-  {
-   "code": "002008",
-   "name": "大族激光",
+   "code": "688336",
+   "name": "三生国健",
    "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "300308",
-   "name": "中际旭创",
+   "code": "603567",
+   "name": "珍宝岛",
+   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "603456",
+   "name": "九洲药业",
+   "reason": "首板封板率0% < 30%"
+  },
+  {
+   "code": "603259",
+   "name": "药明康德",
+   "reason": "评分6/15 低于备选线7"
+  },
+  {
+   "code": "600276",
+   "name": "恒瑞医药",
+   "reason": "竞价涨幅0.70% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "300759",
+   "name": "康龙化成",
+   "reason": "竞价涨幅0.88% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "600272",
+   "name": "开开实业",
+   "reason": "竞价涨幅10.02% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "002294",
+   "name": "信立泰",
+   "reason": "评分5/15 低于备选线7"
+  },
+  {
+   "code": "300765",
+   "name": "石药创新",
+   "reason": "竞价涨幅0.05% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "688131",
+   "name": "皓元医药",
+   "reason": "竞价涨幅0.16% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "002317",
+   "name": "众生药业",
+   "reason": "竞价涨幅0.73% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "300244",
+   "name": "迪安诊断",
+   "reason": "首板破板率50% > 40%"
+  },
+  {
+   "code": "002653",
+   "name": "海思科",
+   "reason": "竞价涨幅0.94% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "603538",
+   "name": "美诺华",
+   "reason": "评分6/15 低于备选线7"
+  },
+  {
+   "code": "688235",
+   "name": "百济神州",
    "reason": "评分4/15 低于备选线7"
   },
   {
-   "code": "002436",
-   "name": "兴森科技",
+   "code": "000566",
+   "name": "海南海药",
    "reason": "评分7/15 低于备选线7"
   },
   {
-   "code": "301205",
-   "name": "联特科技",
-   "reason": "竞价涨幅0.15% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300506",
-   "name": "名家汇",
-   "reason": "竞价涨幅12.71% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002180",
-   "name": "奔图科技",
-   "reason": "评分7/15 低于备选线7"
-  },
-  {
-   "code": "603650",
-   "name": "彤程新材",
-   "reason": "竞价涨幅0.31% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300666",
-   "name": "江丰电子",
+   "code": "688796",
+   "name": "百奥赛图",
    "reason": "评分6/15 低于备选线7"
   },
   {
-   "code": "603773",
-   "name": "沃格光电",
-   "reason": "竞价涨幅7.67% 不在抢筹区间[1%,7%]"
+   "code": "603122",
+   "name": "合富中国",
+   "reason": "竞价涨幅0.24% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "300346",
-   "name": "南大光电",
-   "reason": "评分6/15 低于备选线7"
+   "code": "600829",
+   "name": "人民同泰",
+   "reason": "竞价涨幅-0.48% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "688432",
-   "name": "有研硅",
-   "reason": "竞价涨幅0.03% 不在抢筹区间[1%,7%]"
+   "code": "688331",
+   "name": "荣昌生物",
+   "reason": "竞价涨幅0.76% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "688498",
-   "name": "源杰科技",
+   "code": "300255",
+   "name": "常山药业",
+   "reason": "竞价涨幅0.07% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "300199",
+   "name": "翰宇药业",
+   "reason": "评分3/15 低于备选线7"
+  },
+  {
+   "code": "600737",
+   "name": "中粮糖业",
+   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "600664",
+   "name": "哈药股份",
+   "reason": "竞价涨幅9.94% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "600721",
+   "name": "百花医药",
+   "reason": "竞价涨幅9.96% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "688578",
+   "name": "艾力斯",
+   "reason": "评分4/15 低于备选线7"
+  },
+  {
+   "code": "300347",
+   "name": "泰格医药",
+   "reason": "评分5/15 低于备选线7"
+  },
+  {
+   "code": "002422",
+   "name": "科伦药业",
+   "reason": "评分5/15 低于备选线7"
+  },
+  {
+   "code": "600651",
+   "name": "飞乐音响",
+   "reason": "评分5/15 低于备选线7"
+  },
+  {
+   "code": "301308",
+   "name": "江波龙",
    "reason": "评分7/15 低于备选线7"
   },
   {
-   "code": "603065",
-   "name": "宿迁联盛",
-   "reason": "竞价涨幅-2.16% 不在抢筹区间[1%,7%]"
+   "code": "688652",
+   "name": "京仪装备",
+   "reason": "首板封板率0% < 30%；首板破板率100% > 40%"
+  },
+  {
+   "code": "002943",
+   "name": "宇晶股份",
+   "reason": "评分8/15 低于备选线7"
+  },
+  {
+   "code": "600641",
+   "name": "先导基电",
+   "reason": "首板破板率42% > 40%"
+  },
+  {
+   "code": "300672",
+   "name": "国科微",
+   "reason": "首板封板率0% < 30%"
+  },
+  {
+   "code": "002654",
+   "name": "万润科技",
+   "reason": "评分7/15 低于备选线7"
+  },
+  {
+   "code": "688082",
+   "name": "盛美上海",
+   "reason": "首板破板率50% > 40%"
   }
  ],
  "stats": {
-  "pool": 109,
+  "pool": 134,
   "genes": 60,
   "boards": 8
  }
