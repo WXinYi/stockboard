@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchPlayerDetail } from '../data/loader.js'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
+import { pctHtml, drawdownColor } from '../utils/format.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 
 const route = useRoute()
@@ -95,6 +96,20 @@ const tradeData = computed(() => playerData.value?.t || [])
 const inferredPositions = computed(() => playerData.value?.i || [])
 const { sorted: sortedPos, toggle: tp, indicator: ip } = useTableSort(posData, 'rr')
 const { sorted: sortedTrades, toggle: tt, indicator: it } = useTableSort(tradeData, 'td')
+// 调仓按月分组: 组头显示月度买卖笔数汇总, 组内保持全局排序(默认日期降序)
+const tradeGroups = computed(() => {
+  const groups = new Map()
+  for (const x of sortedTrades.value) {
+    const m = String(x.td || '').slice(0, 7)
+    if (!m) continue
+    if (!groups.has(m)) groups.set(m, { month: m, rows: [], buy: 0, sell: 0 })
+    const g = groups.get(m)
+    g.rows.push(x)
+    if (x.dr === '买入') g.buy++
+    else g.sell++
+  }
+  return [...groups.values()]
+})
 
 function pct(v) {
   const n = parseFloat(v)
@@ -170,7 +185,7 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
               <td class="nowrap" style="color:#999;">{{ x.sc }}</td>
               <td>{{ (x.cp || 0).toFixed(3) }}</td>
               <td>{{ (x.np || 0).toFixed(3) }}</td>
-              <td v-html="pct(x.pr)"></td>
+              <td v-html="pctHtml(x.pr)"></td>
               <td>
                 <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, x.rr || 0) + '%' }"></span></span>
                 {{ (x.rr || 0).toFixed(1) }}%
@@ -219,8 +234,16 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
             <th style="cursor:pointer;" @click="tt('pr')">价格{{ it('price') }}</th>
             <th>仓位</th>
           </tr></thead>
-          <tbody>
-            <tr v-for="x in sortedTrades" :key="x.id || x.td + x.sc">
+          <tbody v-for="g in tradeGroups" :key="g.month">
+            <tr class="trade-month">
+              <td colspan="7">
+                <span class="trade-month-label">{{ g.month }}</span>
+                <span class="trade-month-buy">买入 {{ g.buy }}</span>
+                <span class="trade-month-sell">卖出 {{ g.sell }}</span>
+                <span v-if="g.buy !== g.sell" class="trade-month-net" :class="g.buy > g.sell ? 'buy' : 'sell'">{{ g.buy > g.sell ? '净买入' : '净卖出' }} {{ Math.abs(g.buy - g.sell) }}</span>
+              </td>
+            </tr>
+            <tr v-for="x in g.rows" :key="x.id || x.td + x.sc">
               <td>{{ x.td }}</td>
               <td><span :class="x.dr === '买入' ? 'buy' : 'sell'">{{ x.dr }}</span></td>
               <td class="nowrap">
@@ -246,8 +269,8 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
     <div v-if="player" class="player-meta" style="margin-top:20px;">
       <div class="player-meta-item"><div class="val" :style="{ color: player.total_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>
       <div class="player-meta-item"><div class="val" :style="{ color: player.daily_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.daily_return) }}</div><div class="lbl">日收益</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.net_value || 0).toFixed(3) }}</div><div class="lbl">净值</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.max_drawdown || 0).toFixed(1) }}%</div><div class="lbl">最大回撤</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: (player.net_value || 0) >= 1 ? '#e74c3c' : '#27ae60' }">{{ (player.net_value || 0).toFixed(3) }}</div><div class="lbl">净值</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: drawdownColor(player.max_drawdown) }">{{ (player.max_drawdown || 0).toFixed(1) }}%</div><div class="lbl">最大回撤</div></div>
       <div class="player-meta-item"><div class="val">{{ posLabel(player.total_position ?? player._total_position) }}</div><div class="lbl">当前仓位</div></div>
       <div class="player-meta-item"><div class="val">{{ (player.win_rate || 0).toFixed(1) }}%</div><div class="lbl">胜率</div></div>
       <div class="player-meta-item"><div class="val">{{ player.days || 0 }}天</div><div class="lbl">运行天数</div></div>
@@ -282,4 +305,10 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 .stock-copy { border: none; background: none; cursor: pointer; color: #aaa; padding: 0 3px; vertical-align: middle; }
 .stock-copy:hover { color: #2980b9; }
 .copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
+/* 调仓月度分组行 */
+.trade-month td { background: #f6f8fa; padding: 4px 8px; font-size: 11px; }
+.trade-month-label { font-weight: 600; color: #333; margin-right: 10px; }
+.trade-month-buy { color: #e0484a; margin-right: 8px; }
+.trade-month-sell { color: #38a869; margin-right: 8px; }
+.trade-month-net { font-weight: 600; }
 </style>

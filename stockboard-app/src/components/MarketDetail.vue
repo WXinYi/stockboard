@@ -175,8 +175,18 @@ const gaugeDot = computed(() => {
   return { x: (100 + 80 * Math.cos(t)).toFixed(1), y: (100 - 80 * Math.sin(t)).toFixed(1) }
 })
 const GAUGE_LABELS = [ { t: '冰点', x: 22 }, { t: '偏弱', x: 61 }, { t: '中性', x: 100 }, { t: '活跃', x: 139 }, { t: '亢奋', x: 178 } ]
-// 30 日情绪热力色带(时间正序): 每格颜色=强度分级, 悬浮看明细
+const GAUGE_COLORS = GAUGE_SEGS.map(g => g.c)   // 5 档色(左冰点→右亢奋), 热力 legend 复用
+// 30 日情绪热力(时间正序, 今日在右端): SVG 折线, 高度=强度 0-100, 点色=当日分级色
 const heatDays = computed(() => (data.value?.mood || []).slice(0, 30).reverse())
+const heatX = i => (heatDays.value.length > 1 ? i / (heatDays.value.length - 1) : 0) * 360
+const heatY = v => 14 + (1 - Math.max(0, Math.min(100, v)) / 100) * 48   // 100→y14, 0→y62
+const heatLine = computed(() => heatDays.value.map((d, i) => `${heatX(i).toFixed(1)},${heatY(d.strong).toFixed(1)}`).join(' '))
+const heatArea = computed(() => {
+  const n = heatDays.value.length
+  if (!n) return ''
+  return `${heatDays.value.map((d, i) => `${heatX(i).toFixed(1)},${heatY(d.strong).toFixed(1)}`).join(' ')} ${heatX(n - 1).toFixed(1)},62 0,62`
+})
+const heatTodayColor = computed(() => moodColor(moodToday.value?.strong ?? 0))
 const meGain = computed(() => (data.value?.effect?.gain || []).reduce((a, b) => a + b, 0))
 const meLoss = computed(() => (data.value?.effect?.loss || []).reduce((a, b) => a + b, 0))
 const meMax = computed(() => {
@@ -186,10 +196,15 @@ const meMax = computed(() => {
 })
 const meWidth = v => `${((v || 0) / meMax.value * 100).toFixed(1)}%`   // 分布条宽按全档最大值归一
 // ── 盘面动态 (live) ──
+// KPL 接口时间是真实 Unix 秒(绝对时间点, 用本地时区显示); 数据可能滞后(非当天) → 带日期, 避免误认当天
 function fmtTime(t) {
   if (!t) return '—'
   const d = new Date(t * 1000)
-  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+  const now = new Date()
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return hm
+  const md = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  return d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md} ${hm}`
 }
 // 接口按时间正序(最早在前) → 反转, 最新在上; 亮点 30 条默认折叠 10 条
 const showAllLive = ref(false)
@@ -197,6 +212,15 @@ const liveAnnotations = computed(() => [...(data.value?.annotations || [])].reve
 const liveHighlights = computed(() => {
   const list = [...(data.value?.highlights || [])].reverse()
   return showAllLive.value ? list : list.slice(0, 10)
+})
+// 亮点数据日期提示: 接口可能返回前一日数据(数据源滞后) → 组头标注, 避免误认当天
+const liveDataDate = computed(() => {
+  const t = data.value?.highlights?.[0]?.time
+  if (!t) return ''
+  const d = new Date(t * 1000)
+  const now = new Date()
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
 // ── 龙虎榜 (lhb) ──
 function fmtYi(v) {
@@ -210,6 +234,21 @@ const lhbBarMax = computed(() => {
   return Math.max(...l.map(s => Math.abs(s.buyIn)), 1)
 })
 const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
+// 标注情绪色: 1=利多红 / -1=利空绿 / 0=中性灰(接口 Color 字段)
+function annColor(c) { return c === '1' ? '#e74c3c' : c === '-1' ? '#27ae60' : '#d5dbe3' }
+const fmtAmt = v => (typeof v === 'number' && isFinite(v) && v > 0) ? (v / 1e8).toFixed(1) + '亿' : ''
+// 龙虎榜排序切换: 净买(默认)/机构家数/振幅/换手率
+const lhbSort = ref('buyIn')
+const LHB_SORTS = [
+  { key: 'buyIn', label: '净买' },
+  { key: 'joinNum', label: '机构' },
+  { key: 'amplitude', label: '振幅' },
+  { key: 'turnoverRatio', label: '换手' },
+]
+const lhbSorted = computed(() => {
+  const key = lhbSort.value
+  return [...(data.value?.list || [])].sort((a, b) => ((b[key] || 0)) - ((a[key] || 0)))
+})
 </script>
 
 <template>
@@ -412,8 +451,9 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
           <text v-for="l in GAUGE_LABELS" :key="l.t" :x="l.x" y="113" text-anchor="middle" font-size="9" fill="#999">{{ l.t }}</text>
           <text x="100" y="64" text-anchor="middle" font-size="30" font-weight="700" :fill="moodColor(moodToday.strong)">{{ moodToday.strong }}</text>
           <text x="100" y="82" text-anchor="middle" font-size="12" :fill="moodColor(moodToday.strong)">
-            {{ moodLabel(moodToday.strong) }}<tspan v-if="moodDelta !== null" :fill="moodDelta >= 0 ? '#e74c3c' : '#27ae60'">{{ moodDelta >= 0 ? ' ↗' : ' ↘' }} {{ Math.abs(moodDelta) }}</tspan>
+            {{ moodLabel(moodToday.strong) }}<tspan v-if="moodDelta !== null" :fill="moodDelta >= 0 ? '#e74c3c' : '#27ae60'">{{ moodDelta >= 0 ? ' ↗' : ' ↘' }} {{ Math.abs(moodDelta) }} 较昨日</tspan>
           </text>
+          <text x="100" y="97" text-anchor="middle" font-size="8" fill="#bbb">0-100 综合评分</text>
         </svg>
       </div>
 
@@ -434,23 +474,45 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
             </div>
           </div>
           <div class="me-legend">
-            <span>亏 {{ meLoss }} 家</span>
+            <span>大亏 {{ meLoss }} 家</span>
             <span class="me-ttag">净赚 {{ meGain - meLoss }} 家</span>
-            <span>赚 {{ meGain }} 家</span>
+            <span>大赚 {{ meGain }} 家</span>
           </div>
-          <div class="me-scale"><span>← 亏 5~1 档</span><span>赚 1~5 档 →</span></div>
+          <div class="me-scale" title="档位 = 当日涨跌幅分档(1~5 由小到大); 大赚/大亏 = 达到该档的家数, 非全市场涨跌家数">
+            <span>← 大亏 5~1 档</span><span>大赚 1~5 档 →</span>
+          </div>
         </div>
       </div>
 
-      <!-- 30 日情绪热力: 色块=强度分级, 一眼看趋势 -->
+      <!-- 30 日情绪热力: 强度折线(高度=评分, 点色=当日分级), 一眼看趋势 -->
       <div class="md-group">
         <div class="md-group-head">
-          <span class="md-group-tag">📅 情绪热力</span>
-          <span class="md-group-count">近 30 日 · 颜色=情绪强度</span>
+          <span class="md-group-tag">📈 情绪热力</span>
+          <span class="md-group-count">近 30 日强度走势 · 今日在最右</span>
         </div>
         <div class="md-heat">
-          <div v-for="d in heatDays" :key="d.day" class="md-heat-cell" :style="{ background: moodColor(d.strong) }"
-            :title="`${d.day} 强度 ${d.strong} · 涨停${d.zt} 连板${d.lbgd} 跌停${d.df}`"></div>
+          <svg v-if="heatDays.length > 1" viewBox="0 0 360 76" class="md-heat-chart">
+            <defs>
+              <linearGradient id="heatFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" :stop-color="heatTodayColor" stop-opacity=".25"/>
+                <stop offset="100%" :stop-color="heatTodayColor" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <!-- 中性参考线(50 分) -->
+            <line x1="0" :y1="heatY(50)" x2="360" :y2="heatY(50)" stroke="#eef1f5" stroke-dasharray="4,4"/>
+            <polygon :points="heatArea" fill="url(#heatFill)"/>
+            <polyline :points="heatLine" fill="none" :stroke="heatTodayColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+            <circle v-for="(d, i) in heatDays" :key="d.day" :cx="heatX(i).toFixed(1)" :cy="heatY(d.strong).toFixed(1)" r="2.2" :fill="moodColor(d.strong)"
+              :title="`${d.day} 强度 ${d.strong} · 涨停${d.zt} 连板${d.lbgd} 跌停${d.df}`"/>
+            <!-- 今日点高亮 + 数值 -->
+            <circle :cx="heatX(heatDays.length - 1).toFixed(1)" :cy="heatY(heatDays[heatDays.length - 1].strong).toFixed(1)" r="5" fill="#fff" :stroke="heatTodayColor" stroke-width="2.5"/>
+            <text :x="heatX(heatDays.length - 1).toFixed(1)" y="10" text-anchor="middle" font-size="11" font-weight="700" :fill="heatTodayColor">{{ moodToday?.strong }}</text>
+          </svg>
+          <div v-else class="md-heat-empty">数据不足</div>
+        </div>
+        <div class="md-heat-legend">
+          <span v-for="c in GAUGE_COLORS" :key="c" class="md-heat-lg" :style="{ background: c }"></span>
+          <span class="md-heat-lg-txt">冰点 → 亢奋 · 点=当日强度</span>
         </div>
         <div class="md-heat-scale">
           <span v-if="heatDays[0]">{{ heatDays[0].day.slice(5) }}</span>
@@ -468,11 +530,12 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
         </div>
         <div class="md-timeline">
           <div v-for="a in liveAnnotations" :key="a.time + a.text" class="tl-item" @click="a.bkCode ? goBoard(a) : null">
-            <span class="tl-dot"></span>
+            <span class="tl-dot" :style="{ background: annColor(a.color) }" title="标注性质: 利多/利空/中性"></span>
             <span class="tl-time">{{ fmtTime(a.time) }}</span>
             <div class="tl-body">
               <span class="tl-text">{{ a.text }}</span>
               <span v-if="a.bkName" class="md-badge-bk">{{ a.bkName }}</span>
+              <span v-if="fmtAmt(a.je)" class="md-badge-je">{{ fmtAmt(a.je) }}</span>
               <span v-if="isFinite(a.zdf)" class="tl-chg" :style="{ color: a.zdf >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(a.zdf) }}</span>
             </div>
           </div>
@@ -483,6 +546,7 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
         <div class="md-group-head">
           <span class="md-group-tag">📣 盘面亮点</span>
           <span class="md-group-count">{{ liveHighlights.length }}/{{ data.highlights.length }} 条</span>
+          <span v-if="liveDataDate" class="md-group-count md-lag">{{ liveDataDate }} 数据</span>
           <button v-if="data.highlights.length > 10" class="md-live-toggle" @click="showAllLive = !showAllLive">{{ showAllLive ? '收起' : '展开全部' }}</button>
         </div>
         <div class="md-timeline">
@@ -501,22 +565,28 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
       <div v-if="!liveAnnotations.length && !liveHighlights.length" class="md-empty">暂无数据</div>
     </template>
 
-    <!-- 龙虎榜: 全量个股(净买入降序) -->
+    <!-- 龙虎榜: 全量个股(可按净买/机构/振幅/换手排序) -->
     <template v-else-if="section === 'lhb'">
       <div class="md-summary">龙虎榜 <b class="md-hot">{{ data.list.length }}</b> 家 · {{ data.time }} <span class="md-sum-sub">条形长度=净买入额</span></div>
+      <div class="md-lhb-tools">
+        <button v-for="o in LHB_SORTS" :key="o.key" class="md-chip" :class="{ on: lhbSort === o.key }" @click="lhbSort = o.key">{{ o.label }}</button>
+      </div>
       <div class="md-list">
         <div class="md-list-head">
           <span class="md-row-name">个股</span>
           <span class="md-tags mini" style="width:auto;text-align:left">净买入</span>
           <span class="md-tags mini">涨幅</span>
         </div>
-        <div v-for="s in data.list" :key="s.code" class="md-row rank-row" @click="goStock(s)">
-          <span class="md-row-name">{{ s.name }}<span v-if="s.joinNum" class="md-badge-jg" title="有机构席位">机构</span><span v-if="s.buyIn >= 3e8" class="md-badge-key" title="净买≥3亿">重点</span></span>
+        <div v-for="s in lhbSorted" :key="s.code" class="md-row rank-row" @click="goStock(s)">
+          <span class="md-row-name stacked">
+            <span class="md-lhb-name-line">{{ s.name }}<span v-if="s.joinNum" class="md-badge-jg" title="有机构席位">机构×{{ s.joinNum }}</span><span v-if="s.buyIn >= 3e8" class="md-badge-key" title="净买≥3亿">重点</span></span>
+            <span class="md-lhb-sub">振幅 {{ fmt(s.amplitude) }}% · 换手 {{ fmt(s.turnoverRatio) }}%</span>
+          </span>
           <div class="md-bar-wrap"><div class="md-bar" :style="{ width: lhbBarW(s.buyIn), background: s.buyIn >= 0 ? '#e74c3c' : '#27ae60' }"></div></div>
           <span class="md-tags mini" :style="{ color: s.buyIn >= 0 ? '#c0392b' : '#27ae60' }">{{ fmtYi(s.buyIn) }}</span>
           <span class="md-tags mini" :style="{ color: up(s.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(s.chgPct) }}</span>
         </div>
-        <div v-if="!data.list.length" class="md-empty">暂无数据</div>
+        <div v-if="!lhbSorted.length" class="md-empty">暂无数据</div>
       </div>
     </template>
   </div>
@@ -558,6 +628,7 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
 .md-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .md-group-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 16px; background: #f0f2f5; color: #666; }
 .md-group-count { font-size: 11px; color: #999; }
+.md-group-count.md-lag { color: #e67e22; }   /* 数据滞后提示(非当天数据) */
 .md-group-body { background: #fff; border: 1px solid #eceff3; border-radius: 10px; overflow: hidden; }
 .md-stock-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
 .md-stock-row:last-child { border-bottom: none; }
@@ -581,6 +652,15 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
 
 /* 盘面动态: 板块/标签徽标 */
 .md-badge-bk { font-size: 10px; color: #2980b9; background: #eaf6fb; padding: 1px 6px; border-radius: 10px; flex: none; }
+.md-badge-je { font-size: 10px; color: #666; background: #f0f2f5; padding: 1px 6px; border-radius: 10px; flex: none; font-variant-numeric: tabular-nums; }
+/* 龙虎榜: 排序切换 + 机构徽标 + 振幅/换手副行 */
+.md-lhb-tools { display: flex; gap: 6px; margin: 0 0 8px; }
+.md-chip { font-size: 11px; padding: 3px 12px; border-radius: 14px; border: 1px solid #e0e4ea; background: #fff; color: #666; cursor: pointer; }
+.md-chip.on { background: #2980b9; border-color: #2980b9; color: #fff; font-weight: 600; }
+.md-row-name.stacked { display: flex; flex-direction: column; align-items: stretch; white-space: normal; overflow: visible; }
+.md-lhb-name-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-lhb-sub { font-size: 10px; color: #999; font-weight: 400; margin-top: 1px; font-variant-numeric: tabular-nums; }
+
 /* 龙虎榜: 机构徽标 + 窄列(5列适配) + 折叠按钮 + 情绪对比 */
 .md-badge-jg { font-size: 9px; color: #c0392b; background: #fdecea; padding: 0 4px; border-radius: 8px; margin-left: 4px; vertical-align: 1px; }
 .md-tags.mini, .md-row-str.mini { max-width: none; width: 56px; text-align: right; }
@@ -592,10 +672,13 @@ const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
 .md-gauge { width: 100%; height: 128px; display: block; }
 
 /* 情绪热力色带 */
-.md-heat { display: flex; gap: 3px; background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 10px 12px; }
-.md-heat-cell { flex: 1; height: 22px; border-radius: 3px; }
-.md-heat-cell:hover { opacity: .75; }
+.md-heat { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 10px 12px 6px; }
+.md-heat-chart { width: 100%; height: auto; display: block; }
+.md-heat-empty { font-size: 12px; color: #999; text-align: center; padding: 14px 0; }
 .md-heat-scale { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+.md-heat-legend { display: flex; align-items: center; gap: 2px; margin-top: 6px; }
+.md-heat-lg { width: 14px; height: 8px; border-radius: 2px; }
+.md-heat-lg-txt { font-size: 10px; color: #999; margin-left: 6px; }
 
 /* 赚钱效应分布条 */
 .md-effect { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 12px; }

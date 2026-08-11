@@ -88,6 +88,37 @@ function fmt(v, d = 2) { return (typeof v === 'number' && isFinite(v)) ? v.toFix
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
 const isUp = r => (typeof r.chgPct === 'number' ? r.chgPct >= 0 : false)
 const dayStr = computed(() => String(day.value).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
+
+// ── 大单净额格式化(元 → 亿/万) ──
+function fmtNet(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '—'
+  const abs = Math.abs(v)
+  const s = v >= 0 ? '+' : '-'
+  if (abs >= 1e8) return s + (abs / 1e8).toFixed(2) + '亿'
+  if (abs >= 1e4) return s + (abs / 1e4).toFixed(0) + '万'
+  return s + abs.toFixed(0)
+}
+
+// ── 表头排序: 涨幅(默认) / 大单净额 / 换手率 ──
+const sortKey = ref('chgPct')
+const sortDir = ref(-1)   // -1 降序
+function toggleSort(key) {
+  if (sortKey.value === key) sortDir.value = -sortDir.value
+  else { sortKey.value = key; sortDir.value = -1 }
+}
+const SORT_HEADERS = [
+  { key: 'chgPct', label: '涨幅' },
+  { key: 'bigNet', label: '大单净' },
+  { key: 'turnover', label: '换手' },
+]
+const sortedRows = computed(() => {
+  const key = sortKey.value
+  const dir = sortDir.value
+  return [...rows.value].sort((a, b) => dir * ((b[key] || 0) - (a[key] || 0)))
+})
+// 换手率迷你条: 宽度按全表最大值归一
+const turnoverMax = computed(() => Math.max(...rows.value.map(r => r.turnover || 0), 1))
+const turnoverW = r => (Math.max(0, r.turnover || 0) / turnoverMax.value * 100).toFixed(1) + '%'
 </script>
 
 <template>
@@ -107,9 +138,9 @@ const dayStr = computed(() => String(day.value).replace(/(\d{4})(\d{2})(\d{2})/,
           <span class="bd-rank">#</span>
           <span class="bd-name">名称</span>
           <span class="bd-price">现价</span>
-          <span class="bd-chg">涨幅</span>
+          <span v-for="h in SORT_HEADERS" :key="h.key" class="bd-sortable" :class="{ on: sortKey === h.key }" @click="toggleSort(h.key)">{{ h.label }}{{ sortKey === h.key ? (sortDir === -1 ? ' ↓' : ' ↑') : '' }}</span>
         </div>
-        <div v-for="(r, i) in rows" :key="r.code" class="bd-row" @click="goStock(r)">
+        <div v-for="(r, i) in sortedRows" :key="r.code" class="bd-row" @click="goStock(r)">
           <span class="bd-rank">{{ i + 1 }}</span>
           <span class="bd-name">
             {{ r.name }}
@@ -118,6 +149,11 @@ const dayStr = computed(() => String(day.value).replace(/(\d{4})(\d{2})(\d{2})/,
           </span>
           <span class="bd-price">{{ fmt(r.price) }}</span>
           <span class="bd-chg" :style="{ color: isUp(r) ? '#e74c3c' : '#27ae60', fontWeight: (r.chgPct >= 9.8 ? 700 : 400) }">{{ pct(r.chgPct) }}</span>
+          <span class="bd-tr">
+            <span class="bd-tr-track"><span class="bd-tr-fill" :style="{ width: turnoverW(r) }"></span></span>
+            <span class="bd-tr-num">{{ fmt(r.turnover, 1) }}%</span>
+          </span>
+          <span class="bd-net" :style="{ color: (r.bigNet || 0) >= 0 ? '#c0392b' : '#27ae60' }">{{ fmtNet(r.bigNet) }}</span>
         </div>
         <div v-if="!rows.length" class="sd-error">该板块今日无成分数据(可能停牌或已改代码)</div>
       </div>
@@ -141,9 +177,20 @@ const dayStr = computed(() => String(day.value).replace(/(\d{4})(\d{2})(\d{2})/,
 .bd-lb { background: #e74c3c; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; flex: none; }
 .bd-price { font-size: 13px; color: #333; width: 64px; text-align: right; flex: none; }
 .bd-chg { font-size: 13px; width: 64px; text-align: right; flex: none; }
+.bd-sortable { font-size: 11px; width: 64px; text-align: right; flex: none; cursor: pointer; }
+.bd-sortable.on { color: #2980b9; font-weight: 600; }
+.bd-tr { width: 74px; flex: none; display: flex; align-items: center; gap: 4px; }
+.bd-tr-track { flex: 1; min-width: 0; height: 5px; background: #f0f2f5; border-radius: 3px; overflow: hidden; }
+.bd-tr-fill { display: block; height: 100%; background: linear-gradient(90deg, #8899c8, #a8b8e0); border-radius: 3px; }
+.bd-tr-num { font-size: 11px; color: #666; flex: none; font-variant-numeric: tabular-nums; }
+.bd-net { width: 72px; flex: none; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 480px) {
   .bd-page { padding-left: 10px; padding-right: 10px; }
+  .bd-price { display: none; }
+  .bd-sortable { width: 52px; }
+  .bd-tr { width: 62px; }
+  .bd-net { width: 64px; }
 }
 @media (min-width: 768px) {
   .bd-page { padding: 8px 28px 20px; }

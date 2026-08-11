@@ -2,6 +2,7 @@
 import { ref, computed, inject, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
+import { rankCellHtml, drawdownColor } from '../utils/format.js'
 import { RecycleScroller } from 'vue3-virtual-scroller'
 import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 
@@ -174,8 +175,8 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
                 <strong :style="{ color: WATCHED.has(item.zh_id) ? '#e67e22' : '#2980b9' }">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template><template v-else-if="isQuality(item)"> 🏅</template></strong>
                 <span v-if="tradedPlayerIds.has(item.zh_id)" class="trade-dot" title="今日有调仓"></span>
               </span>
-              <span v-for="h in sortHeaders" :key="'c'+h.key" class="c-num" v-html="pct(item[h.key])"></span>
-              <span class="c-num">{{ (item.max_drawdown || 0).toFixed(1) }}%</span>
+              <span v-for="h in sortHeaders" :key="'c'+h.key" class="c-num" v-html="rankCellHtml(h.key, item[h.key])"></span>
+              <span class="c-num" :style="{ color: drawdownColor(item.max_drawdown) }">{{ (item.max_drawdown || 0).toFixed(1) }}%</span>
               <span class="c-style">{{ styles[item.zh_id]?.emoji || '—' }}</span>
               <span class="c-pos">
                 <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, item._total_position || 0) + '%' }"></span></span>

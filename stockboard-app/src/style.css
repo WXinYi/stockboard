@@ -286,6 +286,7 @@ tr.pinned-row td { background: rgba(107,125,179,.025); }
 .sell { color: #38a869; }
 .positive { color: #e0484a; font-weight: 500; }
 .negative { color: #38a869; font-weight: 500; }
+.dim { color: #999; font-weight: 400; }
 
 /* ---- Progress ---- */
 .progress-bar { display: inline-block; width: 60px; height: 5px; background: rgba(0,0,0,.04); border-radius: 100px; vertical-align: middle; margin-right: 6px; overflow: hidden; }

@@ -3,6 +3,7 @@ import { computed, inject, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
+import { pctHtml } from '../utils/format.js'
 
 const router = useRouter()
 const { stockStats: stats, sortedPlayers: sp, isQuality } = inject('stockData')
@@ -90,7 +91,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
               <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp/s.h) + '%' }"></span></span>
               {{ s.tp.toFixed(0) }}%
             </td>
-            <td v-html="pct(s.ap/s.h)"></td>
+            <td v-html="pctHtml(s.ap/s.h)"></td>
           </tr>
         </tbody>
       </table>
