@@ -121,6 +121,39 @@ describe('StockChartCanvas', () => {
     wrapper.unmount()
   })
 
+  it('分时滑动触发 crossinfo emit(午休跳过, 按交易分钟反查)', async () => {
+    // 240 个交易分钟点: 09:30~11:30 + 13:00~15:00 (UTC-naive 秒)
+    const trend = []
+    const day = [2026, 7, 10]
+    for (let m = 570; m <= 690; m++) trend.push({ time: Date.UTC(...day, Math.floor(m / 60), m % 60) / 1000, price: 10 + (m - 570) / 240, vol: 100, amount: 100000 })
+    for (let m = 780; m <= 900; m++) trend.push({ time: Date.UTC(...day, Math.floor(m / 60), m % 60) / 1000, price: 10 + (m - 570) / 240, vol: 100, amount: 100000 })
+    const wrapper = mount(StockChartCanvas, {
+      props: {
+        view: 'trend', kline: [], trend,
+        quote: { prevClose: 10, upPx: 11, downPx: 9 },
+        overlays: { ma: false, boll: false }, chan: false, wave: false,
+        subInd: 'none', indCache: null,
+      },
+      attachTo: document.body,
+    })
+    mockCanvas(wrapper)
+    const canvas = wrapper.find('canvas')
+    // 光标滑到内容区中部偏右 (x=250 → 交易分钟 ~150 → 14:00 附近)
+    await canvas.trigger('pointermove', { clientX: 250, clientY: 100 })
+    const emitted = wrapper.emitted('crossinfo')
+    expect(emitted).toBeTruthy()
+    const info = emitted.at(-1)[0]
+    expect(info).toBeTruthy()
+    expect(info.close).toBeTypeOf('number')
+    expect(info.time).toBeTypeOf('number')
+    // 午休区 (x → 12:00) 也应吸附到最近交易点, 而非 null
+    await canvas.trigger('pointermove', { clientX: 200, clientY: 100 })
+    const info2 = wrapper.emitted('crossinfo').at(-1)[0]
+    expect(info2).toBeTruthy()
+    expect(info2.close).toBeTypeOf('number')
+    wrapper.unmount()
+  })
+
   it('K线 hover 触发 crossinfo emit', async () => {
     const kline = [
       { time: '2026-08-07', open: 10, close: 10.2, high: 10.4, low: 9.8, volume: 5000 },

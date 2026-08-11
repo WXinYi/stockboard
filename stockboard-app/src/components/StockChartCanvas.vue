@@ -3,7 +3,7 @@
 // 数据全部由宿主 computeIndicators 计算后经 props 传入; 本组件只画 + 发射 crossinfo
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
-  panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks,
+  panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks, trendX, trendMinute,
 } from '../utils/chartDraw.js'
 import { calcMACD, calcKDJ, calcRSI, calcWR, VIEW_MAX_BARS } from '../utils/indicators.js'
 
@@ -126,8 +126,8 @@ function drawTrend() {
   drawTrendVolume(vol, t, prevClose, x0, w0)
   // 5. 副图(分时按 subInd 走伪K线: 指标由本组件从分时数据现算, 宿主 indCache 为空)
   if (sub && props.subInd !== 'none') {
-    const tkl = t.map(p => ({ open: p.price, high: p.price, low: p.price, close: p.price, volume: p.vol }))
-    drawSubPane(sub, tkl, { macd: calcMACD(tkl), kdj: calcKDJ(tkl), rsi: calcRSI(tkl), wr: calcWR(tkl) }, x0, w0, 0)
+    const tkl = t.map(p => ({ time: p.time, open: p.price, high: p.price, low: p.price, close: p.price, volume: p.vol }))
+    drawSubPane(sub, tkl, { macd: calcMACD(tkl), kdj: calcKDJ(tkl), rsi: calcRSI(tkl), wr: calcWR(tkl) }, x0, w0, 0, true)
   }
   // 6. 时间轴
   drawTimeAxis(rects, timeTicks(t, w0, true), true, x0)
@@ -182,10 +182,12 @@ function drawTrendLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
   ctx.lineWidth = 1.2
   ctx.setLineDash([])
   ctx.beginPath()
-  t.forEach((p, i) => {
-    const x = x0 + idxToX(i, w, t.length)
+  let started = false
+  t.forEach(p => {
+    const x = x0 + trendX(p.time, w)
+    if (x < x0) return            // 午休/盘前/盘后点跳过, 前后点直接连线
     const y = priceToY(p.price, yMin, yMax, main)
-    if (i === 0) ctx.moveTo(x, y)
+    if (!started) { ctx.moveTo(x, y); started = true }
     else ctx.lineTo(x, y)
   })
   ctx.stroke()
@@ -209,12 +211,13 @@ function drawAvgLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
   ctx.beginPath()
   let started = false
   for (let i = 0; i < t.length; i++) {
+    const x = x0 + trendX(t[i].time, w)
+    if (x < x0) continue          // 午休点跳过: 不累计不连线
     cumAmt += t[i].amount || 0
     cumVol += t[i].vol || 0
     if (cumVol <= 0) continue
     const v = cumAmt / (cumVol * 100)
     if (!Number.isFinite(v)) continue
-    const x = x0 + idxToX(i, w, t.length)
     const y = priceToY(v, yMin, yMax, main)
     if (!started) { ctx.moveTo(x, y); started = true }
     else ctx.lineTo(x, y)
@@ -226,13 +229,14 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   if (!ctx || !t.length) return
   const w = w0 || canvasRef.value.clientWidth
   const maxVol = Math.max(...t.map(p => p.vol), 1)
-  const barW = Math.max(1, w / t.length * 0.6)
+  const barW = Math.max(1, w / 240 * 0.6)   // 按 240 交易分钟定柱宽, 午休不占位
   for (let i = 0; i < t.length; i++) {
     const p = t[i]
-    const x = x0 + idxToX(i, w, t.length) - barW / 2
+    const x = x0 + trendX(p.time, w)
+    if (x < x0) continue          // 午休点跳过
     const h = (p.vol / maxVol) * (vol.height - 4)
     ctx.fillStyle = typeof prevClose === 'number' && p.price >= prevClose ? C.volUp : C.volDown
-    ctx.fillRect(x, vol.y + vol.height - h - 2, barW, h)
+    ctx.fillRect(x - barW / 2, vol.y + vol.height - h - 2, barW, h)
   }
 }
 
@@ -242,8 +246,14 @@ function drawTimeAxis(rects, ticks, isIntraday, x0 = 0) {
   ctx.font = FONT_SM
   ctx.fillStyle = C.timeText
   ctx.textBaseline = 'top'
-  ctx.textAlign = 'center'
-  for (const t of ticks) ctx.fillText(t.label, t.x + x0, bottom + 3)
+  const px = t => t.x + x0
+  for (const t of ticks) {
+    // 首尾刻度按位置调整对齐, 避免 center 贴边裁切(分时 09:30 在 x=0, 15:00 在 x=w)
+    const x = px(t)
+    const w = canvasRef.value.clientWidth
+    ctx.textAlign = x < 8 ? 'left' : x > w - 8 ? 'right' : 'center'
+    ctx.fillText(t.label, x, bottom + 3)
+  }
 }
 
 // ─────────────── K 线视图 (Task 3 补全) ───────────────
@@ -514,8 +524,8 @@ function drawVolLine(vol, vals, win, w, color, baseI = 0) {
   ctx.stroke()
 }
 
-// 副图指标: ic 缺省取宿主 indCache; 分时视图由 drawTrend 现算传入
-function drawSubPane(sub, win, ic = props.indCache, x0 = 0, w0 = 0, baseI = 0) {
+// 副图指标: ic 缺省取宿主 indCache; 分时视图由 drawTrend 现算传入 (isIntraday=true → x 按交易分钟)
+function drawSubPane(sub, win, ic = props.indCache, x0 = 0, w0 = 0, baseI = 0, isIntraday = false) {
   const s = props.subInd
   if (s === 'none' || !ic) return
   const w = w0 || canvasRef.value.clientWidth
@@ -524,34 +534,36 @@ function drawSubPane(sub, win, ic = props.indCache, x0 = 0, w0 = 0, baseI = 0) {
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   if (s === 'macd' && ic.macd) {
-    drawSubMacd(sub, win, w, ic.macd, x0, baseI)
+    drawSubMacd(sub, win, w, ic.macd, x0, baseI, isIntraday)
     ctx.fillText('MACD', sub.x + 4, sub.y + 3)
   } else if (s === 'kdj' && ic.kdj) {
-    drawSubOsc(sub, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j }, x0, baseI)
+    drawSubOsc(sub, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j }, x0, baseI, isIntraday)
     ctx.fillText('KDJ', sub.x + 4, sub.y + 3)
   } else if (s === 'rsi' && ic.rsi) {
-    drawSubOsc(sub, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] }, x0, baseI)
+    drawSubOsc(sub, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] }, x0, baseI, isIntraday)
     ctx.fillText('RSI', sub.x + 4, sub.y + 3)
   } else if (s === 'wr' && ic.wr) {
-    drawSubOsc(sub, win, w, { 10: ic.wr[10], 6: ic.wr[6] }, x0, baseI)
+    drawSubOsc(sub, win, w, { 10: ic.wr[10], 6: ic.wr[6] }, x0, baseI, isIntraday)
     ctx.fillText('WR', sub.x + 4, sub.y + 3)
   }
 }
 
-function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0) {
+function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0, isIntraday = false) {
   // DIF/DEA 峰值可能大于 |hist|(分时伪K数值大) → 缩放取三者最大, 否则线溢出副图进入量图
   const segMax = arr => arr ? Math.max(...arr.slice(baseI, baseI + win.length).map(Math.abs).filter(Number.isFinite), 0) : 0
   const scaleMax = Math.max(segMax(m.hist), segMax(m.dif), segMax(m.dea), 1)
-  const barW = Math.max(1, w / win.length * 0.6)
+  const barW = Math.max(1, (isIntraday ? w / 240 : w / win.length) * 0.6)
   const midY = sub.y + sub.height / 2
   const halfH = sub.height / 2 - 2
+  const subX = (i, bar) => x0 + (isIntraday ? trendX(bar.time, w) : idxToX(i, w, win.length))
   for (let i = 0; i < win.length; i++) {
     const v = m.hist[baseI + i]
     if (!Number.isFinite(v)) continue
-    const x = x0 + idxToX(i, w, win.length) - barW / 2
+    const x = subX(i, win[i])
+    if (x < x0) continue          // 午休点跳过
     const h = (Math.abs(v) / scaleMax) * halfH
     ctx.fillStyle = v >= 0 ? C.histUp : C.histDown
-    ctx.fillRect(x, v >= 0 ? midY - h : midY, barW, h)
+    ctx.fillRect(x - barW / 2, v >= 0 ? midY - h : midY, barW, h)
   }
   // DIF/DEA 线
   const lc = (vals, color) => {
@@ -563,7 +575,8 @@ function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0) {
     for (let i = 0; i < win.length; i++) {
       const v = vals[baseI + i]
       if (!Number.isFinite(v)) continue
-      const x = x0 + idxToX(i, w, win.length)
+      const x = subX(i, win[i])
+      if (x < x0) continue
       const y = midY - (v / scaleMax) * halfH
       if (!started) { ctx.moveTo(x, y); started = true }
       else ctx.lineTo(x, y)
@@ -574,7 +587,7 @@ function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0) {
   lc(m.dea, C.signal)
 }
 
-function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0) {
+function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0, isIntraday = false) {
   const entries = Object.entries(lines)
   const colors = [C.avg, C.signal, '#27ae60']
   entries.forEach(([_, vals], idx) => {
@@ -587,7 +600,8 @@ function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0) {
     for (let i = 0; i < win.length; i++) {
       const v = vals[baseI + i]
       if (v === null || v === undefined || !Number.isFinite(v)) continue
-      const x = x0 + idxToX(i, w, win.length)
+      const x = x0 + (isIntraday ? trendX(win[i].time, w) : idxToX(i, w, win.length))
+      if (x < x0) continue
       const y = sub.y + sub.height - 2 - (v / 100) * (sub.height - 4)
       if (!started) { ctx.moveTo(x, y); started = true }
       else ctx.lineTo(x, y)
@@ -788,7 +802,14 @@ function emitCrosshair(x) {
     if (!t.length) { send(null); return }
     const w = plotW || canvasRef.value.clientWidth
     const x0 = plotX || 0
-    const i = clamp(Math.floor((x - x0) / w * t.length), 0, t.length - 1)
+    // 光标 x → 交易分钟 → 最近的分钟点(午休区无数据: 取前后最近点)
+    const m = clamp(Math.round((x - x0) / w * 240), 0, 240)
+    let i = -1, best = Infinity
+    for (let k = 0; k < t.length; k++) {
+      const d = Math.abs(trendMinute(t[k].time) - m)
+      if (d < best) { best = d; i = k }
+    }
+    if (i < 0) { send(null); return }
     const p = t[i]
     let hi = -Infinity, lo = Infinity, cVol = 0, cAmt = 0
     for (let k = 0; k <= i; k++) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks } from '../chartDraw.js'
+import { panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks, trendMinute, trendX } from '../chartDraw.js'
 
 describe('panelRects', () => {
   it('三区 3:1:1 高度比, 区间距 2', () => {
@@ -56,11 +56,44 @@ describe('idxToX', () => {
   })
 })
 
+describe('trendMinute / trendX', () => {
+  const t = (h, mm) => Date.UTC(2026, 7, 10, h, mm) / 1000   // UTC-naive 分时时间戳
+  it('开盘 09:30 → 0, 上午末 11:30 → 120', () => {
+    expect(trendMinute(t(9, 30))).toBe(0)
+    expect(trendMinute(t(10, 30))).toBe(60)
+    expect(trendMinute(t(11, 30))).toBe(120)
+  })
+  it('午休 11:31~12:59 → -1(跳过, 不占横轴)', () => {
+    expect(trendMinute(t(11, 31))).toBe(-1)
+    expect(trendMinute(t(12, 0))).toBe(-1)
+    expect(trendMinute(t(12, 59))).toBe(-1)
+  })
+  it('下午 13:00 → 120(紧接 11:30), 收盘 15:00 → 240', () => {
+    expect(trendMinute(t(13, 0))).toBe(120)
+    expect(trendMinute(t(14, 0))).toBe(180)
+    expect(trendMinute(t(15, 0))).toBe(240)
+  })
+  it('盘前/盘后/非法输入 → -1', () => {
+    expect(trendMinute(t(9, 29))).toBe(-1)
+    expect(trendMinute(t(15, 1))).toBe(-1)
+    expect(trendMinute(NaN)).toBe(-1)
+    expect(trendMinute('x')).toBe(-1)
+    expect(trendMinute(-5)).toBe(-1)
+  })
+  it('trendX: 交易分钟线性映射, 午休/非法 → -1', () => {
+    expect(trendX(t(9, 30), 400)).toBe(0)
+    expect(trendX(t(11, 30), 400)).toBe(200)
+    expect(trendX(t(13, 0), 400)).toBe(200)     // 午休后紧接上午末
+    expect(trendX(t(15, 0), 400)).toBe(400)
+    expect(trendX(t(12, 0), 400)).toBe(-1)
+  })
+})
+
 describe('timeTicks', () => {
-  it('分时固定 5 刻度', () => {
+  it('分时固定 5 刻度, 按交易分钟比例(午休不占位)', () => {
     const ticks = timeTicks([], 400, true)
     expect(ticks.map(t => t.label)).toEqual(['09:30', '10:30', '11:30/13:00', '14:00', '15:00'])
-    expect(ticks.map(t => t.x)).toEqual([40, 120, 200, 280, 360])  // 5 等分中心
+    expect(ticks.map(t => t.x)).toEqual([0, 100, 200, 300, 400])  // 09:30 在左缘, 15:00 在右缘
   })
 })
 

@@ -46,11 +46,28 @@ export function idxToX(i, w, count) {
   return (i + 0.5) / count * w
 }
 
-// 底部时间刻度: 分时固定 5 刻度(09:30~15:00); 其他均匀 4~6 个(含首末)
+// 分时: 时间戳(UTC-naive 秒) → 当日交易分钟序号 [0,240]; 午休 11:30~13:00 跳过; 非交易时段返回 -1
+export function trendMinute(time) {
+  if (typeof time !== 'number' || !(time > 0)) return -1
+  const d = new Date(time * 1000)
+  const m = d.getUTCHours() * 60 + d.getUTCMinutes()
+  if (m >= 570 && m <= 690) return m - 570   // 09:30~11:30 → 0~120
+  if (m >= 780 && m <= 900) return m - 660   // 13:00~15:00 → 120~240 (13:00 紧接 11:30)
+  return -1
+}
+
+// 分时 x: 交易分钟 → 像素; 午休/盘前/盘后(无效) → -1
+export function trendX(time, w) {
+  const m = trendMinute(time)
+  return m < 0 ? -1 : m / 240 * w
+}
+
+// 底部时间刻度: 分时固定 5 刻度(09:30~15:00, 按交易分钟比例); 其他均匀 4~6 个(含首末)
 export function timeTicks(items, w, isIntraday) {
   if (isIntraday) {
     const labels = ['09:30', '10:30', '11:30/13:00', '14:00', '15:00']
-    return labels.map((label, i) => ({ x: (i + 0.5) / 5 * w, label }))
+    const mins = [0, 60, 120, 180, 240]
+    return labels.map((label, i) => ({ x: mins[i] / 240 * w, label }))
   }
   const n = items.length
   if (!n) return []
