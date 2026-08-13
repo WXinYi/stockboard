@@ -255,6 +255,11 @@ class AuctionStore:
                 pct_open REAL, pct_bid REAL,
                 PRIMARY KEY (date, code)
             );
+            CREATE TABLE IF NOT EXISTS bid_series (
+                date TEXT, code TEXT, name TEXT,
+                series TEXT,
+                PRIMARY KEY (date, code)
+            );
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_bid_pool_date ON bid_pool(date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_limit_pool_date ON limit_pool(date)")
@@ -311,6 +316,26 @@ class AuctionStore:
                     (date_str, r[0], r[1], float(r[2] or 0), float(r[3] or 0), float(r[4] or 0),
                      float(r[5] or 0), float(r[6] or 0), float(r[7] or 0), float(r[8] or 0),
                      str(r[11] or ""), float(r[12] or 0), str(r[16] or ""), source))
+
+    def save_bid_series(self, date_str: str, stock_bids: Dict[str, List], pool: Dict = None):
+        """保存 GetStockBid 原始竞价分时(每只票整段 [时间,价,方向,累计量] 序列, JSON)。
+        回测时从 series 可重算 S2/S3/委比代理/竞价量, 不必依赖扫描时快照。
+        stock_bids: {code: [[time,px,dir,cum_vol],...]} 或 {code: {"code":..,"name":..,"bid":[...]}}
+        pool: 候选池(取 name, 可选)"""
+        import json
+        with self._conn() as c:
+            for code, v in stock_bids.items():
+                if isinstance(v, dict):
+                    bid = v.get("bid") or []
+                    name = v.get("name") or ""
+                else:
+                    bid = v or []
+                    name = (pool or {}).get(code, {}).get("name", "") if pool else ""
+                if not bid:
+                    continue
+                c.execute("""INSERT OR REPLACE INTO bid_series
+                    (date, code, name, series) VALUES (?,?,?,?)""",
+                    (date_str, code, name, json.dumps(bid, ensure_ascii=False)))
 
     def save_limit_pool(self, date_str: str, groups: List[tuple]):
         """groups: [(pid_type, rows), ...] — DailyLimitPerformance 每个 PidType 的 info

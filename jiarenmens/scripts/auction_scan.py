@@ -766,6 +766,10 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                if i.get("bid_pct") is not None and 1 <= i["bid_pct"] <= 7]
     stock_bids = collect_bids(spider, [i["code"] for i in in_gate])
     print(f"      {len(in_gate)} 只过门槛 → 竞价分时 {len(stock_bids)} 只")
+    if live and stock_bids:
+        # 原始竞价分时落库(仅当天: GetStockBid 无历史, 回放时拿的是今天数据, 存了会污染 bid_series)
+        store.save_bid_series(date_str, stock_bids, pool)
+        print(f"      → bid_series 落库 {len(stock_bids)} 只")
 
     print(f"[5/6] 漏斗计算")
     result = funnel.run_funnel(
