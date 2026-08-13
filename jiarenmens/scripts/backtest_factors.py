@@ -29,7 +29,7 @@ def load():
     conn = sqlite3.connect(store.db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("""
-        SELECT c.*, r.pct_bid, r.close_px
+        SELECT c.*, r.pct_bid, r.close_px, r.pct_day, r.pct_open_day, r.pct_e31
         FROM candidates c JOIN candidate_results r USING(date, code)
         ORDER BY c.date, c.tier, c.rank_in_day
     """).fetchall()
@@ -81,6 +81,15 @@ group("委比代理", lambda r: _band(r.get("bid_buy_ratio"), (0, 0.50, 0.70, 1.
                                 ("<50%", "50-70%", "≥70%")))
 group("竞价量", lambda r: "≥500手" if (r.get("bid_vol_total") or 0) >= 500
       else "<500手" if (r.get("bid_vol_total") or 0) is not None else "无数据")
+# --- 三力(2026-08-14 融合 v3.1) ---
+group("s8撮合", lambda r: "3档" if (r.get("s8") or 0) >= 3
+      else "2档" if (r.get("s8") or 0) == 2
+      else "1档" if (r.get("s8") or 0) == 1 else "0档")
+group("s9委买", lambda r: "3档" if (r.get("s9") or 0) >= 3
+      else "2档" if (r.get("s9") or 0) == 2
+      else "1档" if (r.get("s9") or 0) == 1 else "0档")
+group("unfilled_buy分档", lambda r: _band(r.get("unfilled_buy"), (0, 0.1e7, 0.5e7, 2e7, 1e18),
+                                         ("<1kw", "1-5kw", "5-20kw", ">20kw")))
 
 
 def main():
@@ -93,7 +102,30 @@ def main():
         return 0
     win = sum(1 for r in data if r["pct_bid"] > 0)
     avg = sum(r["pct_bid"] for r in data) / len(data)
-    print(f"样本 {len(data)} 只, 总胜率 {win/len(data):.0%}, 平均 pct_bid {avg*100:+.2f}% (基线)")
+    # 当天涨跌幅口径(选股"选对没"直觉口径): 收盘>昨收 算赢
+    have_day = [r for r in data if r.get("pct_day") is not None]
+    win_day = sum(1 for r in have_day if r["pct_day"] > 0)
+    avg_day = sum(r["pct_day"] for r in have_day) / len(have_day) if have_day else 0
+    # 开盘买入口径(收盘vs开盘) 与 E层09:31确认口径(收盘vs 09:31价)
+    have_od = [r for r in data if r.get("pct_open_day") is not None]
+    have_e31 = [r for r in data if r.get("pct_e31") is not None]
+
+    def _stat(sub):
+        w = sum(1 for r in sub if r["v"] > 0)
+        a = sum(r["v"] for r in sub) / len(sub)
+        return w, a
+
+    print(f"样本 {len(data)} 只")
+    print(f"  竞价口径(收盘vs竞价): 胜率 {win/len(data):.0%}, 平均 {avg*100:+.2f}%   ← 09:25竞价买入至收盘")
+    if have_day:
+        w, a = _stat([{"v": r["pct_day"]} for r in have_day])
+        print(f"  昨收口径(收盘vs昨收): 胜率 {w/len(have_day):.0%} ({w}/{len(have_day)}), 平均 {a*100:+.2f}%   ← 前一天埋伏")
+    if have_od:
+        w, a = _stat([{"v": r["pct_open_day"]} for r in have_od])
+        print(f"  开盘口径(收盘vs开盘): 胜率 {w/len(have_od):.0%} ({w}/{len(have_od)}), 平均 {a*100:+.2f}%   ← 开盘价买入")
+    if have_e31:
+        w, a = _stat([{"v": r["pct_e31"]} for r in have_e31])
+        print(f"  E层口径(收盘vs 09:31): 胜率 {w/len(have_e31):.0%} ({w}/{len(have_e31)}), 平均 {a*100:+.2f}%   ← 09:31确认走强入场")
     print(f"样本不足({args.min})分组标注 ⚠️, 不解读\n")
 
     for name, fn in GROUPS:

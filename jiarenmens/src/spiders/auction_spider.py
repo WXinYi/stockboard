@@ -222,7 +222,7 @@ class AuctionStore:
             CREATE TABLE IF NOT EXISTS bid_pool (
                 date TEXT, code TEXT, name TEXT, price REAL, change_pct REAL,
                 limit_up_buy REAL, bid_pct REAL, bid_net REAL, turnover_ratio REAL,
-                main_net REAL, plates TEXT, circ_mv REAL, tag TEXT, source TEXT,
+                main_net REAL, unfilled_buy REAL, plates TEXT, circ_mv REAL, tag TEXT, source TEXT,
                 PRIMARY KEY (date, code, source)
             );
             CREATE TABLE IF NOT EXISTS limit_pool (
@@ -241,6 +241,7 @@ class AuctionStore:
                 score REAL, max_score INTEGER,
                 s1 INTEGER, s2 INTEGER, s3 INTEGER, s4 INTEGER, s5 INTEGER, s6 INTEGER,
                 s7 REAL, fused_score REAL,
+                s8 INTEGER, s9 INTEGER, unfilled_buy REAL,
                 bid_price REAL, bid_pct REAL, bid_net REAL, turnover REAL,
                 vol_ratio REAL, circ_mv REAL, bid_vol_last REAL,
                 bid_buy_ratio REAL, bid_vol_total REAL,
@@ -252,7 +253,8 @@ class AuctionStore:
             CREATE TABLE IF NOT EXISTS candidate_results (
                 date TEXT, code TEXT,
                 open_px REAL, high_px REAL, low_px REAL, close_px REAL,
-                pct_open REAL, pct_bid REAL,
+                pct_open REAL, pct_bid REAL, pct_day REAL,
+                pct_open_day REAL, pct_e31 REAL,
                 PRIMARY KEY (date, code)
             );
             CREATE TABLE IF NOT EXISTS bid_series (
@@ -271,9 +273,19 @@ class AuctionStore:
                 "bid_buy_ratio": "REAL", "bid_vol_total": "REAL",
                 "ma60_above": "INTEGER", "ret20": "REAL",
                 "macd_ok": "INTEGER", "kdj_ok": "INTEGER",
+                "s8": "INTEGER", "s9": "INTEGER", "unfilled_buy": "REAL",
             }.items():
                 if _col not in _have:
                     c.execute(f"ALTER TABLE candidates ADD COLUMN {_col} {_ddl}")
+            # 迁移: 旧库 bid_pool 表补 unfilled_buy 列(幂等)
+            _have_pool = {r[1] for r in c.execute("PRAGMA table_info(bid_pool)")}
+            if "unfilled_buy" not in _have_pool:
+                c.execute("ALTER TABLE bid_pool ADD COLUMN unfilled_buy REAL")
+            # 迁移: 旧库 candidate_results 补 pct_day/pct_open_day/pct_e31 列(幂等)
+            _have_res = {r[1] for r in c.execute("PRAGMA table_info(candidate_results)")}
+            for _col, _ddl in {"pct_day": "REAL", "pct_open_day": "REAL", "pct_e31": "REAL"}.items():
+                if _col not in _have_res:
+                    c.execute(f"ALTER TABLE candidate_results ADD COLUMN {_col} {_ddl}")
 
     def _conn(self):
         conn = sqlite3.connect(self.db_path, timeout=30)
@@ -311,10 +323,11 @@ class AuctionStore:
                     continue
                 c.execute("""INSERT OR REPLACE INTO bid_pool
                     (date, code, name, price, change_pct, limit_up_buy, bid_pct, bid_net,
-                     turnover_ratio, main_net, plates, circ_mv, tag, source)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     turnover_ratio, main_net, unfilled_buy, plates, circ_mv, tag, source)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (date_str, r[0], r[1], float(r[2] or 0), float(r[3] or 0), float(r[4] or 0),
                      float(r[5] or 0), float(r[6] or 0), float(r[7] or 0), float(r[8] or 0),
+                     float(r[9] or 0) if len(r) > 9 else 0,
                      str(r[11] or ""), float(r[12] or 0), str(r[16] or ""), source))
 
     def save_bid_series(self, date_str: str, stock_bids: Dict[str, List], pool: Dict = None):
@@ -378,17 +391,20 @@ class AuctionStore:
                     c.execute("""INSERT OR REPLACE INTO candidates
                         (date, code, name, tier, score, max_score,
                          s1, s2, s3, s4, s5, s6, s7, fused_score,
+                         s8, s9, unfilled_buy,
                          bid_price, bid_pct, bid_net, turnover, vol_ratio, circ_mv, bid_vol_last,
                          bid_buy_ratio, bid_vol_total,
                          ma60_above, ret20, macd_ok, kdj_ok,
                          tag, boards, seal_pct, resonance, rank_in_day)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (date_str, item["code"], item.get("name") or "", tier,
-                         float(item.get("score") or 0), int(item.get("max") or 15),
+                         float(item.get("score") or 0), int(item.get("max") or 21),
                          int(s_.get("S1资金") or 0), int(s_.get("S2形态") or 0),
                          int(s_.get("S3共振") or 0), int(s_.get("S4身位") or 0),
                          int(s_.get("S5量比") or 0), int(s_.get("S6基因") or 0),
                          item.get("s7"), item.get("fused_score"),
+                         int(s_.get("S8撮合") or 0), int(s_.get("S9委买") or 0),
+                         f_.get("unfilled_buy"),
                          f_.get("bid_price"), f_.get("bid_pct"), f_.get("bid_net"),
                          f_.get("turnover"), f_.get("vol_ratio"), f_.get("circ_mv"),
                          f_.get("bid_vol_last"),
@@ -400,13 +416,18 @@ class AuctionStore:
                          int(item.get("resonance") or 0), rank))
 
     def save_candidate_result(self, date_str: str, code: str, open_px, high_px, low_px,
-                              close_px, pct_open, pct_bid):
-        """写入单只候选的当日实际表现(candidate_results), --label 结果标签用"""
+                              close_px, pct_open, pct_bid, pct_day=None,
+                              pct_open_day=None, pct_e31=None):
+        """写入单只候选的当日实际表现(candidate_results), --label 结果标签用
+        pct_bid = 收盘相对竞价价(策略口径); pct_day = 收盘相对昨收(当天涨跌幅);
+        pct_open_day = 收盘相对开盘价(开盘买入); pct_e31 = 收盘相对 09:31 价(E层确认入场)"""
         with self._conn() as c:
             c.execute("""INSERT OR REPLACE INTO candidate_results
-                (date, code, open_px, high_px, low_px, close_px, pct_open, pct_bid)
-                VALUES (?,?,?,?,?,?,?,?)""",
-                (date_str, code, open_px, high_px, low_px, close_px, pct_open, pct_bid))
+                (date, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
+                 pct_open_day, pct_e31)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (date_str, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
+                 pct_open_day, pct_e31))
 
     def load_candidates(self, date_str: str) -> List[Dict]:
         """按日期读取当日候选(core/watch), --label 结果标签用"""

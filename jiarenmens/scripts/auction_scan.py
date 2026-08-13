@@ -45,7 +45,7 @@ WORKERS = 20          # 并发
 GENE_LIMIT = 60       # 涨停基因查询上限(候选池按初步分取前 N)
 BID_LIMIT = 20        # 竞价分时/大单查询上限(最终候选前 N)
 BOARD_LIMIT = 20      # 强势板块数(8→20: 提高量比覆盖, 减少榜单独有票无量比)
-SCORE_THRESHOLD = 10  # 核心过线分(15 分制, 待回测校准); 备选线 = 过线-3
+SCORE_THRESHOLD = 13  # 核心过线分(21 分制: 原15 + 三力撮合/委买6, 待回测校准); 备选线 = 过线-3
 
 
 # =============================================================================
@@ -95,6 +95,7 @@ def normalize_bidlist(row):
         "change_pct": change_pct, "vol_ratio": None,  # 无量比字段(量比走 GetBKJJBL 板块成分)
         "limit_up_buy": _f(row[4]), "bid_pct": bid_pct, "bid_net": _f(row[6]),
         "turnover_ratio": _f(row[7]), "main_net": _f(row[8]),
+        "unfilled_buy": _f(row[9]) if len(row) > 9 else None,  # r[9]=20分后委买(不可撤单未成交委托, 力3)
         "circ_mv": _f(row[12]) if len(row) > 12 else None,
         "plates": str(row[11] or "") if len(row) > 11 else "",
         "tag": str(row[16] or "") if len(row) > 16 else "",  # '4连板'/'首板' 连板标记(身位)
@@ -106,7 +107,8 @@ def _pool_row_layout(item):
     return [
         item["code"], item["name"], item["price"] or 0, item["bid_pct"] or 0,
         item["limit_up_buy"] or 0, item["bid_pct"] or 0, item["bid_net"] or 0,
-        item["turnover_ratio"] or 0, item.get("main_net") or 0, 0, 0,
+        item["turnover_ratio"] or 0, item.get("main_net") or 0,
+        item.get("unfilled_buy") or 0, 0,
         item.get("plates") or "", item["circ_mv"] or 0, 0, 0, 0, item["tag"] or "",
     ]
 
@@ -341,16 +343,40 @@ def _qq_symbol(code):
 
 def qq_minute(code):
     """腾讯分时: [[0930, 价, 量], ...] 首根 09:30 为开盘分钟。
-    返回结构 data[sym]['data']['data'] 是双层, 每行是空格分隔字符串 → split 解析。"""
+    返回结构 data[sym]['data']['data'] 是双层, 每行是空格分隔字符串 → split 解析。
+    ⚠️ 用 ifzq 主机(web. 曾被 501 风控)。"""
     sym = _qq_symbol(code)
     r = requests.get(
-        f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={sym}",
+        f"https://ifzq.gtimg.cn/appstock/app/minute/query?code={sym}",
         timeout=10,
         headers={"User-Agent": "Mozilla/5.0"},
     )
     r.raise_for_status()
     rows = r.json()["data"][sym]["data"]["data"]
     return [row.split() for row in rows]
+
+
+def _mkline_0931(code: str, date_str: str) -> Optional[float]:
+    """历史 09:31 价格(腾讯 mkline 1分钟, 带日期戳)。E 层 09:31 确认入场价。
+    320 根 ≈ 1.3 交易日, 只覆盖最近 ~1 个完整交易日; 滑出窗口(旧日期)返回 None。
+    09:31 bar 无则退化为 09:30(开盘)价。"""
+    sym = _qq_symbol(code)
+    r = requests.get(f"https://ifzq.gtimg.cn/appstock/app/kline/mkline?param={sym},m1,,320",
+                     timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    d = r.json().get("data", {}).get(sym) or {}
+    rows = d.get("m1") or []
+    p0931 = p0930 = None
+    for row in rows:
+        t = str(row[0])
+        if not t.startswith(date_str.replace("-", "")):
+            continue
+        hhmm = t[8:12]
+        if hhmm == "0931":
+            p0931 = float(row[2])  # close
+        elif hhmm == "0930":
+            p0930 = float(row[2])
+    return p0931 if p0931 is not None else p0930
 
 
 def e_confirm(candidates_path: Path):
@@ -496,6 +522,15 @@ def _cand_line(i: int, c: Dict, kind: str = "core") -> List[str]:
         parts.append(f"量比{f_['vol_ratio']:.2f}")
     if f_.get("bid_buy_ratio") is not None:
         parts.append(f"委比{f_['bid_buy_ratio']:.0%}")  # 参考展示(单日实证与结果反向, 不参与评分)
+    # 三力: S8撮合(量加权红量占比) + S9委买(20分后不可撤单委买/流通市值) + 委买堆量绝对值
+    sub_ = c.get("sub") or {}
+    if f_.get("unfilled_buy") is not None:
+        ub = f_["unfilled_buy"] / 1e7
+        parts.append(f"委买{ub:.1f}千万")
+    if sub_.get("S8撮合"):
+        parts.append(f"撮合红{sub_['S8撮合']}/3")
+    if sub_.get("S9委买"):
+        parts.append(f"委买力{sub_['S9委买']}/3")
     lines.append("   💰 " + " · ".join(parts))
     if c.get("s7_note") and c["s7_note"] != "技术中性":
         lines.append(f"   🔬 {c['s7_note']}")
@@ -524,7 +559,7 @@ def _day_ohlc(code: str, date_str: str) -> Optional[List[float]]:
     """腾讯日K(fqkline)取指定日期 [open, high, low, close]; 无该日K线(停牌/未上市)返回 None。
     行格式 [date, open, close, high, low, volume, ...]。"""
     sym = _qq_symbol(code)
-    r = requests.get(f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={sym},day,,,320,qfq",
+    r = requests.get(f"https://ifzq.gtimg.cn/appstock/app/fqkline/get?param={sym},day,,,320,qfq",
                      timeout=10, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     data = r.json().get("data", {}).get(sym) or {}
@@ -541,7 +576,7 @@ def _day_series(code: str) -> List[List]:
     """腾讯日K(fqkline, 320条qfq)全量行: [[date, open, close, high, low], ...]。
     文章因子(#6 站上MA60 / #7 MACD·KDJ / #8 低位启动)的日K数据源。"""
     sym = _qq_symbol(code)
-    r = requests.get(f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={sym},day,,,320,qfq",
+    r = requests.get(f"https://ifzq.gtimg.cn/appstock/app/fqkline/get?param={sym},day,,,320,qfq",
                      timeout=10, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     data = r.json().get("data", {}).get(sym) or {}
@@ -552,6 +587,18 @@ def _day_series(code: str) -> List[List]:
         if len(parts) >= 5:
             out.append([str(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])])
     return out
+
+
+def _prev_close(code: str, date_str: str) -> Optional[float]:
+    """候选日前一交易日收盘价(腾讯日K, 用于当天涨跌幅 pct_day)。无则返回 None。"""
+    series = _day_series(code)
+    prev = None
+    for row in series:
+        if row[0] < date_str:
+            prev = row[2]  # close
+        else:
+            break
+    return prev
 
 
 def _ema(vals: List[float], n: int) -> List[float]:
@@ -697,8 +744,23 @@ def label_results(date_str: str) -> int:
         bid_price = cand["bid_price"]
         pct_open = (close_px - open_px) / open_px if (open_px and open_px > 0) else None
         pct_bid = (close_px - bid_price) / bid_price if (bid_price and bid_price > 0) else None
+        pct_day = None
+        try:
+            prev_close = _prev_close(code, date_str)
+            if prev_close and prev_close > 0:
+                pct_day = (close_px - prev_close) / prev_close  # 当天涨跌幅(收盘相对昨收)
+        except Exception as e:
+            print(f"⚠️ 昨收失败 {code}: {e}")
+        pct_open_day = (close_px - open_px) / open_px if (open_px and open_px > 0) else None
+        pct_e31 = None
+        try:
+            px0931 = _mkline_0931(code, date_str)  # E层 09:31 入场价(仅最近日可回补)
+            if px0931 and px0931 > 0:
+                pct_e31 = (close_px - px0931) / px0931
+        except Exception as e:
+            print(f"⚠️ 09:31价失败 {code}: {e}")
         store.save_candidate_result(date_str, code, open_px, high_px, low_px, close_px,
-                                    pct_open, pct_bid)
+                                    pct_open, pct_bid, pct_day, pct_open_day, pct_e31)
         n_ok += 1
     print(f"✅ 已打标签 {n_ok}/{len(cands)} 只 → candidate_results")
     return 0

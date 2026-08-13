@@ -157,8 +157,8 @@ def _score_b3(vol_ratio: Optional[float]) -> int:
 
 
 def _score_b4(bid_rows: Optional[List[List]]) -> int:
-    """竞价形态(9:15-9:25 逐分钟): 推土机(单调升)→3, 诱空(V型收回)→3, 末抢(最后30秒拉升)→2
-    无数据 → 0(标注缺数据)"""
+    """竞价形态(力1, 9:15-9:25 逐分钟): 推土机(单调升)→3, 诱空(V型收回)→2, 末抢(最后30秒拉升)→1
+    高开低走(出货形态)→0(由 _is_high_open_fade 硬门剔除); 无数据 → 0(标注缺数据)"""
     if not bid_rows or len(bid_rows) < 5:
         return 0
     pts = []
@@ -171,7 +171,7 @@ def _score_b4(bid_rows: Optional[List[List]]) -> int:
     last_ts, last_px = pts[-1]
     pre_ts, pre_px = pts[-4] if len(pts) >= 4 else pts[0]
     if "09:24" in last_ts and pre_px > 0 and (last_px / pre_px - 1) >= 0.01:
-        return 2
+        return 1
     # 推土机: 价格序列后半程单调上升(9:20 后 8 个点)
     tail = [px for _, px in pts if str(_) >= "09:20"]
     if len(tail) >= 6 and all(tail[i] <= tail[i + 1] * 1.0005 for i in range(len(tail) - 1)) and tail[-1] > tail[0]:
@@ -180,7 +180,79 @@ def _score_b4(bid_rows: Optional[List[List]]) -> int:
     pre = [px for _, px in pts if str(_) < "09:20"]
     post = [px for _, px in pts if str(_) >= "09:20"]
     if pre and post and min(pre) < pre[0] * 0.99 and post[-1] > pre[0]:
+        return 2
+    return 0
+
+
+def _is_high_open_fade(bid_rows: Optional[List[List]]) -> bool:
+    """高开低走(出货形态): 9:20 前拉高见顶, 9:20 后不可撤单段回落 >1% 且自身下行未收回。
+    竞价前半程(可撤单段)虚涨拉高诱多, 后半程真金不再跟进 → 开盘大概率回落, 硬门剔除。"""
+    if not bid_rows or len(bid_rows) < 8:
+        return False
+    pts = []
+    for r in bid_rows:
+        if len(r) >= 2:
+            pts.append((str(r[0]), float(r[1])))
+    if len(pts) < 8:
+        return False
+    pre = [px for ts, px in pts if str(ts) < "09:20"]
+    post = [px for ts, px in pts if str(ts) >= "09:20"]
+    if not pre or len(post) < 3:
+        return False
+    pre_peak = max(pre)
+    return post[-1] < pre_peak * 0.99 and post[-1] < post[0]
+
+
+def _score_force_match(bid_rows: Optional[List[List]]) -> int:
+    """力2 撮合(量加权红量占比, 9:20 后不可撤单窗口): 红量=买方向累计量增量, 绿量=卖方向。
+    ≥70%→3, ≥60%→2, ≥50%→1, <50%→0。修正 bid_buy_ratio 按笔数占比的失真(对倒一笔大单只算 1 笔,
+    量加权才能反映真实买盘投入)。"""
+    if not bid_rows:
+        return 0
+    red = green = 0.0
+    prev = None
+    for r in bid_rows:
+        if len(r) < 4:
+            continue
+        ts, cum = str(r[0]), float(r[3])
+        if ts < "09:20":
+            prev = cum  # 只用 9:20 后段(不可撤单), 前段可撤单易做假
+            continue
+        if prev is None:
+            prev = cum
+            continue
+        delta = max(0.0, cum - prev)  # 累计量快照非单调, 截断负增量
+        if int(r[2]) == 1:
+            red += delta
+        else:
+            green += delta
+        prev = cum
+    total = red + green
+    if total <= 0:
+        return 0
+    ratio = red / total
+    if ratio >= 0.70:
         return 3
+    if ratio >= 0.60:
+        return 2
+    if ratio >= 0.50:
+        return 1
+    return 0
+
+
+def _score_force_unfilled(unfilled_buy, circ_mv) -> int:
+    """力3 委买(20分后不可撤单委买 / 流通市值): 排队待成交的潜在买压, 9:25 后追买动能。
+    ≥1%→3, ≥0.5%→2, ≥0.2%→1, <0.2%→0。仅 MorningBiddingList 榜单股有 r[9];
+    板块成分股缺失 → 0(中性, 不惩罚)。"""
+    if unfilled_buy is None or not circ_mv or circ_mv <= 0:
+        return 0
+    ratio = float(unfilled_buy) / float(circ_mv)
+    if ratio >= 0.01:
+        return 3
+    if ratio >= 0.005:
+        return 2
+    if ratio >= 0.002:
+        return 1
     return 0
 
 
@@ -280,6 +352,7 @@ def score_stock(row: List, bid_rows: Optional[List[List]] = None,
         "turnover": float(row[8]) if len(row) > 8 and row[8] not in (None, "") else None,
         "vol_ratio": float(row[4]) if len(row) > 4 and row[4] not in (None, "") else None,
         "circ_mv": float(row[9]) if len(row) > 9 and row[9] not in (None, "") else None,
+        "unfilled_buy": float(row[11]) if len(row) > 11 and row[11] not in (None, "") else None,
     }
     # 竞价末分钟增量成交量(09:24-09:25), E 层 E1 与首分钟量对比用。
     # ⚠️ 不能用最后一行 r[3]=竞价全程累计量(10分钟总和), 否则"放量倍数"被严重稀释(实测 000859 累计15165 vs 末分钟仅~1900手)。
@@ -314,14 +387,21 @@ def score_stock(row: List, bid_rows: Optional[List[List]] = None,
     s_pos = position_bonus(tag)
     s_vol = _score_b3(factors["vol_ratio"])
     s_gene = _score_gene(gene)
-    total = s_fund + s_form + s_res + s_pos + s_vol + s_gene
+    # 三力: 力2 撮合(量加权红量占比) + 力3 委买(20分后不可撤单委买/流通市值)
+    s_force_match = _score_force_match(bid_rows)
+    s_force_unfilled = _score_force_unfilled(factors["unfilled_buy"], factors["circ_mv"])
+    total = s_fund + s_form + s_res + s_pos + s_vol + s_gene + s_force_match + s_force_unfilled
     # 方向修正: 9:23 后持续卖(买占比≤35%) → 形态分减 1(真实流出信号)
     if s_dir < 0 and s_form > 0:
         s_form -= 1
         total -= 1
-    return {"score": total, "max": 15, "factors": factors,
+    # 高开低走(出货形态)标记, run_funnel 硬门剔除(不进评分, 直接出局)
+    shape_fade = _is_high_open_fade(bid_rows)
+    factors["shape_fade"] = shape_fade
+    return {"score": total, "max": 21, "factors": factors,
             "sub": {"S1资金": s_fund, "S2形态": s_form, "S3共振": s_res,
-                    "S4身位": s_pos, "S5量比": s_vol, "S6基因": s_gene},
+                    "S4身位": s_pos, "S5量比": s_vol, "S6基因": s_gene,
+                    "S8撮合": s_force_match, "S9委买": s_force_unfilled},
             "missing": [k for k in ("bid_price", "bid_pct", "bid_net", "turnover",
                                     "vol_ratio", "circ_mv") if factors.get(k) is None]}
 
@@ -339,8 +419,8 @@ S7_BONUS_MK = 0.5         # MACD 与 KDJ 同时向上(共振)
 S7_BONUS_LOW = 0.5        # 近20日涨幅 ∈ (0, 20%): 低位启动
 S7_PENALTY_HIGH = -1.0    # 近20日涨幅 > 30%: 高位
 VOL_RATIO_LIMIT = 15.0    # 量比超过=对倒嫌疑, 硬门
-FUSED_CORE = 10.0         # 融合分核心线
-FUSED_WATCH = 8.0         # 融合分备选线
+FUSED_CORE = 13.0         # 融合分核心线(21分制: 原10/15≈67% 上限, 21×0.67≈14, 取13略松作起点, 待回测校准)
+FUSED_WATCH = 11.0        # 融合分备选线
 
 
 def article_s7(factors: Dict) -> tuple:
@@ -410,7 +490,8 @@ def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict
                stock_bids: Optional[Dict[str, List]] = None,
                score_threshold: int = 10) -> Dict:
     """执行漏斗: 候选池 = 强势板块成分 + 竞价列表, 逐层过滤
-    B1 硬门槛(1-7%) → 评分v3(满分15: 资金/形态/共振/身位/量比/基因) → L4 基因 → 分层
+    B1 硬门槛(1-7%) → 高开低走硬门(出货形态) → 评分v3(满分21: 资金/形态/共振/身位/量比/基因 + 三力撮合/委买)
+    → L4 基因 → 分层
     分层: core(核心, ≥阈值 且 资金净买) + watch(备选, ≥阈值-3)
     """
     env_result = env_check(env["mood"], env["capacity"], env["bid_total"], env["bid_count"])
@@ -450,9 +531,14 @@ def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict
             continue
         sc = score_stock([code, name, r.get("price"), r.get("change_pct"), r.get("vol_ratio"),
                           r.get("limit_up_buy"), r.get("bid_pct"), r.get("bid_net"),
-                          r.get("turnover_ratio"), r.get("circ_mv"), r.get("plates"), 0, 0],
+                          r.get("turnover_ratio"), r.get("circ_mv"), r.get("plates"),
+                          r.get("unfilled_buy"), 0],
                          stock_bids.get(code) if stock_bids else None,
                          r.get("boards") or [], gate_counts, r.get("tag") or "", gene)
+        # 高开低走硬门(力1 出货形态): 前半程拉高见顶 + 9:20 后回落未收回 → 直接出局
+        if sc["factors"].get("shape_fade"):
+            rejected.append({"code": code, "name": name, "reason": "竞价高开低走 出货形态"})
+            continue
         total = sc["score"]
         # 板块共振票数(该股所属板块中过 B1 门槛的票数, 供推送亮点行展示)
         resonance = max((gate_counts.get(b, 0) for b in (r.get("boards") or [])), default=0)
