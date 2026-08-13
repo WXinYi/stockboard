@@ -1,0 +1,16 @@
+/* 功能卡通用(详情页短线卡片): 白底 + 细边框 + r-md 圆角 + 均匀内边距(spec §7.5) */
+.feat-card {
+  background: #fff;
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .06);
+}
+.feat-card .fc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.feat-card .fc-head h3 { font-size: 12px; color: #333; font-weight: 600; margin: 0; }
+.feat-card .fc-tag {
+  margin-left: auto; flex: none;
+  font-size: 9px; color: #999;
+  background: #f5f6f8; border-radius: 10px; padding: 1px 7px;
+}
+.feat-card .fc-empty { padding: 18px 0; text-align: center; color: #bbb; font-size: 11px; }

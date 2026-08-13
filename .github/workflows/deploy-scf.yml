@@ -1,0 +1,30 @@
+# KPL 中转 SCF 自动部署 — push scf/ 目录时部署到腾讯云函数(国内直连)
+# 函数 URL 方式(API 网关已停售), 幂等脚本: 创建/更新函数 + 创建函数 URL
+# 需要仓库 secrets: TENCENT_SECRET_ID + TENCENT_SECRET_KEY(CAM API 密钥)
+name: deploy-scf
+
+on:
+  push:
+    branches: [main]
+    paths: ['scf/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Tencent SCF SDK
+        working-directory: scf
+        run: npm i --no-audit --no-fund
+
+      - name: Deploy KPL proxy to Tencent SCF
+        working-directory: scf
+        env:
+          TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+        run: node deploy.mjs

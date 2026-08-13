@@ -1,0 +1,23 @@
+# KPL 中转 Worker 自动部署 — push worker/ 目录时部署到 Cloudflare Workers
+# 需要仓库 secrets: CF_API_TOKEN(Edit Cloudflare Workers 模板) + CF_ACCOUNT_ID
+name: deploy-worker
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy KPL proxy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: deploy
+          workingDirectory: worker
