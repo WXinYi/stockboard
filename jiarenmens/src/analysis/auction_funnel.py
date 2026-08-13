@@ -18,10 +18,12 @@ from typing import Any, Dict, List, Optional
 
 def env_check(mood: Dict, capacity: Dict, bid_total: Dict, bid_count: List) -> Dict:
     """市场环境检查 → {pass, reasons, data}
-    - 情绪 strong: 开盘啦提示 <25 冰点 / >75 过热 → 空仓
-    - 连板高度 lbgd < 2 → 无赚钱效应
-    - 竞价量能比 last/s_zrcs < 0.8 → 大幅缩量
-    - 红盘占比 tSZ/(tSZ+tXD) < 0.4 → 情绪冰点
+    (2026-08-13 软化) 竞价时情绪/量能不作为阻塞条件, 全部报告不阻塞:
+    - 情绪 strong: 超区间[25,75] 仅备注(冰点/过热参考)
+    - 连板高度 lbgd < 2: 仅备注
+    - 竞价量能比 last/s_zrcs: 仅备注(09:25 盘前量能数据未生成属正常, 缺失时 ratio=None)
+    - 红盘占比 tSZ/(tSZ+tXD): 仅备注
+    pass 恒为 True, reasons 为信息性备注; 选股收敛交由候选评分, 不因环境整体空仓。
     """
     info = (mood.get("info") or [{}])[0]
     strong = int(info.get("strong") or 0)
@@ -29,37 +31,37 @@ def env_check(mood: Dict, capacity: Dict, bid_total: Dict, bid_count: List) -> D
     cap = capacity.get("info") or {}
     bt = bid_total.get("info") or {}
 
-    reasons = []
-    ok = True
+    notes = []
     if not (25 <= strong <= 75):
-        ok = False
-        reasons.append(f"情绪值{strong} 超区间[25,75](开盘啦提示: 过低冰点/过高释放亏钱效应)")
+        notes.append(f"情绪值{strong} 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)")
     if lbgd < 2:
-        ok = False
-        reasons.append(f"连板高度{lbgd} < 2, 无赚钱效应")
-    try:
-        ratio = float(cap.get("last") or 0) / float(cap.get("s_zrcs") or 1)
-        if ratio < 0.8:
-            ok = False
-            reasons.append(f"竞价量能比 {ratio:.2f} < 0.8, 缩量")
-    except (ValueError, TypeError):
+        notes.append(f"连板高度{lbgd} < 2 (参考: 赚钱效应弱)")
+    # 量能: 09:25 盘前当天数据未生成属正常(capacity 为空), 此时 ratio=None 而非 0(避免误报缩量)
+    last, s_zrcs = cap.get("last"), cap.get("s_zrcs")
+    if last is None or s_zrcs is None:
         ratio = None
-        reasons.append("量能数据缺失")
+    else:
+        try:
+            ratio = float(last) / float(s_zrcs)
+        except (ValueError, TypeError, ZeroDivisionError):
+            ratio = None
+    if ratio is not None and ratio < 0.8:
+        notes.append(f"竞价量能比 {ratio:.2f} < 0.8 (参考: 缩量)")
     try:
         red = int(bt.get("tSZ") or 0)
         green = int(bt.get("tXD") or 0)
         red_ratio = red / (red + green) if (red + green) else 0
-        if red_ratio < 0.4:
-            ok = False
-            reasons.append(f"红盘占比 {red_ratio:.0%} < 40%")
     except (ValueError, TypeError):
         red_ratio = None
+    if red_ratio is not None and red_ratio < 0.4:
+        notes.append(f"红盘占比 {red_ratio:.0%} < 40% (参考)")
 
-    if not reasons:
-        reasons.append("环境正常")
-    return {"pass": ok, "reasons": reasons,
+    if not notes:
+        notes.append("环境正常")
+    return {"pass": True, "reasons": notes,
             "data": {"strong": strong, "lbgd": lbgd, "capacity_ratio": ratio,
-                     "red_ratio": red_ratio, "bid_count": bid_count}}
+                     "red_ratio": red_ratio, "bid_count": bid_count,
+                     "bid_total": bt.get("tJJJE"), "bid_total_prev": bt.get("lJJJE")}}
 
 
 # =============================================================================
@@ -279,14 +281,32 @@ def score_stock(row: List, bid_rows: Optional[List[List]] = None,
         "vol_ratio": float(row[4]) if len(row) > 4 and row[4] not in (None, "") else None,
         "circ_mv": float(row[9]) if len(row) > 9 and row[9] not in (None, "") else None,
     }
-    # 竞价末分钟累计量(GetStockBid 最后一行 r[3]), E 层 E1 对比用
+    # 竞价末分钟增量成交量(09:24-09:25), E 层 E1 与首分钟量对比用。
+    # ⚠️ 不能用最后一行 r[3]=竞价全程累计量(10分钟总和), 否则"放量倍数"被严重稀释(实测 000859 累计15165 vs 末分钟仅~1900手)。
     if bid_rows and len(bid_rows[-1]) >= 4:
         try:
-            factors["bid_vol_last"] = float(bid_rows[-1][3])
+            last_min = max(str(r[0])[:5] for r in bid_rows if len(r) >= 2)  # 末分钟标签如 "09:24"
+            last_cum = float(bid_rows[-1][3])
+            prev_rows = [r for r in bid_rows if len(r) >= 4 and str(r[0])[:5] < last_min]
+            base_cum = max(float(r[3]) for r in prev_rows) if prev_rows else 0.0
+            factors["bid_vol_last"] = last_cum - base_cum  # 竞价末分钟增量成交量(手)
         except (TypeError, ValueError):
             factors["bid_vol_last"] = None
     else:
         factors["bid_vol_last"] = None
+    # 竞价方向占比(委比代理, 9:20 后不可撤单窗口买方向占比, GetStockBid r[2]==1=买) + 竞价总成交量(手)。
+    # 仅作为回测样本采集, 不参与评分(08-13 单日实证委比代理与结果反向: 亚泰买占4%赢, 有研买占100%跌)。
+    if bid_rows:
+        try:
+            _tail = [rr for rr in bid_rows if len(rr) >= 3 and str(rr[0]) >= "09:20"]
+            factors["bid_buy_ratio"] = (sum(1 for rr in _tail if int(rr[2]) == 1) / len(_tail)) if len(_tail) >= 3 else None
+            factors["bid_vol_total"] = float(bid_rows[-1][3]) if len(bid_rows[-1]) >= 4 else None
+        except (TypeError, ValueError):
+            factors["bid_buy_ratio"] = None
+            factors["bid_vol_total"] = None
+    else:
+        factors["bid_buy_ratio"] = None
+        factors["bid_vol_total"] = None
     s_fund = _score_b1(factors["bid_net"], factors["circ_mv"])
     s_form = _score_b4(bid_rows)
     s_dir = _score_b5(bid_rows)
@@ -302,7 +322,60 @@ def score_stock(row: List, bid_rows: Optional[List[List]] = None,
     return {"score": total, "max": 15, "factors": factors,
             "sub": {"S1资金": s_fund, "S2形态": s_form, "S3共振": s_res,
                     "S4身位": s_pos, "S5量比": s_vol, "S6基因": s_gene},
-            "missing": [k for k, v in factors.items() if v is None]}
+            "missing": [k for k in ("bid_price", "bid_pct", "bid_net", "turnover",
+                                    "vol_ratio", "circ_mv") if factors.get(k) is None]}
+
+
+# =============================================================================
+# 文章九大标准 × v3 融合(2026-08-13 起, 参数单日校准, 待回测调优)
+# =============================================================================
+# 来源: 知乎《集合竞价选股九大标准》单日(08-13)实证:
+# - 量比>15 = 对倒(海泰新光 量比16 收-12.11%) → 硬门剔除
+# - S7 技术分: MA60/低位启动/MACD·KDJ 共振加分, 高位(近20日>30%)减分;
+#   委比代理今天与结果反向(亚泰买占4%赢/有研买占100%跌) → 不参与评分, 仅展示参考。
+# 所有权重为"待回测校准"临时值, backtest_factors.py 用积累样本调优后可改。
+S7_BONUS_MA60 = 1.0       # 站上60日线
+S7_BONUS_MK = 0.5         # MACD 与 KDJ 同时向上(共振)
+S7_BONUS_LOW = 0.5        # 近20日涨幅 ∈ (0, 20%): 低位启动
+S7_PENALTY_HIGH = -1.0    # 近20日涨幅 > 30%: 高位
+VOL_RATIO_LIMIT = 15.0    # 量比超过=对倒嫌疑, 硬门
+FUSED_CORE = 10.0         # 融合分核心线
+FUSED_WATCH = 8.0         # 融合分备选线
+
+
+def article_s7(factors: Dict) -> tuple:
+    """文章九大标准 → 技术分 S7(浮动). 纯加减分不否决; 日K因子缺失时该分量缺失部分为 0。
+    返回 (s7, 说明)"""
+    s7, parts = 0.0, []
+    if factors.get("ma60_above") is True:
+        s7 += S7_BONUS_MA60
+        parts.append("站上MA60")
+    if factors.get("macd_ok") is True and factors.get("kdj_ok") is True:
+        s7 += S7_BONUS_MK
+        parts.append("MACD·KDJ共振")
+    ret20 = factors.get("ret20")
+    if ret20 is not None:
+        if 0 < ret20 < 0.20:
+            s7 += S7_BONUS_LOW
+            parts.append(f"低位{ret20:.0%}")
+        elif ret20 > 0.30:
+            s7 += S7_PENALTY_HIGH
+            parts.append(f"高位{ret20:.0%}")
+    return round(s7, 2), ("；".join(parts) or "技术中性")
+
+
+def fuse_score(item: Dict, s7: float) -> float:
+    """融合分 = v3 总分(S1-S6, 满分15) + S7 技术分(满分~2)"""
+    return round(float(item.get("score") or 0) + s7, 2)
+
+
+def fuse_tier(item: Dict, s7: float) -> str:
+    """基于融合分定层(在 run_funnel 已入围的 core/watch 内重排, 不新增):
+    core 需融合分≥FUSED_CORE 且 S1资金>0; 否则 watch。"""
+    s1 = (item.get("sub") or {}).get("S1资金") or 0
+    if fuse_score(item, s7) >= FUSED_CORE and s1 > 0:
+        return "core"
+    return "watch"
 
 
 # =============================================================================
@@ -368,6 +441,12 @@ def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict
         gene = gene_check(genes.get(code))
         if not gene["pass"]:
             rejected.append({"code": code, "name": name, "reason": gene["reason"]})
+            continue
+        # 对倒硬门(文章 #3 延伸): 量比>15 大概率对倒, 直接剔除(S5 归零不够, 08-13 海泰量比16 -12.11%)
+        _vr = r.get("vol_ratio")
+        if _vr is not None and float(_vr) > VOL_RATIO_LIMIT:
+            rejected.append({"code": code, "name": name,
+                             "reason": f"量比{float(_vr):.0f} > {VOL_RATIO_LIMIT:.0f} 对倒嫌疑"})
             continue
         sc = score_stock([code, name, r.get("price"), r.get("change_pct"), r.get("vol_ratio"),
                           r.get("limit_up_buy"), r.get("bid_pct"), r.get("bid_net"),

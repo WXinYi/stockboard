@@ -74,4 +74,5 @@ jobs:
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
-        run: cd jiarenmens && python scripts/auction_scan.py --confirm --candidates /tmp/auction_candidates.json || true
+        # 修复 KeyError 后不再吞错: E 层失败应使 workflow 失败(可见), 且不影响已提交的 auction.db
+        run: cd jiarenmens && python scripts/auction_scan.py --confirm --candidates /tmp/auction_candidates.json

@@ -77,12 +77,28 @@ class KPLSpider:
         return self._get({"a": "MarketCapacity", "c": "HisHomeDingPan", "Date": date_str, "Type": 0}, KPL_HOST_HIS)
 
     def env_bid_total(self, date_str: str) -> Dict:
-        """竞价总体: tJJJE今日竞价总额 lJJJE昨日 tSZ/tXD今日红绿家数 lSZ/lXD昨日"""
+        """竞价总体(历史回放): tJJJE今日竞价总额 lJJJE昨日 tSZ/tXD今日红绿家数 lSZ/lXD昨日"""
         return self._get({"a": "MorningBidding", "c": "HisHomeDingPan", "Date": date_str}, KPL_HOST_HIS)
 
+    def env_bid_total_live(self) -> Dict:
+        """竞价总体(当日实时, 无日期参数): tJJJE今日竞价总额 lJJJE昨日 tSZ/tXD今日红绿家数 lSZ/lXD昨日。
+        实测 08-13 收盘后仍返回当日数据: tSZ=1142/tXD=4317 → 当天红盘占比可算。"""
+        return self._get({"Order": 1, "a": "MorningBidding", "st": 10, "c": "HomeDingPan",
+                          "PhoneOSNew": 1, "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3",
+                          "VerSion": "5.20.0.2", "Token": self.token, "Index": 0,
+                          "apiv": "w41", "UserID": self.user_id}, KPL_HOST_RT)
+
     def env_bid_count(self, date_str: str) -> Dict:
-        """竞价数量统计: [涨停委买数, 撮合>2000w数, 热门股数, 主力净额>1000w数, 砸盘数]"""
+        """竞价数量统计(历史回放): [涨停委买数, 撮合>2000w数, 热门股数, 主力净额>1000w数, 砸盘数]"""
         return self._get({"a": "MorningBiddingNum", "c": "HisHomeDingPan", "Date": date_str}, KPL_HOST_HIS)
+
+    def env_bid_count_live(self) -> Dict:
+        """竞价数量统计(当日实时, 无日期): [涨停委买数, 撮合>2000w数, 热门股数, 主力净额>1000w数, 砸盘数]。
+        实测 08-13 返回 [210, 220, 50, 66, 1]。"""
+        return self._get({"Order": 1, "a": "MorningBiddingNum", "st": 10, "c": "HomeDingPan",
+                          "PhoneOSNew": 1, "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3",
+                          "VerSion": "5.20.0.2", "Token": self.token, "Index": 0,
+                          "apiv": "w41", "UserID": self.user_id}, KPL_HOST_RT)
 
     def env_zt_expression(self, date_str: str) -> Dict:
         """昨日涨停今日表现(字段含义待文档, 原样记录)"""
@@ -91,19 +107,34 @@ class KPLSpider:
     # ---- 板块层 ----
 
     def board_bid(self, date_str: str) -> Dict:
-        """板块竞价异动: List1今日新增/List2昨日延续/List3其他
+        """板块竞价异动(历史回放, His 只服务已完成交易日): List1今日新增/List2昨日延续/List3其他
         每条 [板块代码, 名称, 竞价爆量倍数, 异动金额, 预留, 主力净额]"""
         return self._get({"a": "GetBKJJ_W36", "c": "StockBidYiDong", "Day": date_str.replace("-", ""),
                           "Order": 1, "Type": 0,
                           "Token": self.token, "UserID": self.user_id}, KPL_HOST_HIS)
 
+    def board_bid_live(self) -> Dict:
+        """板块竞价异动(当日实时, 无 Day 参数): 参考 LowellLee/kpl get_bkjj 调用方式。
+        仅竞价时段有数据; 收盘后清空。"""
+        return self._get({"a": "GetBKJJ_W36", "c": "StockBidYiDong", "PhoneOSNew": 1,
+                          "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3", "VerSion": "5.20.0.8",
+                          "Token": self.token, "apiv": "w41", "UserID": self.user_id}, KPL_HOST_RT)
+
     def board_ranking(self, date_str: str, r_start: str = "0925", r_end: str = "0930",
                       zs_type: int = 7, page_size: int = 60) -> Dict:
-        """板块强度(竞价时段可回测): 19列 [代码,名称,强度,涨幅,涨速,成交额,主力净额,...]"""
+        """板块强度(历史回放, His 只服务已完成交易日): 19列 [代码,名称,强度,涨幅,涨速,成交额,主力净额,...]"""
         return self._get({"Order": 1, "a": "RealRankingInfo", "st": page_size, "c": "ZhiShuRanking",
                           "PhoneOSNew": 1, "RStart": r_start, "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3",
                           "VerSion": "5.20.0.2", "Index": 0, "Date": date_str, "REnd": r_end,
                           "apiv": "w41", "Type": 5, "ZSType": zs_type}, KPL_HOST_HIS)
+
+    def board_ranking_live(self, page_size: int = 60, zs_type: int = 7) -> Dict:
+        """板块强度(当日实时, 无 Date): 参考 LowellLee/kpl get_top_sectors_realtime(Type=1/apiv=w26)。
+        按强度排序, 19列与历史变体一致。仅竞价时段有数据。"""
+        return self._get({"Order": 1, "a": "RealRankingInfo", "st": page_size, "apiv": "w26",
+                          "Type": 1, "c": "ZhiShuRanking", "PhoneOSNew": 1,
+                          "DeviceID": "20ad85ca-becb-3bed-b3d4-30032a0f5923",
+                          "Index": 0, "ZSType": zs_type}, KPL_HOST_RT)
 
     # ---- 个股层 ----
 
@@ -115,11 +146,26 @@ class KPLSpider:
                           "IsLB": 0, "IsZT": 0, "Isst": 1, "filter": filter_, "st": st,
                           "Token": self.token, "UserID": self.user_id}, KPL_HOST_HIS)
 
-    def bid_list(self, date_str: str, pid_type: int = 0, type_: int = 4, st: int = 100) -> Dict:
-        """竞价列表(免Token): PidType 0涨停委买/1撮合>2000w/2热门/3主力净额>1000w/4砸盘
-        每条 [代码,名称,竞价价,竞价涨幅,涨停委买额,连板数,竞价净额,竞价换手,主力净额,主力买,主力卖,板块标签,流通市值,...]"""
-        return self._get({"a": "MorningBiddingList", "c": "HisHomeDingPan", "Date": date_str,
-                          "PidType": pid_type, "Type": type_, "Index": 0, "Order": 1, "st": st}, KPL_HOST_HIS)
+    def board_stocks_live(self, plate_id: str, st: int = 50, filter_: int = 1) -> Dict:
+        """板块内股票竞价(当日实时, 无 Day): 竞价量比/涨幅/净额/换手/流通市值/板块。
+        实测 GetBKJJBL 实时变体收盘后仍返回当日数据(20 行), 竞价量比当天可拿到。
+        每条 [代码,名称,现价,实时涨幅,量比,竞价金额,竞价涨幅,竞价大单净额,竞价换手,流通市值,板块]"""
+        return self._get({"a": "GetBKJJBL", "c": "StockBidYiDong", "PhoneOSNew": 1,
+                          "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3", "VerSion": "5.20.0.8",
+                          "IsLB": 0, "IsZT": 0, "Isst": 1, "filter": filter_, "st": st,
+                          "Token": self.token, "Index": 0, "apiv": "w41",
+                          "Type": 1, "StockID": plate_id, "UserID": self.user_id}, KPL_HOST_RT)
+
+    def bid_list(self, pid_type: int = 0, type_: int = 4, st: int = 100) -> Dict:
+        """竞价列表(当日实时, 免Token, 无日期参数): PidType 0涨停委买/1撮合>2000w/2热门/3主力净额>1000w/4砸盘
+        每条 [代码,名称,竞价价,竞价涨幅,涨停委买额,连板数,竞价净额,竞价换手,主力净额,主力买,主力卖,板块标签,流通市值,...,tag]
+        ⚠️ 仅竞价时段(约 09:15-09:25)有数据; 收盘后清空。历史回放无数据(实时接口)。
+        参考 LowellLee/kpl get_morning_bidding(c=HomeDingPan, RT host, 不传 Date)。"""
+        return self._get({"Order": 1, "a": "MorningBiddingList", "st": st, "c": "HomeDingPan",
+                          "PhoneOSNew": 1, "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3",
+                          "VerSion": "5.20.0.2", "Token": self.token, "Index": 0,
+                          "PidType": pid_type, "apiv": "w41", "Type": type_, "UserID": self.user_id},
+                         KPL_HOST_RT)
 
     def zt_pool(self, date_str: str, pid_type: int = 1, st: int = 500) -> Dict:
         """涨停板列表(免Token): PidType 1一板~5五板及以上
@@ -190,9 +236,39 @@ class AuctionStore:
                 next_red_pct REAL, seal_pct REAL, break_pct REAL, consecutive_pct REAL,
                 PRIMARY KEY (date, code)
             );
+            CREATE TABLE IF NOT EXISTS candidates (
+                date TEXT, code TEXT, name TEXT, tier TEXT,
+                score REAL, max_score INTEGER,
+                s1 INTEGER, s2 INTEGER, s3 INTEGER, s4 INTEGER, s5 INTEGER, s6 INTEGER,
+                s7 REAL, fused_score REAL,
+                bid_price REAL, bid_pct REAL, bid_net REAL, turnover REAL,
+                vol_ratio REAL, circ_mv REAL, bid_vol_last REAL,
+                bid_buy_ratio REAL, bid_vol_total REAL,
+                ma60_above INTEGER, ret20 REAL, macd_ok INTEGER, kdj_ok INTEGER,
+                tag TEXT, boards TEXT, seal_pct REAL, resonance INTEGER,
+                rank_in_day INTEGER,
+                PRIMARY KEY (date, code)
+            );
+            CREATE TABLE IF NOT EXISTS candidate_results (
+                date TEXT, code TEXT,
+                open_px REAL, high_px REAL, low_px REAL, close_px REAL,
+                pct_open REAL, pct_bid REAL,
+                PRIMARY KEY (date, code)
+            );
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_bid_pool_date ON bid_pool(date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_limit_pool_date ON limit_pool(date)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_candidates_date ON candidates(date)")
+            # 迁移: 旧库 candidates 表缺融合/文章因子列时 ALTER 补列(幂等)
+            _have = {r[1] for r in c.execute("PRAGMA table_info(candidates)")}
+            for _col, _ddl in {
+                "s7": "REAL", "fused_score": "REAL",
+                "bid_buy_ratio": "REAL", "bid_vol_total": "REAL",
+                "ma60_above": "INTEGER", "ret20": "REAL",
+                "macd_ok": "INTEGER", "kdj_ok": "INTEGER",
+            }.items():
+                if _col not in _have:
+                    c.execute(f"ALTER TABLE candidates ADD COLUMN {_col} {_ddl}")
 
     def _conn(self):
         conn = sqlite3.connect(self.db_path, timeout=30)
@@ -262,6 +338,57 @@ class AuctionStore:
                     VALUES (?,?,?,?,?,?,?,?)""",
                     (date_str, code, int(g[0]), int(g[1]), float(g[2]), float(g[3]),
                      float(g[4]), float(g[5])))
+
+    def save_candidates(self, date_str: str, candidates: List[Dict], watch: List[Dict]):
+        """落库当日选股(core/watch 两层) + S1-S6 因子分 + 原始因子(回测输入)。
+        候选 dict 来自 run_funnel: {code,name,score,tier,max,factors,sub,gene,boards,tag,resonance}"""
+        with self._conn() as c:
+            # 日期隔离: 每次扫描产出完整名单, 先清当日旧行, 避免 INSERT OR REPLACE 残留上次名单多出/剔除的 code
+            c.execute("DELETE FROM candidates WHERE date=?", (date_str,))
+            for tier, arr in (("core", candidates), ("watch", watch)):
+                for rank, item in enumerate(arr, 1):
+                    f_ = item.get("factors") or {}
+                    s_ = item.get("sub") or {}
+                    g_ = (item.get("gene") or {}).get("data") or {}
+                    c.execute("""INSERT OR REPLACE INTO candidates
+                        (date, code, name, tier, score, max_score,
+                         s1, s2, s3, s4, s5, s6, s7, fused_score,
+                         bid_price, bid_pct, bid_net, turnover, vol_ratio, circ_mv, bid_vol_last,
+                         bid_buy_ratio, bid_vol_total,
+                         ma60_above, ret20, macd_ok, kdj_ok,
+                         tag, boards, seal_pct, resonance, rank_in_day)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (date_str, item["code"], item.get("name") or "", tier,
+                         float(item.get("score") or 0), int(item.get("max") or 15),
+                         int(s_.get("S1资金") or 0), int(s_.get("S2形态") or 0),
+                         int(s_.get("S3共振") or 0), int(s_.get("S4身位") or 0),
+                         int(s_.get("S5量比") or 0), int(s_.get("S6基因") or 0),
+                         item.get("s7"), item.get("fused_score"),
+                         f_.get("bid_price"), f_.get("bid_pct"), f_.get("bid_net"),
+                         f_.get("turnover"), f_.get("vol_ratio"), f_.get("circ_mv"),
+                         f_.get("bid_vol_last"),
+                         f_.get("bid_buy_ratio"), f_.get("bid_vol_total"),
+                         f_.get("ma60_above"), f_.get("ret20"),
+                         f_.get("macd_ok"), f_.get("kdj_ok"),
+                         item.get("tag") or "",
+                         ",".join(item.get("boards") or []), g_.get("seal_pct"),
+                         int(item.get("resonance") or 0), rank))
+
+    def save_candidate_result(self, date_str: str, code: str, open_px, high_px, low_px,
+                              close_px, pct_open, pct_bid):
+        """写入单只候选的当日实际表现(candidate_results), --label 结果标签用"""
+        with self._conn() as c:
+            c.execute("""INSERT OR REPLACE INTO candidate_results
+                (date, code, open_px, high_px, low_px, close_px, pct_open, pct_bid)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (date_str, code, open_px, high_px, low_px, close_px, pct_open, pct_bid))
+
+    def load_candidates(self, date_str: str) -> List[Dict]:
+        """按日期读取当日候选(core/watch), --label 结果标签用"""
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM candidates WHERE date=? ORDER BY tier, rank_in_day",
+                             (date_str,)).fetchall()
+            return [dict(r) for r in rows]
 
     def load_bid_pool(self, date_str: str) -> List[Dict]:
         with self._conn() as c:
