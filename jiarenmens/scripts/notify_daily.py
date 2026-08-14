@@ -26,7 +26,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.notify.dingtalk import DingTalk  # noqa: E402
 
 DATA_DIR = (Path(__file__).resolve().parents[2] / "stockboard-app" / "public" / "data" / "latest")
+REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE_URL = "https://WXinYi.github.io/stockboard"
+
+# 推送状态（记录上次已推送的操作 _id，用于对比"本次新增"）
+STATE_FILE = REPO_ROOT / "jiarenmens" / "data" / "last_notify_state.json"
+
+
+def load_state() -> dict:
+    """上次推送状态 → {"seen": {player_id: [id, ...]}}；无状态返回空"""
+    if STATE_FILE.exists():
+        return json.loads(STATE_FILE.read_text())
+    return {"seen": {}}
+
+
+def save_state(seen: dict) -> None:
+    """写回推送状态（seen: {player_id: sorted [id,...]}）"""
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps({"seen": seen}, ensure_ascii=False, indent=2))
 
 # 置顶特别关注（原 crawl.yml 内联逻辑，保持行为不变）
 WATCHED = {
@@ -152,12 +169,14 @@ def _stock_link(code: str, name: str) -> str:
     return f"[{name}]({BASE_URL}/#/stock/{code}?name={quote(name)})"
 
 
-def _op_line(t: dict, quotes: dict, is_buy: bool) -> str:
-    """单笔操作行：方向 股票 仓位｜成交价｜现价｜当前涨幅（每值带字段名）"""
+def _op_line(t: dict, quotes: dict, is_buy: bool, is_new: bool = False) -> str:
+    """单笔操作行：方向 股票 仓位｜成交价｜现价｜当前涨幅（每值带字段名）；新操作行首加 🆕"""
     emoji = "🟢 买入" if is_buy else "🔴 卖出"
     rr = t.get("rr", "") or ""
     name = t.get("sn", "") or ""
     head = f"{_stock_link(t.get('sc', ''), name)} {rr}" if rr else _stock_link(t.get("sc", ""), name)
+    flag = "🆕 " if is_new else ""
+    head = flag + head
     cols = []
     price = t.get("pr")
     if price:
@@ -214,8 +233,13 @@ def build_watched(date_str: str, crawl_time: str) -> str:
     )
 
 
-def build_dragon(date_str: str, crawl_time: str) -> str:
-    """龙头战法跟踪消息体（单独一条）：操作 + 成交价/涨幅 + 风格说明"""
+def build_dragon(date_str: str, crawl_time: str, seen: dict = None):
+    """短线选手跟踪消息体（单独一条）：操作 + 成交价/涨幅 + 风格说明 + 新增标识
+
+    seen: {"player_id": set(已推送 _id)}。返回 (text, new_count, updated_seen)。
+    """
+    seen = seen or {}
+    first_run = not STATE_FILE.exists()  # 首次推送无上次基线，全部不标 🆕
     per_player = []
     all_codes = set()
     for wid, (wname, style) in DRAGON.items():
@@ -226,7 +250,9 @@ def build_dragon(date_str: str, crawl_time: str) -> str:
     quotes = fetch_quotes(sorted(all_codes)) if all_codes else {}
     live_note = "  ·  现价/涨幅为实时行情" if quotes else ""
 
+    updated = {wid: set(seen.get(wid, set())) for wid in DRAGON}
     dragon_lines = []
+    new_count = 0
     for wid, wname, style, trades in per_player:
         link = _player_link(wid, wname)
         if trades is None:
@@ -234,19 +260,29 @@ def build_dragon(date_str: str, crawl_time: str) -> str:
             continue
         buys = [t for t in trades if t.get("dr") == "买入"]
         sells = [t for t in trades if t.get("dr") == "卖出"]
-        parts = [_op_line(t, quotes, True) for t in buys] + [_op_line(t, quotes, False) for t in sells]
+        parts = []
+        for t in buys + sells:
+            if t.get("_id"):
+                updated[wid].add(t["_id"])
+            is_new = (not first_run) and t.get("_id") not in seen.get(wid, set())
+            if is_new:
+                new_count += 1
+            parts.append(_op_line(t, quotes, t.get("dr") == "买入", is_new))
         if not parts:
             parts = ["⚪ 今日无调仓"]
         # 列表项强制每笔单独一行（钉钉 markdown 单换行会被合并）
         op_lines = "\n".join(f"- {p}" for p in parts)
         dragon_lines.append(f"▸ {link} · {style}\n" + op_lines)
 
-    return (
+    new_note = f"  ·  🆕 本次新增 {new_count} 笔" if new_count else ""
+    text = (
         f"## 🐉 短线选手跟踪 · 成交日 {date_str}\n\n"
-        f"> 采集 {crawl_time}{live_note}\n\n"
+        f"> 采集 {crawl_time}{live_note}{new_note}\n\n"
         + "\n\n".join(dragon_lines)
         + f"\n\n📈 [打开看板](https://WXinYi.github.io/stockboard/)"
     )
+    updated_seen = {k: sorted(v) for k, v in updated.items()}
+    return text, new_count, updated_seen
 
 
 def main():
@@ -260,8 +296,16 @@ def main():
     dt = DingTalk()
     dt.send_markdown(f"StockBoard {date_str}", build_watched(date_str, crawl_time))
     print(f"✅ 钉钉通知(特别关注) {date_str}")
-    dt.send_markdown(f"短线选手 {date_str}", build_dragon(date_str, crawl_time))
-    print(f"✅ 钉钉通知(短线选手) {date_str}")
+
+    state = load_state()
+    seen = {k: set(v) for k, v in state.get("seen", {}).items()}
+    text, new_count, updated_seen = build_dragon(date_str, crawl_time, seen)
+    dt.send_markdown(f"短线选手 {date_str}", text)
+    print(f"✅ 钉钉通知(短线选手) {date_str} (新增 {new_count} 笔)")
+
+    # 推送成功后写回状态（供下次对比），随 crawl.yml「提交数据」步骤提交
+    save_state(updated_seen)
+    print(f"✅ 推送状态已保存: {STATE_FILE}")
     return 0
 
 

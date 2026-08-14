@@ -48,6 +48,16 @@ jobs:
       - name: Build Vue
         run: cd stockboard-app && npm ci && npm run build
 
+      # 钉钉通知放在「提交数据」之前：notify_daily.py 会写 last_notify_state.json，
+      # 让状态文件跟随当次「提交数据」一起 commit 持久化，供下次对比"新增操作"
+      - name: 钉钉通知
+        if: success()
+        continue-on-error: true
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: cd jiarenmens && python3 scripts/notify_daily.py
+
       - name: 提交数据
         run: |
           git config user.name "bot"
@@ -68,13 +78,6 @@ jobs:
             done
             echo "❌ 推送失败"; exit 1
           fi
-
-      - name: 钉钉通知
-        if: success()
-        env:
-          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
-          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
-        run: cd jiarenmens && python3 scripts/notify_daily.py
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
