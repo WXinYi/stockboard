@@ -189,15 +189,29 @@ def _op_line(t: dict, quotes: dict, is_buy: bool, is_new: bool = False) -> str:
     return f"{emoji} {head}" + ("｜" + "｜".join(cols) if cols else "")
 
 
-def build_watched(date_str: str, crawl_time: str) -> str:
-    """原「特别关注」消息体（保持原内联逻辑：仅股票名，不带仓位）"""
+def build_watched(date_str: str, crawl_time: str, seen: dict = None):
+    """特别关注消息体（仅股票名，不带仓位）+ 新增操作 🆕 标记
+
+    seen: {"player_id": set(已推送 _id)}。返回 (text, new_count, updated_seen)。
+    """
+    seen = seen or {}
+    first_run = not STATE_FILE.exists()  # 首次推送无上次基线，全部不标 🆕
+    updated = {wid: set(seen.get(wid, set())) for wid in WATCHED}
     watched_lines = []
+    new_count = 0
     for wid, wname in WATCHED.items():
         link = _player_link(wid, wname)
         trades = _today_trades(wid, date_str)
         if trades is not None:
-            buys = [t["sn"] for t in trades if t.get("dr") == "买入"]
-            sells = [t["sn"] for t in trades if t.get("dr") == "卖出"]
+            buys, sells = [], []
+            for t in trades:
+                if t.get("_id"):
+                    updated[wid].add(t["_id"])
+                is_new = (not first_run) and t.get("_id") not in seen.get(wid, set())
+                if is_new:
+                    new_count += 1
+                sn = f"{t['sn']}🆕" if is_new else t["sn"]
+                (buys if t.get("dr") == "买入" else sells).append(sn)
             parts = []
             if buys:
                 parts.append(f"买入 {', '.join(buys)}")
@@ -219,9 +233,10 @@ def build_watched(date_str: str, crawl_time: str) -> str:
     else:
         top5_text = "今日均无调仓"
 
-    return (
+    new_note = f"  ·  🆕 新增 {new_count} 笔" if new_count else ""
+    text = (
         f"## 📊 东财实盘排行榜已更新\n\n"
-        f"> 采集时间: {crawl_time}\n\n"
+        f"> 采集时间: {crawl_time}{new_note}\n\n"
         f"---\n\n"
         f"### ⭐ 特别关注\n\n"
         + "\n\n".join(watched_lines)
@@ -231,6 +246,8 @@ def build_watched(date_str: str, crawl_time: str) -> str:
         f"---\n\n"
         f"📈 [打开看板](https://WXinYi.github.io/stockboard/)"
     )
+    updated_seen = {k: sorted(v) for k, v in updated.items()}
+    return text, new_count, updated_seen
 
 
 def build_dragon(date_str: str, crawl_time: str, seen: dict = None):
@@ -294,17 +311,23 @@ def main():
     crawl_time = s.get("crawl_time", "")
 
     dt = DingTalk()
-    dt.send_markdown(f"StockBoard {date_str}", build_watched(date_str, crawl_time))
-    print(f"✅ 钉钉通知(特别关注) {date_str}")
-
     state = load_state()
     seen = {k: set(v) for k, v in state.get("seen", {}).items()}
-    text, new_count, updated_seen = build_dragon(date_str, crawl_time, seen)
-    dt.send_markdown(f"短线选手 {date_str}", text)
-    print(f"✅ 钉钉通知(短线选手) {date_str} (新增 {new_count} 笔)")
 
-    # 推送成功后写回状态（供下次对比），随 crawl.yml「提交数据」步骤提交
-    save_state(updated_seen)
+    w_text, w_new, w_seen = build_watched(date_str, crawl_time, seen)
+    dt.send_markdown(f"StockBoard {date_str}", w_text)
+    print(f"✅ 钉钉通知(特别关注) {date_str} (新增 {w_new} 笔)")
+
+    d_text, d_new, d_seen = build_dragon(date_str, crawl_time, seen)
+    dt.send_markdown(f"短线选手 {date_str}", d_text)
+    print(f"✅ 钉钉通知(短线选手) {date_str} (新增 {d_new} 笔)")
+
+    # 合并两条消息的 seen 写回（供下次对比），随 crawl.yml「提交数据」步骤提交
+    merged = {}
+    for m in (w_seen, d_seen):
+        for k, v in m.items():
+            merged[k] = sorted(set(merged.get(k, [])) | set(v))
+    save_state(merged)
     print(f"✅ 推送状态已保存: {STATE_FILE}")
     return 0
 
