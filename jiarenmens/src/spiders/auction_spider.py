@@ -255,6 +255,11 @@ class AuctionStore:
                 open_px REAL, high_px REAL, low_px REAL, close_px REAL,
                 pct_open REAL, pct_bid REAL, pct_day REAL,
                 pct_open_day REAL, pct_e31 REAL,
+                role TEXT,  -- NULL=候选(core/watch) / control=随机池基准 / rejected_fade=高开低走被拒组
+                PRIMARY KEY (date, code)
+            );
+            CREATE TABLE IF NOT EXISTS funnel_rejected (
+                date TEXT, code TEXT, name TEXT, reason TEXT,
                 PRIMARY KEY (date, code)
             );
             CREATE TABLE IF NOT EXISTS bid_series (
@@ -281,9 +286,10 @@ class AuctionStore:
             _have_pool = {r[1] for r in c.execute("PRAGMA table_info(bid_pool)")}
             if "unfilled_buy" not in _have_pool:
                 c.execute("ALTER TABLE bid_pool ADD COLUMN unfilled_buy REAL")
-            # 迁移: 旧库 candidate_results 补 pct_day/pct_open_day/pct_e31 列(幂等)
+            # 迁移: 旧库 candidate_results 补 pct_day/pct_open_day/pct_e31/role 列(幂等)
             _have_res = {r[1] for r in c.execute("PRAGMA table_info(candidate_results)")}
-            for _col, _ddl in {"pct_day": "REAL", "pct_open_day": "REAL", "pct_e31": "REAL"}.items():
+            for _col, _ddl in {"pct_day": "REAL", "pct_open_day": "REAL",
+                               "pct_e31": "REAL", "role": "TEXT"}.items():
                 if _col not in _have_res:
                     c.execute(f"ALTER TABLE candidate_results ADD COLUMN {_col} {_ddl}")
 
@@ -417,17 +423,38 @@ class AuctionStore:
 
     def save_candidate_result(self, date_str: str, code: str, open_px, high_px, low_px,
                               close_px, pct_open, pct_bid, pct_day=None,
-                              pct_open_day=None, pct_e31=None):
-        """写入单只候选的当日实际表现(candidate_results), --label 结果标签用
+                              pct_open_day=None, pct_e31=None, role=None):
+        """写入单只当日实际表现(candidate_results), --label 结果标签用
         pct_bid = 收盘相对竞价价(策略口径); pct_day = 收盘相对昨收(当天涨跌幅);
-        pct_open_day = 收盘相对开盘价(开盘买入); pct_e31 = 收盘相对 09:31 价(E层确认入场)"""
+        pct_open_day = 收盘相对开盘价(开盘买入); pct_e31 = 收盘相对 09:31 价(E层确认入场)
+        role: NULL=候选 / control=随机池基准 / rejected_fade=高开低走被拒组(对照组)"""
         with self._conn() as c:
             c.execute("""INSERT OR REPLACE INTO candidate_results
                 (date, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
-                 pct_open_day, pct_e31)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                 pct_open_day, pct_e31, role)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (date_str, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
-                 pct_open_day, pct_e31))
+                 pct_open_day, pct_e31, role))
+
+    def save_rejected(self, date_str: str, rows: List[Dict]):
+        """落库漏斗被拒明细(funnel_rejected), 对照组(高开低走/对倒/资金不足)打标基础"""
+        with self._conn() as c:
+            c.execute("DELETE FROM funnel_rejected WHERE date=?", (date_str,))
+            c.executemany("""INSERT OR REPLACE INTO funnel_rejected (date, code, name, reason)
+                             VALUES (?,?,?,?)""",
+                          [(date_str, r["code"], r["name"], r.get("reason") or "") for r in rows])
+
+    def load_bid_pool(self, date_str: str) -> List[Dict]:
+        """读取当日候选池(bid_pool), 对照组抽样用"""
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM bid_pool WHERE date=?", (date_str,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def load_rejected(self, date_str: str) -> List[Dict]:
+        """读取当日漏斗被拒明细(funnel_rejected), 高开低走被拒组打标用"""
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM funnel_rejected WHERE date=?", (date_str,)).fetchall()
+            return [dict(r) for r in rows]
 
     def load_candidates(self, date_str: str) -> List[Dict]:
         """按日期读取当日候选(core/watch), --label 结果标签用"""

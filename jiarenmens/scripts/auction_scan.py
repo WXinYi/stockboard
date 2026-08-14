@@ -46,6 +46,8 @@ GENE_LIMIT = 60       # 涨停基因查询上限(候选池按初步分取前 N)
 BID_LIMIT = 20        # 竞价分时/大单查询上限(最终候选前 N)
 BOARD_LIMIT = 20      # 强势板块数(8→20: 提高量比覆盖, 减少榜单独有票无量比)
 SCORE_THRESHOLD = 13  # 核心过线分(21 分制: 原15 + 三力撮合/委买6, 待回测校准); 备选线 = 过线-3
+CONTROL_SAMPLE = 20   # 对照组: 过B1门槛池随机抽样数(--label 打标)
+FADE_SAMPLE = 20      # 对照组: 高开低走被拒组抽样数(--label 打标, 负对照)
 
 
 # =============================================================================
@@ -717,53 +719,91 @@ def label_results(date_str: str) -> int:
     # 日期隔离: 先清当日"已不在候选名单"的旧结果行(候选集随 BOARD_LIMIT/融合规则变化)
     codes = tuple(c["code"] for c in cands)
     with store._conn() as c:
-        c.execute(f"DELETE FROM candidate_results WHERE date=? AND code NOT IN ({','.join('?'*len(codes))})",
-                  (date_str, *codes))
-    today = datetime.now(BJ_TZ).strftime("%Y-%m-%d")
+        # 只清"过时候选"行(role IS NULL); 对照组行(role 非空)保留, 避免重打标被删
+        c.execute(f"DELETE FROM candidate_results WHERE date=? AND role IS NULL AND "
+                  f"code NOT IN ({','.join('?'*len(codes))})", (date_str, *codes))
     print(f"[标签] {date_str} 共 {len(cands)} 只候选, 抓取当日行情...")
     n_ok = 0
     for cand in cands:
-        code = cand["code"]
-        ohlc = None
-        try:
-            ohlc = _day_ohlc(code, date_str)
-        except Exception as e:
-            print(f"⚠️ 日K失败 {code}: {e}")
-        if not ohlc and date_str == today:
-            # 北交所/日K缺失 → 当日即时行情兜底(仅当天可用, 历史回补跳过)
-            try:
-                close = _quote_now(code)
-                if close:
-                    ohlc = [None, None, None, close]
-            except Exception as e:
-                print(f"⚠️ 即时行情失败 {code}: {e}")
-        if not ohlc or not ohlc[3]:
-            print(f"⚠️ {code} {cand['name']} 无当日行情, 跳过")
-            continue
-        open_px, high_px, low_px, close_px = ohlc
-        bid_price = cand["bid_price"]
-        pct_open = (close_px - open_px) / open_px if (open_px and open_px > 0) else None
-        pct_bid = (close_px - bid_price) / bid_price if (bid_price and bid_price > 0) else None
-        pct_day = None
-        try:
-            prev_close = _prev_close(code, date_str)
-            if prev_close and prev_close > 0:
-                pct_day = (close_px - prev_close) / prev_close  # 当天涨跌幅(收盘相对昨收)
-        except Exception as e:
-            print(f"⚠️ 昨收失败 {code}: {e}")
-        pct_open_day = (close_px - open_px) / open_px if (open_px and open_px > 0) else None
-        pct_e31 = None
-        try:
-            px0931 = _mkline_0931(code, date_str)  # E层 09:31 入场价(仅最近日可回补)
-            if px0931 and px0931 > 0:
-                pct_e31 = (close_px - px0931) / px0931
-        except Exception as e:
-            print(f"⚠️ 09:31价失败 {code}: {e}")
-        store.save_candidate_result(date_str, code, open_px, high_px, low_px, close_px,
-                                    pct_open, pct_bid, pct_day, pct_open_day, pct_e31)
-        n_ok += 1
+        if _label_one(store, date_str, cand["code"], cand["name"], cand["bid_price"]):
+            n_ok += 1
     print(f"✅ 已打标签 {n_ok}/{len(cands)} 只 → candidate_results")
+    # ---- 对照组打标(回测对比基准): 随机池基准 + 高开低走被拒负对照 ----
+    n_ctl = _label_controls(store, date_str, cands)
+    print(f"✅ 对照组打标 {n_ctl} 只 (control/FADE) → candidate_results")
     return 0
+
+
+def _label_one(store, date_str: str, code: str, name: str, bid_price, role=None) -> bool:
+    """单只打标: 抓当日行情 → 算 pct_day/pct_bid/pct_open_day/pct_e31 → 落库。返回是否成功。"""
+    ohlc = None
+    try:
+        ohlc = _day_ohlc(code, date_str)
+    except Exception as e:
+        print(f"⚠️ 日K失败 {code}: {e}")
+    today = datetime.now(BJ_TZ).strftime("%Y-%m-%d")
+    if not ohlc and date_str == today:
+        # 北交所/日K缺失 → 当日即时行情兜底(仅当天可用, 历史回补跳过)
+        try:
+            close = _quote_now(code)
+            if close:
+                ohlc = [None, None, None, close]
+        except Exception as e:
+            print(f"⚠️ 即时行情失败 {code}: {e}")
+    if not ohlc or not ohlc[3]:
+        print(f"⚠️ {code} {name} 无当日行情, 跳过")
+        return False
+    open_px, high_px, low_px, close_px = ohlc
+    pct_open = (close_px - open_px) / open_px if (open_px and open_px > 0) else None
+    pct_bid = (close_px - bid_price) / bid_price if (bid_price and bid_price > 0) else None
+    pct_day = None
+    try:
+        prev_close = _prev_close(code, date_str)
+        if prev_close and prev_close > 0:
+            pct_day = (close_px - prev_close) / prev_close  # 当天涨跌幅(收盘相对昨收)
+    except Exception as e:
+        print(f"⚠️ 昨收失败 {code}: {e}")
+    pct_open_day = (close_px - open_px) / open_px if (open_px and open_px > 0) else None
+    pct_e31 = None
+    try:
+        px0931 = _mkline_0931(code, date_str)  # E层 09:31 入场价(仅最近日可回补)
+        if px0931 and px0931 > 0:
+            pct_e31 = (close_px - px0931) / px0931
+    except Exception as e:
+        print(f"⚠️ 09:31价失败 {code}: {e}")
+    store.save_candidate_result(date_str, code, open_px, high_px, low_px, close_px,
+                                pct_open, pct_bid, pct_day, pct_open_day, pct_e31, role=role)
+    return True
+
+
+def _label_controls(store, date_str: str, cands) -> int:
+    """对照组打标:
+    - control     = 过 B1 门槛(1≤bid_pct≤7)池随机抽样(确定性 seed=日期), 全池基准/随机对照
+    - FADE        = 高开低走被拒组抽样, 负对照(验证硬门是否剔除 loser)
+    与候选互斥, 每日各上限 CONTROL_SAMPLE/FADE_SAMPLE, 控制腾讯日K请求量。"""
+    import random
+    rng = random.Random(date_str)  # 同日重跑抽样一致
+    picked = {c["code"] for c in cands}
+    pool = store.load_bid_pool(date_str)
+    bid_map = {p["code"]: p.get("price") or 0 for p in pool}
+    in_gate = [p for p in pool
+               if (p.get("bid_pct") is not None and 1 <= p["bid_pct"] <= 7
+                   and p["code"] not in picked)]
+    rejected = store.load_rejected(date_str)
+    fade_codes = {r["code"] for r in rejected if r["reason"] == "竞价高开低走 出货形态"}
+    # control: 随机池基准(排除高开低走被拒, 避免与负对照重复)
+    avail = [p for p in in_gate if p["code"] not in fade_codes]
+    sample = rng.sample(avail, min(CONTROL_SAMPLE, len(avail))) if avail else []
+    rows = [(p["code"], p["name"], bid_map.get(p["code"]), "control") for p in sample]
+    # FADE: 高开低走被拒负对照(抽样)
+    faded = [r for r in rejected if r["code"] in fade_codes and r["code"] not in picked]
+    rows += [(r["code"], r["name"], bid_map.get(r["code"]), "FADE")
+             for r in faded[:FADE_SAMPLE]]
+    n = 0
+    for code, name, bid_price, role in rows:
+        if _label_one(store, date_str, code, name, bid_price, role=role):
+            n += 1
+    return n
 
 
 # =============================================================================
@@ -858,6 +898,8 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     # 落库当日选股(S1-S6 + S7 + 原始因子, 回测输入) + 候选池(板块成分 + 竞价列表合并)
     store.save_candidates(date_str, result["candidates"], result.get("watch", []))
     store.save_bid_pool(date_str, [_pool_row_layout(i) for i in pool.values()], "merged")
+    # 落库漏斗被拒明细(对照组: 高开低走/对倒/资金不足 打标基础)
+    store.save_rejected(date_str, result.get("rejected", []))
 
     print(f"[6/6] 输出 + 推送 (耗时 {time.time()-t0:.0f}s)")
     out = {
@@ -865,7 +907,7 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         "env": result["env"], "boards": boards,
         "candidates": result["candidates"], "watch": result.get("watch", []),
         "empty_reason": result["empty_reason"],
-        "rejected": result.get("rejected", []),
+        "rejected": result.get("rejected", [])[:50],  # JSON 只保留前 50 条(全量已落库)
         "stats": {"pool": len(pool), "genes": len(genes), "boards": len(boards)},
     }
     AUCTION_OUT.parent.mkdir(parents=True, exist_ok=True)

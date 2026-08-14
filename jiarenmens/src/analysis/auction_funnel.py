@@ -561,4 +561,4 @@ def run_funnel(env: Dict, boards: List[Dict], pool_rows: List[Dict], genes: Dict
     candidates.sort(key=lambda c: c["score"], reverse=True)
     watch.sort(key=lambda c: c["score"], reverse=True)
     return {"env": env_result, "boards": boards, "candidates": candidates, "watch": watch,
-            "rejected": rejected[:50], "empty_reason": None}
+            "rejected": rejected, "empty_reason": None}
