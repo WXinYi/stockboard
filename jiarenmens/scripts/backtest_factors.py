@@ -128,6 +128,38 @@ def main():
         print(f"  E层口径(收盘vs 09:31): 胜率 {w/len(have_e31):.0%} ({w}/{len(have_e31)}), 平均 {a*100:+.2f}%   ← 09:31确认走强入场")
     print(f"样本不足({args.min})分组标注 ⚠️, 不解读\n")
 
+    # ── 对照组对比: 验证选股是否跑赢池/随机/被拒组(负对照) ──
+    print("── 对照组对比 (候选 vs 池基准 vs 高开低走被拒) ──")
+    conn = sqlite3.connect(AuctionStore().db_path)
+    conn.row_factory = sqlite3.Row
+    allr = conn.execute("""
+        SELECT r.*, c.tier FROM candidate_results r
+        LEFT JOIN candidates c USING(date, code)
+        ORDER BY r.date""").fetchall()
+    allr = [dict(r) for r in allr]
+    conn.close()
+
+    def _cs(rows, key):
+        sub = [r for r in rows if r.get(key) is not None]
+        if not sub:
+            return None
+        w = sum(1 for r in sub if r[key] > 0)
+        return len(sub), w / len(sub), sum(r[key] for r in sub) / len(sub)
+
+    for label, rows in [("候选(选股)", [r for r in allr if r.get("role") is None]),
+                        ("control随机池", [r for r in allr if r.get("role") == "control"]),
+                        ("FADE高开低走被拒", [r for r in allr if r.get("role") == "FADE"])]:
+        d, b = _cs(rows, "pct_day"), _cs(rows, "pct_bid")
+        if not d and not b:
+            continue
+        parts = []
+        if d:
+            parts.append(f"当天 {d[2]*100:+.2f}% 胜{d[1]:.0%} (n={d[0]})")
+        if b:
+            parts.append(f"竞价 {b[2]*100:+.2f}% 胜{b[1]:.0%} (n={b[0]})")
+        print(f"  {label:<14} " + "  |  ".join(parts))
+    print()
+
     for name, fn in GROUPS:
         buckets = defaultdict(list)
         for r in data:
