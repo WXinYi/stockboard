@@ -237,10 +237,12 @@ def build_dragon(date_str: str, crawl_time: str) -> str:
         parts = [_op_line(t, quotes, True) for t in buys] + [_op_line(t, quotes, False) for t in sells]
         if not parts:
             parts = ["⚪ 今日无调仓"]
-        dragon_lines.append(f"▸ {link} · {style}\n" + "\n".join(parts))
+        # 列表项强制每笔单独一行（钉钉 markdown 单换行会被合并）
+        op_lines = "\n".join(f"- {p}" for p in parts)
+        dragon_lines.append(f"▸ {link} · {style}\n" + op_lines)
 
     return (
-        f"## 🐉 龙头战法跟踪 · 成交日 {date_str}\n\n"
+        f"## 🐉 短线选手跟踪 · 成交日 {date_str}\n\n"
         f"> 采集 {crawl_time}{live_note}\n\n"
         + "\n\n".join(dragon_lines)
         + f"\n\n📈 [打开看板](https://WXinYi.github.io/stockboard/)"
@@ -258,8 +260,8 @@ def main():
     dt = DingTalk()
     dt.send_markdown(f"StockBoard {date_str}", build_watched(date_str, crawl_time))
     print(f"✅ 钉钉通知(特别关注) {date_str}")
-    dt.send_markdown(f"龙头战法 {date_str}", build_dragon(date_str, crawl_time))
-    print(f"✅ 钉钉通知(龙头战法) {date_str}")
+    dt.send_markdown(f"短线选手 {date_str}", build_dragon(date_str, crawl_time))
+    print(f"✅ 钉钉通知(短线选手) {date_str}")
     return 0
 
 
