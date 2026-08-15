@@ -43,3 +43,6 @@ logs/
 
 # Logs only (data/ is tracked for workflow commits)
 *.log
+
+# K线临时缓存(腾讯日K, 可随时重新拉取)
+data/kline_cache.json
