@@ -557,7 +557,30 @@ def screen_v5(date_str: str, pool: Dict[str, Dict], limit_codes: set,
         name = item.get("name") or ""
         if bid is None or not (2.0 <= bid < 6.0):
             continue
-        if mv <= 5e9 or turn < 0.15 or "ST" in name.upper():
+        # 对照组采集: 竞价达标但被换手/市值门槛拒掉的票 → group_tag 标记后继续走
+        # (v5_rej_turn=换手不足被拒, 验证"换手≥0.15硬门"是否真的剔除假转强; 市值不足同理)
+        if "ST" not in name.upper():
+            if turn < 0.15:
+                out.append({
+                    "code": item["code"], "name": name,
+                    "bid_pct": bid, "turnover": turn, "circ_mv": mv,
+                    "prev_pct": None, "height": 0,
+                    "was_limit": False, "fade": False, "half_pos": True,
+                    "pos_tag": None, "group_tag": "v5_rej_turn",
+                    "boards": [b for b in re.split(r"[,，、/|;；]", item.get("plates") or "") if b][:2],
+                })
+                continue
+            if mv <= 5e9:
+                out.append({
+                    "code": item["code"], "name": name,
+                    "bid_pct": bid, "turnover": turn, "circ_mv": mv,
+                    "prev_pct": None, "height": 0,
+                    "was_limit": False, "fade": False, "half_pos": True,
+                    "pos_tag": None, "group_tag": "v5_rej_mv",
+                    "boards": [b for b in re.split(r"[,，、/|;；]", item.get("plates") or "") if b][:2],
+                })
+                continue
+        else:
             continue
         height = _board_height(item.get("tag"))
         prev = _prev_pct(item["code"])
@@ -572,11 +595,19 @@ def screen_v5(date_str: str, pool: Dict[str, Dict], limit_codes: set,
             "bid_pct": bid, "turnover": turn, "circ_mv": mv,
             "prev_pct": prev, "height": height,
             "was_limit": was_limit, "fade": fade, "half_pos": half,
+            "pos_tag": None, "group_tag": "v5",
             "boards": [b for b in re.split(r"[,，、/|;；]", item.get("plates") or "") if b][:2],
         })
         time.sleep(0.03)
     # 排序纯看质量: 换手高优先 → 竞价涨幅高优先(身位只做仓位标注, 不参与排序/资格)
+    # 排序后授予 pos_tag(main/sub, 与推送一致), 落库供回测区分主攻/次攻收益
     out.sort(key=lambda x: (-x["turnover"], -x["bid_pct"]))
+    main_idx = next((i for i, v in enumerate(out) if not v["half_pos"]), None)
+    sub_idx = next((i for i, v in enumerate(out) if not v["half_pos"] and i != main_idx), None)
+    if main_idx is not None:
+        out[main_idx]["pos_tag"] = "main"
+    if sub_idx is not None:
+        out[sub_idx]["pos_tag"] = "sub"
     return out
 
 
@@ -907,6 +938,157 @@ def label_results(date_str: str) -> int:
     # ---- 对照组打标(回测对比基准): 随机池基准 + 高开低走被拒负对照 ----
     n_ctl = _label_controls(store, date_str, cands)
     print(f"✅ 对照组打标 {n_ctl} 只 (control/FADE) → candidate_results")
+    # ---- V5 开盘首枪打标(T+0 当日 + T+1 次日回补) ----
+    label_v5(date_str, store)
+    return 0
+
+
+def label_v5(date_str: str, store: AuctionStore) -> int:
+    """V5 结果打标(v5_results):
+    - T+0(当日 15:05 跑): 开盘价/收盘价 → pct_open(开盘买→当日收, V5 主口径)/pct_day
+    - T+1(次日起任意日期跑): 次日开盘跳空/次日持有收益/是否触及-3%止损线
+      → 「昨日强组 vs 低位组」的判决字段(next_*), 卖出纪律验证的数据基础。
+    幂等: 已有当日行情的跳过重抓; next_* 缺失才补抓。"""
+    rows = store.load_v5_results(date_str)
+    if not rows:
+        print(f"[V5标签] {date_str} 无 v5_results, 跳过")
+        return 0
+    today = datetime.now(BJ_TZ).strftime("%Y-%m-%d")
+    n_t0 = n_t1 = 0
+    series_cache: Dict[str, List] = {}
+    for r in rows:
+        code = r["code"]
+        try:
+            if r.get("close_px") is None or r.get("pct_open") is None:
+                ohlc = _day_ohlc(code, date_str)
+                if not ohlc or not ohlc[3]:
+                    continue
+                open_px, close_px = ohlc[0], ohlc[3]
+                prev_close = None
+                try:
+                    prev_close = _prev_close(code, date_str)
+                except Exception:
+                    pass
+                pct_open = (close_px - open_px) / open_px if open_px else None
+                pct_day = (close_px - prev_close) / prev_close if prev_close else None
+                store.label_v5_result(date_str, code, open_px, close_px, pct_open, pct_day)
+                r.update({"open_px": open_px, "close_px": close_px,
+                          "pct_open": pct_open, "pct_day": pct_day})
+                n_t0 += 1
+                time.sleep(0.08)
+            # T+1: 找 date_str 之后第一个交易日的次日表现(昨日强组的判决日)
+            if r.get("next_close_pct") is None and r.get("open_px"):
+                if code not in series_cache:
+                    try:
+                        series_cache[code] = _day_series(code)
+                    except Exception:
+                        series_cache[code] = []
+                after = [k for k in series_cache[code] if k[0] > date_str]
+                if not after:
+                    continue  # 尚无次日K线(当天跑), 下次 --label 再补
+                nd = after[0]  # [date, open, close, high, low]
+                buy_px = r["open_px"]  # V5 买入口径=当日开盘价
+                stop_line = buy_px * 0.97  # -3% 止损线
+                store.label_v5_next(
+                    date_str, code, nd[0],
+                    next_open_pct=(nd[1] / r["close_px"] - 1) if r["close_px"] else None,
+                    next_close_pct=(nd[2] / nd[1] - 1) if nd[1] else None,  # 次日开盘买→次日收
+                    next_stop_hit=1 if nd[3] < stop_line else 0,  # 次日最低触及止损线
+                )
+                n_t1 += 1
+                time.sleep(0.08)
+        except Exception as e:
+            print(f"⚠️ V5 打标失败 {code}: {e}")
+    print(f"✅ V5 打标: T+0 {n_t0} 只, T+1 次日 {n_t1} 只 → v5_results")
+    return 0
+
+
+def v5_report(min_n: int = 3) -> int:
+    """V5 回测报告: 从 v5_results 汇总分组表现, 是策略参数调整的唯一依据。
+    分组维度(全部来自选股时点快照, 无后视):
+      - group_tag: v5候选 / v5_rej_turn(换手<0.15被拒对照) / v5_rej_mv(市值≤50亿被拒对照)
+      - half_pos:  全仓 / 半仓(3板以上·昨日大阳·竞价回落)
+      - was_limit+prev_pct: 昨日涨停组 / 昨日大阳组 / 低位转强组
+      - pos_tag:   主攻 / 次攻 / 普通
+    口径: pct_open=开盘买→当日收(T+0); next_close_pct=次日开盘买→次日收(T+1, 卖出纪律口径);
+         next_stop_hit=次日是否触及-3%止损线。样本 <min_n 标⚠️不解读。"""
+    store = AuctionStore()
+    with store._conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM v5_results ORDER BY date")]
+    if not rows:
+        print("v5_results 为空(尚无积累)")
+        return 0
+
+    def _grp(rs, key_fn):
+        buckets: Dict[str, List] = {}
+        for r in rs:
+            buckets.setdefault(key_fn(r), []).append(r)
+        return buckets
+
+    def _stat(vals):
+        if not vals:
+            return None
+        n = len(vals)
+        win = sum(1 for v in vals if v > 0) / n
+        avg = sum(vals) / n
+        return f"n={n} 胜率{win:.0%} 均值{avg:+.2f}%" + ("" if n >= min_n else " ⚠️样本不足")
+
+    def _prev_group(r):
+        if r.get("was_limit"):
+            return "昨日涨停"
+        p = r.get("prev_pct")
+        if p is None:
+            return "昨涨未知"
+        return "昨日大阳≥6%" if p >= 6.0 else "低位转强"
+
+    cand_rows = [r for r in rows if r.get("group_tag") == "v5"]
+    print("=" * 72)
+    print(f"V5 回测报告 · 样本期 {rows[0]['date']} ~ {rows[-1]['date']} · 总行 {len(rows)}")
+    print("=" * 72)
+
+    for title, key_fn, field in [
+        ("① 分组对照(候选 vs 换手被拒 vs 市值被拒)", lambda r: r.get("group_tag"), "pct_open"),
+        ("② 仓位分层(全仓 vs 半仓)", lambda r: "半仓" if r.get("half_pos") else "全仓", "pct_open"),
+        ("③ 昨日身位分组(判决「昨日强 vs 低位」)", _prev_group, "pct_open"),
+        ("④ 主攻/次攻/普通", lambda r: {"main": "主攻", "sub": "次攻"}.get(r.get("pos_tag")) or "普通", "pct_open"),
+    ]:
+        print(f"\n── {title} ── [T+0 开盘买→当日收]")
+        for g, rs in sorted(_grp(cand_rows, key_fn).items()):
+            s = _stat([r[field] * 100 for r in rs if r.get(field) is not None])
+            if s:
+                print(f"  {g:<14} {s}")
+
+    # T+1: 昨日强组 vs 低位组的次日判决(核心待验证假设)
+    t1_rows = [r for r in cand_rows if r.get("next_close_pct") is not None]
+    if t1_rows:
+        print(f"\n── ⑤ 次日兑现(T+1, 已有次日数据 {len(t1_rows)} 只) ── [次日开盘买→次日收 | 隔夜跳空]")
+        for g, rs in sorted(_grp(t1_rows, _prev_group).items()):
+            vals_nc = [r["next_close_pct"] * 100 for r in rs if r.get("next_close_pct") is not None]
+            vals_no = [r["next_open_pct"] * 100 for r in rs if r.get("next_open_pct") is not None]
+            s_nc, s_no = _stat(vals_nc), _stat(vals_no)
+            stops = sum(1 for r in rs if r.get("next_stop_hit"))
+            stop_txt = f" 触止损{stops}/{len(rs)}" if rs else ""
+            if s_nc:
+                print(f"  {g:<14} 次日持有 {s_nc} | 隔夜跳空 {s_no or '—'}{stop_txt}")
+    else:
+        print("\n── ⑤ 次日兑现 ── (尚无 T+1 数据, 需次日起再跑 --label)")
+
+    # 止损纪律统计
+    stop_rows = [r for r in cand_rows if r.get("next_stop_hit") is not None]
+    if stop_rows:
+        hits = sum(r["next_stop_hit"] for r in stop_rows)
+        print(f"\n── ⑥ 止损线(-3%)触及率 ── {hits}/{len(stop_rows)} "
+              f"({hits/len(stop_rows):.0%}) ← 若>30% 说明竞价追高入场价普遍偏贵")
+
+    # 对照组(被拒票)与候选的差值 = 门槛有效性
+    for rej_tag, desc in [("v5_rej_turn", "换手<0.15被拒(门槛验证: 应显著差于候选)"),
+                          ("v5_rej_mv", "市值≤50亿被拒")]:
+        rej = [r for r in rows if r.get("group_tag") == rej_tag]
+        vals = [r["pct_open"] * 100 for r in rej if r.get("pct_open") is not None]
+        s = _stat(vals)
+        if s:
+            print(f"  对照[{rej_tag}] {desc}: {s}")
+    print()
     return 0
 
 
@@ -1095,6 +1277,11 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         v5_list = screen_v5(date_str, pool, limit_codes, stock_bids=stock_bids)
         print(f"      V5 候选 {len(v5_list)} 只"
               + (f", 首选 {v5_list[0]['name']}" if v5_list else ""))
+        # V5 名单快照落库(v5_results): 候选 + 对照组(换手/市值被拒), 收盘后 --label 打标
+        store.save_v5_results(date_str, v5_list)
+        n_v5_cand = sum(1 for v in v5_list if v.get("group_tag") == "v5")
+        n_v5_ctl = sum(1 for v in v5_list if (v.get("group_tag") or "").startswith("v5_rej"))
+        print(f"      → v5_results 落库: 候选 {n_v5_cand} + 对照 {n_v5_ctl}")
     except Exception as e:
         print(f"      ⚠️ V5 筛选失败(不影响主流程): {e}")
         v5_list = []
@@ -1164,6 +1351,9 @@ def main():
     ap.add_argument("--candidates", default="/tmp/auction_candidates.json", help="候选清单路径(--confirm 用)")
     ap.add_argument("--label", nargs="?", const="today", metavar="YYYY-MM-DD",
                     help="结果标签模式: 抓当日收盘写 candidate_results(默认今天; 可传历史日期回补)")
+    ap.add_argument("--v5-report", action="store_true",
+                    help="V5 回测报告: 按分组(候选/换手被拒对照/市值被拒对照·主攻/次攻/半仓·昨日强/低位)"
+                         "统计 T+0 与 T+1 收益, 策略调整依据")
     ap.add_argument("--backfill-factors", action="store_true",
                     help="历史候选日K因子回填(ma60_above/ret20/macd_ok/kdj_ok; 委比无历史数据留 NULL)")
     ap.add_argument("--dry-run", action="store_true", help="不推钉钉")
@@ -1177,6 +1367,8 @@ def main():
     if args.label:
         d = date_str if args.label == "today" else args.label
         return label_results(d)
+    if args.v5_report:
+        return v5_report()
     if args.confirm:
         e_confirm(Path(args.candidates))
         return 0

@@ -267,6 +267,27 @@ class AuctionStore:
                 series TEXT,
                 PRIMARY KEY (date, code)
             );
+            CREATE TABLE IF NOT EXISTS v5_results (
+                date TEXT, code TEXT,
+                name TEXT,
+                -- 选股时点快照(9:25 定格)
+                bid_pct REAL, turnover REAL, circ_mv REAL,
+                prev_pct REAL, height INTEGER,
+                was_limit INTEGER, fade INTEGER, half_pos INTEGER,
+                pos_tag TEXT,             -- main=主攻3万 / sub=次攻2.4万 / NULL=普通
+                group_tag TEXT,           -- v5=候选 / v5_rej_turn=换手不足被拒 / v5_rej_mv=市值不足被拒
+                boards TEXT,
+                -- 收盘后打标(T+0 当日)
+                open_px REAL, close_px REAL, pct_open REAL,   -- 开盘买→当日收(V5 主口径)
+                pct_day REAL,             -- 当日收 vs 昨收
+                -- 次日打标(T+1, 卖出纪律执行日; 昨日强组 vs 低位组的关键分野)
+                next_date TEXT,
+                next_open_pct REAL,       -- 次日开盘 vs 当日收(隔夜跳空)
+                next_close_pct REAL,      -- 次日收盘 vs 当日开盘(次日持有收益, V5 次日兑现口径)
+                next_stop_hit INTEGER,    -- 次日盘中最低是否触及 -3% 止损线(相对买入价)
+                labeled_at TEXT,
+                PRIMARY KEY (date, code)
+            );
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_bid_pool_date ON bid_pool(date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_limit_pool_date ON limit_pool(date)")
@@ -477,6 +498,49 @@ class AuctionStore:
             c.executemany("""INSERT OR REPLACE INTO funnel_rejected (date, code, name, reason)
                              VALUES (?,?,?,?)""",
                           [(date_str, r["code"], r["name"], r.get("reason") or "") for r in rows])
+
+    def save_v5_results(self, date_str: str, rows: List[Dict]):
+        """落库 V5 当日名单快照(v5_results), 含选股时点因子与分组标签。
+        幂等: 先 DELETE 当日再整批写入(重跑覆盖)。"""
+        self._validate_date(date_str)
+        with self._conn() as c:
+            c.execute("DELETE FROM v5_results WHERE date=?", (date_str,))
+            c.executemany("""INSERT OR REPLACE INTO v5_results
+                (date, code, name, bid_pct, turnover, circ_mv,
+                 prev_pct, height, was_limit, fade, half_pos,
+                 pos_tag, group_tag, boards)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                [(date_str, r["code"], r["name"], r.get("bid_pct"), r.get("turnover"),
+                  r.get("circ_mv"), r.get("prev_pct"), r.get("height"),
+                  int(bool(r.get("was_limit"))), int(bool(r.get("fade"))),
+                  int(bool(r.get("half_pos"))), r.get("pos_tag"), r.get("group_tag"),
+                  ",".join(r.get("boards") or [])) for r in rows])
+
+    def load_v5_results(self, date_str: str) -> List[Dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT * FROM v5_results WHERE date=? ORDER BY turnover DESC", (date_str,))]
+
+    def label_v5_result(self, date_str: str, code: str, open_px=None, close_px=None,
+                        pct_open=None, pct_day=None):
+        """T+0 打标: 更新单只 V5 结果的当日行情(只更新列, 不动选股快照)"""
+        self._validate_date(date_str)
+        with self._conn() as c:
+            c.execute("""UPDATE v5_results SET
+                open_px=?, close_px=?, pct_open=?, pct_day=?, labeled_at=datetime('now','localtime')
+                WHERE date=? AND code=?""",
+                (open_px, close_px, pct_open, pct_day, date_str, code))
+
+    def label_v5_next(self, date_str: str, code: str, next_date, next_open_pct=None,
+                      next_close_pct=None, next_stop_hit=None):
+        """T+1 打标: 次日开盘/收盘表现 + 是否触及-3%止损(卖出纪律验证核心字段)"""
+        self._validate_date(date_str)
+        with self._conn() as c:
+            c.execute("""UPDATE v5_results SET
+                next_date=?, next_open_pct=?, next_close_pct=?, next_stop_hit=?,
+                labeled_at=datetime('now','localtime')
+                WHERE date=? AND code=?""",
+                (next_date, next_open_pct, next_close_pct, next_stop_hit, date_str, code))
 
     def load_bid_pool(self, date_str: str) -> List[Dict]:
         """读取当日候选池(bid_pool), 对照组抽样用"""
