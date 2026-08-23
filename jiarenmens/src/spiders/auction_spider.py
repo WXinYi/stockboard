@@ -293,6 +293,31 @@ class AuctionStore:
                 if _col not in _have_res:
                     c.execute(f"ALTER TABLE candidate_results ADD COLUMN {_col} {_ddl}")
 
+    @staticmethod
+    def _validate_date(date_str):
+        """数据日期合法性校验(2026-08-23 审计后新增):
+        1. 格式必须 YYYY-MM-DD(防 None/'0'/畸形串落库);
+        2. 不允许晚于今天(防时钟错乱/接口回传未来日期);
+        3. 距今超过3天的历史日期拒绝写入 —— 更早历史属于回填工具
+           (verify_dragon.py --start/--end)的职责; 日常 scan 只服务最近3天竞价快照。
+        校验失败 raise ValueError。"""
+        import re as _re
+        from datetime import date as _date, datetime as _dt
+        s = str(date_str or "")
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            raise ValueError(f"数据日期格式非法: {date_str!r}(应为 YYYY-MM-DD)")
+        try:
+            d = _dt.strptime(s, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"数据日期不是有效日历日: {s!r}")
+        today = _date.today()
+        if d > today:
+            raise ValueError(f"数据日期在未来: {s} > 今天{today.isoformat()}, 疑似时钟/接口错乱, 拒绝写入")
+        if (today - d).days > 3:
+            raise ValueError(
+                f"数据日期过旧: {s}(距今{(today - d).days}天)。"
+                f"scan 只写最近3天的竞价快照; 历史回填请用 verify_dragon.py --start/--end")
+
     def _conn(self):
         conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
@@ -300,6 +325,7 @@ class AuctionStore:
 
     def save_mood(self, date_str: str, mood: Dict, capacity: Dict, bid_total: Dict,
                   bid_count: List, zt_expr: Dict):
+        self._validate_date(date_str)
         with self._conn() as c:
             info = (mood.get("info") or [{}])[0]
             c.execute("""INSERT OR REPLACE INTO mood_daily
@@ -312,6 +338,7 @@ class AuctionStore:
                              "bid_count": bid_count, "zt_expr": zt_expr}, ensure_ascii=False)))
 
     def save_board_bid(self, date_str: str, data: Dict):
+        self._validate_date(date_str)
         with self._conn() as c:
             for lt, key in (("L1", "List1"), ("L2", "List2"), ("L3", "List3")):
                 for row in data.get(key, []):
@@ -323,6 +350,7 @@ class AuctionStore:
                         (date_str, row[0], row[1], lt, float(row[2]), float(row[3]), float(row[5])))
 
     def save_bid_pool(self, date_str: str, rows: List[List], source: str):
+        self._validate_date(date_str)
         with self._conn() as c:
             for r in rows:
                 if len(r) < 13:
@@ -342,6 +370,7 @@ class AuctionStore:
         stock_bids: {code: [[time,px,dir,cum_vol],...]} 或 {code: {"code":..,"name":..,"bid":[...]}}
         pool: 候选池(取 name, 可选)"""
         import json
+        self._validate_date(date_str)
         with self._conn() as c:
             for code, v in stock_bids.items():
                 if isinstance(v, dict):
@@ -359,6 +388,7 @@ class AuctionStore:
     def save_limit_pool(self, date_str: str, groups: List[tuple]):
         """groups: [(pid_type, rows), ...] — DailyLimitPerformance 每个 PidType 的 info
         可能含多个分组数组, 需先展平再按 PidType 落库"""
+        self._validate_date(date_str)
         with self._conn() as c:
             for pid_type, rows in groups:
                 for r in rows:
@@ -373,6 +403,7 @@ class AuctionStore:
                          str(r[12] or ""), float(r[13] or 0), str(r[18] if len(r) > 18 else "")))
 
     def save_genes(self, date_str: str, genes: Dict[str, List]):
+        self._validate_date(date_str)
         with self._conn() as c:
             for code, g in genes.items():
                 if len(g) < 6:
@@ -386,6 +417,7 @@ class AuctionStore:
     def save_candidates(self, date_str: str, candidates: List[Dict], watch: List[Dict]):
         """落库当日选股(core/watch 两层) + S1-S6 因子分 + 原始因子(回测输入)。
         候选 dict 来自 run_funnel: {code,name,score,tier,max,factors,sub,gene,boards,tag,resonance}"""
+        self._validate_date(date_str)
         with self._conn() as c:
             # 日期隔离: 每次扫描产出完整名单, 先清当日旧行, 避免 INSERT OR REPLACE 残留上次名单多出/剔除的 code
             c.execute("DELETE FROM candidates WHERE date=?", (date_str,))
@@ -428,6 +460,7 @@ class AuctionStore:
         pct_bid = 收盘相对竞价价(策略口径); pct_day = 收盘相对昨收(当天涨跌幅);
         pct_open_day = 收盘相对开盘价(开盘买入); pct_e31 = 收盘相对 09:31 价(E层确认入场)
         role: NULL=候选 / control=随机池基准 / rejected_fade=高开低走被拒组(对照组)"""
+        self._validate_date(date_str)
         with self._conn() as c:
             c.execute("""INSERT OR REPLACE INTO candidate_results
                 (date, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
@@ -438,6 +471,7 @@ class AuctionStore:
 
     def save_rejected(self, date_str: str, rows: List[Dict]):
         """落库漏斗被拒明细(funnel_rejected), 对照组(高开低走/对倒/资金不足)打标基础"""
+        self._validate_date(date_str)
         with self._conn() as c:
             c.execute("DELETE FROM funnel_rejected WHERE date=?", (date_str,))
             c.executemany("""INSERT OR REPLACE INTO funnel_rejected (date, code, name, reason)
@@ -464,6 +498,7 @@ class AuctionStore:
             return [dict(r) for r in rows]
 
     def load_bid_pool(self, date_str: str) -> List[Dict]:
+        self._validate_date(date_str)
         with self._conn() as c:
             rows = c.execute("SELECT * FROM bid_pool WHERE date=?", (date_str,)).fetchall()
             return [dict(r) for r in rows]

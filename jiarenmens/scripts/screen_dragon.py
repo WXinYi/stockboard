@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""龙头战法选手筛选 v2 —— 用拉长的涨停池(22交易日) + 次日收益重筛全选手池
+"""龙头战法选手筛选 v2 —— 用拉长的涨停池(28交易日) + 次日收益重筛全选手池
 
 目的: 帮用户从 12527 名有买入记录的选手中, 筛出值得追踪的龙头战法选手。
 
 两阶段:
-  A. 离线: 全池涨停率/连板率/最高板 (涨停池 07-15~08-13 落库 auction.db)
+  A. 离线: 全池涨停率/连板率/最高板 (涨停池 07-15~08-21 落库 auction.db)
   B. 联网: 候选选手涨停日买入的次日收益 (腾讯 qfq 日K, 带缓存) + 实际兑现 + 持仓收益上下文
 
 指标口径:
@@ -33,10 +33,10 @@ CRAWL_DB = DATA_DIR / "crawl_data.db"
 AUCTION_DB = DATA_DIR / "auction.db"
 KLINE_CACHE = DATA_DIR / "kline_cache.json"
 
-# 当前已追踪的龙头选手 (输出时高亮)
-TRACKED = {"900315547", "900428477", "900351276", "900018239"}
+# 当前已追踪的龙头选手 (输出时高亮, 与 notify_daily.py DRAGON 一致)
+TRACKED = {"900422074", "900443192", "900315547", "900306078", "900450475"}
 
-WINDOW = ("2026-07-15", "2026-08-13")
+WINDOW = ("2026-07-15", "2026-08-21")
 
 
 def is_stock(code: str, name: str) -> bool:
@@ -117,7 +117,7 @@ def main():
     with sqlite3.connect(CRAWL_DB) as conn:
         c = conn.cursor()
         c.row_factory = sqlite3.Row
-        # 买入限定窗口(涨停池覆盖 07-15~08-13); 卖出不设上界(08-14 当日卖出也要能闭合持仓)
+        # 买入限定窗口(涨停池覆盖 07-15~08-21); 卖出不设上界(最近卖出也要能闭合持仓)
         for r in c.execute("""SELECT zh_id, stock_name, stock_code, trade_date, direction, MAX(price) price
                               FROM trades
                               WHERE (direction='买入' AND trade_date BETWEEN ? AND ?)
@@ -246,9 +246,10 @@ def main():
     print(f"\n💾 全量结果(含未展示)已存: {out}")
 
     # 当前追踪选手的位置
-    print("\n=== 当前在追踪的 4 位龙头选手 ===")
-    for wid, nm in [("900315547", "西门星辰啊"), ("900428477", "多多易战"),
-                    ("900351276", "新生代柚子04"), ("900018239", "新缘众妙之门")]:
+    print("\n=== 当前在追踪的 5 位龙头选手 ===")
+    for wid, nm in [("900422074", "三石问路"), ("900443192", "渔樵对二"),
+                    ("900315547", "西门星辰啊"), ("900306078", "每天涨停的布鲁斯"),
+                    ("900450475", "敢作敢当的武研琳")]:
         idx = next((i for i, cd in enumerate(candidates, 1) if cd["zh_id"] == wid), None)
         print(f"  {nm}: " + (f"榜上第 {idx} 名" if idx else "未进入榜单(样本/阈值不足)"))
     print("\n说明: 收红率=次日收盘>0比例(打板胜率); 兑现=选手自身买入→最近卖出实际收益; 月/总收益为当前战绩, 非窗口口径")
