@@ -35,6 +35,12 @@ jobs:
       - name: 数据采集
         run: cd jiarenmens && python main.py --checkpoint-reset
 
+      # 东财人气榜快照(每天最多两份: 09:25 auction 已存 am 则此处自动记 pm, 同(date,snap)去重)
+      - name: 人气榜快照
+        if: success()
+        continue-on-error: true
+        run: cd jiarenmens && python scripts/auction_scan.py --hot-rank
+
       - name: 导出 JSON
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
 
