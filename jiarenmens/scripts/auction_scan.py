@@ -38,7 +38,7 @@ import requests  # noqa: E402
 from src.analysis import auction_funnel as funnel  # noqa: E402
 from src.config import AUCTION_OUT, DATA_DIR  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
-from src.spiders.auction_spider import AuctionStore, KPLSpider  # noqa: E402
+from src.spiders.auction_spider import AuctionStore, HotRankStore, KPLSpider  # noqa: E402
 
 BJ_TZ = ZoneInfo("Asia/Shanghai")
 WORKERS = 20          # 并发
@@ -445,6 +445,70 @@ def _confirm_text(rows: List[Dict]) -> str:
 # =============================================================================
 # 钉钉消息
 # =============================================================================
+
+def collect_em_hot(top: int = 100) -> List[Dict]:
+    """东财股吧人气榜 TOP100(实时, 无历史接口)。
+    返回 [{rank, code, name, rise}];名称用 qt.gtimg 批量补(查不到存空串不阻塞)。"""
+    url = "https://emappdata.eastmoney.com/stockrank/getAllCurrentList"
+    body = json.dumps({"appId": "appId01", "globalId": "786e4c21-70dc-435a-93bb-38",
+                       "marketType": "", "pageNo": 1, "pageSize": top}).encode()
+    req = requests.post(url, data=body, timeout=10,
+                        headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"})
+    req.raise_for_status()
+    d = req.json()
+    if d.get("code") != 0:
+        raise RuntimeError(f"人气榜接口异常: code={d.get('code')}")
+    items = d.get("data") or []
+    rows = []
+    for it in items[:top]:
+        sc = it.get("sc", "")            # 形如 SH688836 / SZ002716
+        mkt = sc[:2].lower()             # sh / sz
+        code = sc[2:]
+        rows.append({"rank": it.get("rk"), "code": code, "name": "",
+                     "rise": it.get("rc") or 0, "_mkt": mkt})
+    # 批量补名称(qt.gtimg 一次可拼多只)
+    try:
+        q = ",".join(f"{r['_mkt']}{r['code']}" for r in rows)
+        resp = requests.get(f"https://qt.gtimg.cn/q={q}", timeout=10,
+                            headers={"User-Agent": "Mozilla/5.0"})
+        text = resp.content.decode("gbk", "replace")
+        name_map = {}
+        for seg in text.split(";"):
+            seg = seg.strip()
+            if "=" not in seg or "~" not in seg:
+                continue
+            parts = seg.split("~")
+            full = parts[0].split("=")[0].strip().lstrip("v_")   # v_sh603618 → sh603618
+            code = full[2:] if full[:2] in ("sh", "sz") else full
+            name_map[code] = parts[1]
+        for r in rows:
+            r["name"] = name_map.get(r["code"], "")
+    except Exception as e:
+        print(f"      ⚠️ 名称补充失败(存空串): {e}")
+    for r in rows:
+        r.pop("_mkt", None)
+    return rows
+
+
+def hot_rank_job(snap: Optional[str] = None, dry_run: bool = False) -> int:
+    """--hot-rank 独立入口: 抓东财人气榜并落 hot_rank.db(crawl.yml 午后调用)。
+    snap 自动判定: 当日无快照→'am'(竞价失败兜底), 已有→'pm'。同(date,snap)重复写入跳过。"""
+    from src.spiders.auction_spider import HotRankStore
+    date_str = datetime.now(BJ_TZ).strftime("%Y-%m-%d")
+    hr = HotRankStore()
+    if snap is None:
+        snap = "am" if not hr.has_snapshot(date_str, "am") else "pm"
+    try:
+        rows = collect_em_hot(top=100)
+    except Exception as e:
+        print(f"❌ 人气榜采集失败: {e}")
+        return 1
+    print(f"东财人气榜 {len(rows)} 条 → {date_str}/{snap}" + (" (dry-run 不落库)" if dry_run else ""))
+    if not dry_run:
+        saved = hr.save_hot_rank(date_str, snap, rows)
+        print("已存在同快照,跳过" if not saved else f"✅ 已落库 hot_rank.db ({snap}, 前{len(rows)})")
+    return 0
+
 
 def market_regime(date_str: str) -> Dict:
     """市况判别(三尺): 主线 / 过渡 / 电风扇。
@@ -1286,6 +1350,21 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         print(f"      ⚠️ V5 筛选失败(不影响主流程): {e}")
         v5_list = []
 
+    # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
+    if not dry_run:
+        print(f"[5.7/6] 东财人气榜快照(am)")
+        try:
+            hot = collect_em_hot(top=100)
+            hr = HotRankStore()
+            snap = "am" if not hr.has_snapshot(date_str, "am") else None
+            if snap:
+                saved = hr.save_hot_rank(date_str, snap, hot)
+                print(f"      → {len(hot)} 条已存({snap})" if saved else "      → 已存在,跳过")
+            else:
+                print("      → 今日已有快照,跳过")
+        except Exception as e:
+            print(f"      ⚠️ 人气榜采集失败(不影响主流程): {e}")
+
     print(f"[6/6] 输出 + 推送 (耗时 {time.time()-t0:.0f}s)")
     out = {
         "date": date_str, "generated_at": crawl_time,
@@ -1354,6 +1433,8 @@ def main():
     ap.add_argument("--v5-report", action="store_true",
                     help="V5 回测报告: 按分组(候选/换手被拒对照/市值被拒对照·主攻/次攻/半仓·昨日强/低位)"
                          "统计 T+0 与 T+1 收益, 策略调整依据")
+    ap.add_argument("--hot-rank", action="store_true",
+                    help="东财人气榜快照(TOP100)落 hot_rank.db; snap 自动判定 am/pm(crawl.yml 午后调用)")
     ap.add_argument("--backfill-factors", action="store_true",
                     help="历史候选日K因子回填(ma60_above/ret20/macd_ok/kdj_ok; 委比无历史数据留 NULL)")
     ap.add_argument("--dry-run", action="store_true", help="不推钉钉")
@@ -1369,6 +1450,8 @@ def main():
         return label_results(d)
     if args.v5_report:
         return v5_report()
+    if args.hot_rank:
+        return hot_rank_job()
     if args.confirm:
         e_confirm(Path(args.candidates))
         return 0

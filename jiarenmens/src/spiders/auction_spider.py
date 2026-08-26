@@ -571,3 +571,67 @@ class AuctionStore:
         with self._conn() as c:
             rows = c.execute("SELECT * FROM limit_pool WHERE date=?", (date_str,)).fetchall()
             return [dict(r) for r in rows]
+
+
+class HotRankStore:
+    """东财人气榜快照存储(独立 hot_rank.db):
+    auction.yml(09:25 am)与 crawl.yml(13:05 pm)双 workflow 写入,独立文件避免提交冲突。
+    一天最多两份快照;同 (date, snap) 重复写入自动跳过。"""
+
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or (DATA_DIR / "hot_rank.db")
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.db_path) as c:
+            c.execute("""CREATE TABLE IF NOT EXISTS hot_rank (
+                date TEXT, snap TEXT, rank INTEGER,
+                code TEXT, name TEXT, rise INTEGER,
+                crawled_at TEXT,
+                PRIMARY KEY (date, snap, rank)
+            )""")
+
+    @staticmethod
+    def _validate_date(date_str: str):
+        """与 AuctionStore 同规则:格式合法、不晚于今天、距今≤3天"""
+        import re as _re
+        from datetime import date as _date, datetime as _dt
+        s = str(date_str or "")
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            raise ValueError(f"数据日期格式非法: {date_str!r}")
+        try:
+            d = _dt.strptime(s, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"数据日期不是有效日历日: {s!r}")
+        today = _date.today()
+        if d > today:
+            raise ValueError(f"数据日期在未来: {s} > {today.isoformat()}")
+        if (today - d).days > 3:
+            raise ValueError(f"数据日期过旧: {s}(scan 只写最近3天)")
+
+    def has_snapshot(self, date_str: str, snap: str) -> bool:
+        self._validate_date(date_str)
+        with sqlite3.connect(self.db_path) as c:
+            return c.execute("SELECT 1 FROM hot_rank WHERE date=? AND snap=? LIMIT 1",
+                             (date_str, snap)).fetchone() is not None
+
+    def save_hot_rank(self, date_str: str, snap: str, rows: List[Dict]) -> bool:
+        """写入一份快照(rows: rank/code/name/rise);已存在同(date,snap)则跳过返回 False"""
+        self._validate_date(date_str)
+        assert snap in ("am", "pm"), f"snap 非法: {snap}"
+        if self.has_snapshot(date_str, snap):
+            return False
+        with sqlite3.connect(self.db_path) as c:
+            c.executemany("""INSERT OR REPLACE INTO hot_rank
+                (date, snap, rank, code, name, rise, crawled_at) VALUES (?,?,?,?,?,?,datetime('now','localtime'))""",
+                [(date_str, snap, r["rank"], r["code"], r["name"], r.get("rise") or 0) for r in rows])
+        return True
+
+    def load_hot_rank(self, date_str: str, snap: Optional[str] = None) -> List[Dict]:
+        with sqlite3.connect(self.db_path) as c:
+            c.row_factory = sqlite3.Row
+            if snap:
+                rows = c.execute("SELECT * FROM hot_rank WHERE date=? AND snap=? ORDER BY rank",
+                                 (date_str, snap)).fetchall()
+            else:
+                rows = c.execute("SELECT * FROM hot_rank WHERE date=? ORDER BY snap, rank",
+                                 (date_str,)).fetchall()
+            return [dict(r) for r in rows]
