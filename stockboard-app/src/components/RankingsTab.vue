@@ -9,7 +9,7 @@ import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 const router = useRouter()
 const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality } = inject('stockData')
 
-const WATCHED = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455', '900372673'])
+const WATCHED = new Set(['900456476', '900450475', '900351276', '900401128', '900422074', '900443192', '900315547', '900240956', '900376763', '900439290'])
 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 

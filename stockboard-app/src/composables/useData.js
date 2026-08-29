@@ -3,7 +3,8 @@ import {
   fetchCore, fetchCopy, fetchStocks, fetchNameMap, fetchPlayersIndex,
 } from '../data/loader.js'
 
-const WATCHED_IDS = new Set(['900240956', '900354116', '900438148', '900376763', '900013608', '900429191', '900369020', '900223455', '900372673'])
+// 置顶 = 钉钉推送的 10 名选手(2026-08-30 对齐 main.py WATCHED_PLAYERS + notify_daily DRAGON)
+const WATCHED_IDS = new Set(['900456476', '900450475', '900351276', '900401128', '900422074', '900443192', '900315547', '900240956', '900376763', '900439290'])
 
 // 分片 ref 表 + 加载器表（ensureSlices 用）
 const SLICE_REF = {

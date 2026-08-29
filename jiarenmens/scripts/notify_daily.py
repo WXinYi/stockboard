@@ -32,19 +32,10 @@ DATA_DIR = REPO_ROOT / "stockboard-app" / "public" / "data" / "latest"
 BASE_URL = "https://WXinYi.github.io/stockboard"
 STATE_FILE = REPO_ROOT / "jiarenmens" / "data" / "last_notify_state.json"
 
-# 关注名单单一数据源 = main.py 的 WATCHED_PLAYERS（顺序即置顶顺序, 前四位为龙头验证组）
+# 关注名单单一数据源 = main.py 的 WATCHED_PLAYERS（全部选手一个组, 顺序即置顶顺序）
 from main import WATCHED_PLAYERS  # noqa: E402
 from src.utils import visibility  # noqa: E402
 WATCHED = {zh: name for zh, name in WATCHED_PLAYERS}
-VERIFY_IDS = [zh for zh, _ in WATCHED_PLAYERS[:4]]
-
-# 验证组跟随提示(手工维护, 按选手打法而定)
-FOLLOW_HINT = {
-    "900456476": "满仓单票每日接力: 明日看它新买入标的的竞价承接",
-    "900450475": "跨周期买中段确认龙头: 它下一个买的板块龙头=新主线信号",
-    "900351276": "高频试错: 只跟连续 2 日同向的票",
-    "900401128": "空间锚接力: 它买的空间锚次日溢价=接力质量标尺",
-}
 # 操作风格标签
 STYLES = {
     "900456476": "满仓单票每日接力", "900450475": "跨周期中段龙头", "900351276": "高频试错",
@@ -264,14 +255,6 @@ def build_follow_report(date_str: str, seen: dict, first_run: bool):
         sells = [t for t in trades if t.get("dr") == "卖出"]
         lines.append(_side_line("买", buys, quotes, updated[wid], first_run, new_counter))
         lines.append(_side_line("卖", sells, quotes, updated[wid], first_run, new_counter))
-        if positions:
-            po = " · ".join(
-                _stock_link(x.get("sc", ""), x.get("sn", "")) +
-                (f" {x.get('pr'):+.1f}%" if x.get("pr") is not None else "")
-                for x in positions[:5])
-            lines.append(f"持仓: {po}")
-        if wid in FOLLOW_HINT:
-            lines.append(f"➤ 跟随: {FOLLOW_HINT[wid]}")
         lines.append("")
 
     if hidden:
@@ -280,7 +263,7 @@ def build_follow_report(date_str: str, seen: dict, first_run: bool):
         lines.append("")
     lines.append("---")
     lines.append("**➤ 跟单纪律**")
-    lines.append("- 验证组动作=方向参考, 跟随须次日竞价确认(高开强才跟)")
+    lines.append("- 跟随任何选手动作前, 先看次日竞价确认(高开强才跟)")
     lines.append("- 共识≥2人同向才构成信号; 退潮期通知后只看不做")
     text = "\n".join(lines)
     return text, new_counter[0], updated
