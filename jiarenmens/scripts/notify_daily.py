@@ -34,6 +34,7 @@ STATE_FILE = REPO_ROOT / "jiarenmens" / "data" / "last_notify_state.json"
 
 # 关注名单单一数据源 = main.py 的 WATCHED_PLAYERS（顺序即置顶顺序, 前四位为龙头验证组）
 from main import WATCHED_PLAYERS  # noqa: E402
+from src.utils import visibility  # noqa: E402
 WATCHED = {zh: name for zh, name in WATCHED_PLAYERS}
 VERIFY_IDS = [zh for zh, _ in WATCHED_PLAYERS[:4]]
 
@@ -193,13 +194,18 @@ def _side_line(label: str, trades: list, quotes: dict, seen_set: set, first_run:
 
 
 def build_follow_report(date_str: str, seen: dict, first_run: bool):
-    """合并版跟单日报。返回 (text, new_count, updated_seen)"""
-    updated = {wid: set(seen.get(wid, set())) for wid in WATCHED}
+    """合并版跟单日报。返回 (text, new_count, updated_seen)
+    组合已隐藏/删除的选手自动跳过(visibility 状态由 watched_flash 每早探测更新)"""
+    vis_state = visibility.load()
+    hidden = [wid for wid in WATCHED if visibility.is_hidden(wid, vis_state)]
+    active = [wid for wid in WATCHED if wid not in hidden]
+
+    updated = {wid: set(seen.get(wid, set())) for wid in active}
     new_counter = [0]
 
     details = {}
     quote_codes = set()
-    for wid in WATCHED:
+    for wid in active:
         trades, positions = _player_detail(wid, date_str)
         details[wid] = (trades or [], positions)
         for t in trades or []:
@@ -225,7 +231,7 @@ def build_follow_report(date_str: str, seen: dict, first_run: bool):
     # ── 当日共识(≥2人同向) ──
     buy_cnt, sell_cnt = defaultdict(set), defaultdict(set)
     names = {}
-    for wid in WATCHED:
+    for wid in active:
         for t in details[wid][0]:
             names[t.get("sc", "")] = t.get("sn", "")
             (buy_cnt if t.get("dr") == "买入" else sell_cnt)[t.get("sc", "")].add(wid)
@@ -242,7 +248,7 @@ def build_follow_report(date_str: str, seen: dict, first_run: bool):
     lines.append("")
 
     # ── 逐人卡片 ──
-    for wid in WATCHED:
+    for wid in active:
         trades, positions = details[wid]
         nm = WATCHED[wid]
         head = f"**{_player_link(wid, nm)}**"
@@ -268,6 +274,10 @@ def build_follow_report(date_str: str, seen: dict, first_run: bool):
             lines.append(f"➤ 跟随: {FOLLOW_HINT[wid]}")
         lines.append("")
 
+    if hidden:
+        lines.append(f"🔇 组合已隐藏(自动跳过, 恢复后自动回归): "
+                     + "、".join(WATCHED[w] for w in hidden))
+        lines.append("")
     lines.append("---")
     lines.append("**➤ 跟单纪律**")
     lines.append("- 验证组动作=方向参考, 跟随须次日竞价确认(高开强才跟)")

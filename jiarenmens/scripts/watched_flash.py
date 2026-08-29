@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 from main import WATCHED_PLAYERS  # noqa: E402
 from src.spiders.api_detail import crawl_player_all_data  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
+from src.utils import visibility  # noqa: E402
 
 BASE_URL = "https://WXinYi.github.io/stockboard"
 BJ_TZ = ZoneInfo("Asia/Shanghai")
@@ -32,24 +33,29 @@ def _stock_link(code: str, name: str) -> str:
 
 
 def fetch_all(date_str: str):
-    """串行拉 13 名选手组合接口 → {zh: (trades_today, positions)}"""
+    """串行拉 13 名选手组合接口 → {zh: {name, trades_today, positions, ok}}"""
     out = {}
     for zh, nm in WATCHED_PLAYERS:
         try:
-            _, positions, trades = crawl_player_all_data(zh)
+            detail, positions, trades = crawl_player_all_data(zh)
             today = [t for t in trades if t.get("trade_date") == date_str]
-            out[zh] = {"name": nm, "trades": today, "positions": positions}
+            out[zh] = {"name": nm, "trades": today, "positions": positions,
+                       "ok": detail is not None}
         except Exception as e:
-            out[zh] = {"name": nm, "trades": [], "positions": [], "err": str(e)}
+            # 网络等瞬时异常不算"隐藏"(隐藏由接口返回空判定), 明天自动重探
+            out[zh] = {"name": nm, "trades": [], "positions": [], "ok": True, "err": str(e)}
     return out
 
 
 def build_markdown(date_str: str, data: dict, hhmm: str) -> str:
     lines = [f"## 🔍 竞价跟单快报 · {date_str} {hhmm}",
              "竞价阶段成交如下(9:30 全量采集后的《跟单日报》为准)", ""]
-    act, quiet = [], []
+    act, quiet, hidden = [], [], []
     for zh, nm in WATCHED_PLAYERS:
         o = data.get(zh, {})
+        if not o.get("ok", True):
+            hidden.append(nm)          # 组合已隐藏/删除 → 自动跳过, 恢复后自动回归
+            continue
         if o.get("err"):
             quiet.append(f"{nm}(拉取失败)")
             continue
@@ -82,6 +88,9 @@ def build_markdown(date_str: str, data: dict, hhmm: str) -> str:
     if quiet:
         lines.append(f"💤 无成交: {'、'.join(quiet)}")
         lines.append("")
+    if hidden:
+        lines.append(f"🔇 组合已隐藏(自动跳过, 恢复后自动回归): {'、'.join(hidden)}")
+        lines.append("")
     lines.append("— 完整持仓/浮盈见 09:30 采集后的《超短跟单日报》")
     return "\n".join(lines)
 
@@ -95,6 +104,8 @@ def main():
     date_str = args.date or datetime.now(BJ_TZ).strftime("%Y-%m-%d")
     hhmm = datetime.now(BJ_TZ).strftime("%H:%M")
     data = fetch_all(date_str)
+    # 可见性状态更新: 接口返回空的选手记为隐藏, 恢复公开自动回归(跟单日报同读此状态)
+    visibility.update({zh: not o.get("ok", True) for zh, o in data.items()})
     text = build_markdown(date_str, data, hhmm)
 
     if args.dry_run:
