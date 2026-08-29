@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          git add -f stockboard-app/public/data/latest/auction.json jiarenmens/data/auction.db jiarenmens/data/hot_rank.db
+          git add -f stockboard-app/public/data/latest/auction.json jiarenmens/data/auction.db jiarenmens/data/hot_rank.db jiarenmens/data/player_visibility.json
           if git diff --staged --quiet; then
             echo "auction.json 无变化, 跳过提交"
           else
