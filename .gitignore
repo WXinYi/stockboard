@@ -45,3 +45,9 @@ uv.lock
 CLAUDE.md
 *.db-shm
 *.db-wal
+
+# 盘中监控(本机独享, 不提交)
+jiarenmens/data/intraday.db
+jiarenmens/data/analysis.db
+jiarenmens/data/intraday_page.html
+jiarenmens/data/watchlist_extra.txt

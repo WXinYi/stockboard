@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import requests  # noqa: E402
 
 from src.analysis import auction_funnel as funnel  # noqa: E402
+from src.analysis.emotion_cycle import compute_cycle  # noqa: E402
 from src.config import AUCTION_OUT, DATA_DIR  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.spiders.auction_spider import AuctionStore, HotRankStore, KPLSpider  # noqa: E402
@@ -581,12 +582,18 @@ def market_regime(date_str: str) -> Dict:
 
 
 def screen_v5(date_str: str, pool: Dict[str, Dict], limit_codes: set,
-              stock_bids: Optional[Dict[str, List]] = None) -> List[Dict]:
+              stock_bids: Optional[Dict[str, List]] = None,
+              cycle_res: Optional[Dict] = None) -> List[Dict]:
     """V5.2 开盘首枪筛选(电风扇版): 竞价涨幅2~6% + 流通市值>50亿 + 换手≥0.15% + 非ST。
     身位分层: 首板/2连板=正常仓可主攻; 3连板以上 或 昨日大阳≥6%(非涨停) = ⚠️半仓。
     分时形态软化(v5.2): 竞价高开低走(复用老系统 _is_high_open_fade)不再一票否决 → ⚠️半仓
     (8/21 实证: 该门拦掉沃森+2.4/通鼎+5.7/飞龙+4.8 三只大肉, 也拦掉中京-4.9 一只大坑 → 降级为仓位调节器)。
-    昨日涨幅按 date_str 显式锚定取前一交易日(回放/实时窗口一致)。"""
+    昨日涨幅按 date_str 显式锚定取前一交易日(回放/实时窗口一致)。
+    第五刀·周期闸门(v5.3): 选股池由情绪周期产生 —
+      退潮/冰点 → V5 静默(全部转 v5_off_cycle, 只落库供回测);
+      分歧     → 仅主线板块内, 且一律半仓;
+      发酵/高潮 → 仅主线板块内;
+      引擎不可用 → 不闸门(降级为 v5.2 原行为)。"""
     def _prev_pct(code):
         """date_str 前一交易日的涨幅(腾讯日K, 锚定日期防回放错位)"""
         code = str(code)
@@ -663,11 +670,32 @@ def screen_v5(date_str: str, pool: Dict[str, Dict], limit_codes: set,
             "boards": [b for b in re.split(r"[,，、/|;；]", item.get("plates") or "") if b][:2],
         })
         time.sleep(0.03)
+    # ── 第五刀(周期闸门): 选股池由情绪周期产生, 对照组(v5_rej_*)不受闸门影响 ──
+    stage = (cycle_res or {}).get("stage")
+    mainlines = {m["board"] for m in (cycle_res or {}).get("mainlines", [])} or None
+    for v in out:
+        v["cycle_stage"] = stage
+        v["in_main"] = bool(mainlines) and bool(set(v["boards"]) & mainlines)
+    if stage:
+        if stage in ("退潮", "冰点"):
+            for v in out:
+                if v["group_tag"] == "v5":
+                    v["group_tag"] = "v5_off_cycle"
+        else:
+            for v in out:
+                if v["group_tag"] == "v5":
+                    if not v["in_main"]:
+                        v["group_tag"] = "v5_off_cycle"
+                    elif stage == "分歧":
+                        v["half_pos"] = True  # 分歧期一律半仓
     # 排序纯看质量: 换手高优先 → 竞价涨幅高优先(身位只做仓位标注, 不参与排序/资格)
     # 排序后授予 pos_tag(main/sub, 与推送一致), 落库供回测区分主攻/次攻收益
+    # 主攻/次攻只在通过周期闸门的 v5 行里授予
     out.sort(key=lambda x: (-x["turnover"], -x["bid_pct"]))
-    main_idx = next((i for i, v in enumerate(out) if not v["half_pos"]), None)
-    sub_idx = next((i for i, v in enumerate(out) if not v["half_pos"] and i != main_idx), None)
+    main_idx = next((i for i, v in enumerate(out)
+                     if v["group_tag"] == "v5" and not v["half_pos"]), None)
+    sub_idx = next((i for i, v in enumerate(out)
+                    if v["group_tag"] == "v5" and not v["half_pos"] and i != main_idx), None)
     if main_idx is not None:
         out[main_idx]["pos_tag"] = "main"
     if sub_idx is not None:
@@ -675,14 +703,23 @@ def screen_v5(date_str: str, pool: Dict[str, Dict], limit_codes: set,
     return out
 
 
-def build_v5_message(v5_list: List[Dict], regime: Optional[Dict] = None) -> str:
-    """V5 钉钉段落: 市况判别 + 主攻/次攻 + 身位与仓位标注"""
+def build_v5_message(v5_list: List[Dict], regime: Optional[Dict] = None,
+                     cycle_res: Optional[Dict] = None) -> str:
+    """V5 钉钉段落: 周期闸门状态 + 市况判别 + 主攻/次攻 + 身位与仓位标注"""
+    lines = [""]
+    if cycle_res:
+        gate_txt = {"退潮": "🔒关闭(退潮期空仓纪律)", "冰点": "🔒关闭(冰点期空仓纪律)",
+                    "分歧": "🟡半开(仅主线内·一律半仓)", "发酵": "🟢开启(仅主线内)",
+                    "高潮": "🟢开启(仅主线内)"}.get(cycle_res["stage"], "off")
+        main_txt = "/".join(m["board"] for m in cycle_res["mainlines"][:3]) or "无"
+        lines.append(f"**🧭 周期: {cycle_res['stage']}** · V5闸门 {gate_txt} · 主线: {main_txt}")
     if not v5_list:
         head = ""
         if regime:
             head = f"\n**📡 市况: {regime['regime']}** ({' · '.join(regime['detail'])})\n"
-        return head + "\n**🔫 V5 开盘首枪**: 今日无候选(竞价无 2-6% 带量转强, 空仓)\n"
-    lines = [""]
+        reason = ("周期闸门关闭(空仓纪律)" if cycle_res and cycle_res["stage"] in ("退潮", "冰点")
+                  else "主线内无 2-6% 带量转强" if cycle_res else "竞价无 2-6% 带量转强")
+        return head + "\n".join(lines) + f"\n**🔫 V5 开盘首枪**: 今日无候选({reason})\n"
     if regime:
         lines.append(f"**📡 市况: {regime['regime']}** ({' · '.join(regime['detail'])})")
     lines.append(f"**🔫 V5 开盘首枪 {len(v5_list)} 只**:")
@@ -1338,14 +1375,24 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     _conn.close()
     print(f"      昨日涨停基准日: {_prev_limit_day} ({len(limit_codes)} 只)")
     try:
-        v5_list = screen_v5(date_str, pool, limit_codes, stock_bids=stock_bids)
-        print(f"      V5 候选 {len(v5_list)} 只"
-              + (f", 首选 {v5_list[0]['name']}" if v5_list else ""))
-        # V5 名单快照落库(v5_results): 候选 + 对照组(换手/市值被拒), 收盘后 --label 打标
-        store.save_v5_results(date_str, v5_list)
+        cycle_res = None
+        try:
+            cycle_res = compute_cycle(date_str, persist=False)
+            print(f"      周期: {cycle_res['stage']} (置信度 {cycle_res['confidence']}/9), "
+                  f"主线 {[m['board'] for m in cycle_res['mainlines'][:3]]}")
+        except Exception as e:
+            print(f"      ⚠️ 周期引擎不可用({e}), V5 不做周期闸门")
+        v5_list = screen_v5(date_str, pool, limit_codes, stock_bids=stock_bids,
+                            cycle_res=cycle_res)
         n_v5_cand = sum(1 for v in v5_list if v.get("group_tag") == "v5")
+        n_off = sum(1 for v in v5_list if v.get("group_tag") == "v5_off_cycle")
+        print(f"      V5 候选 {n_v5_cand} 只"
+              + (f", 首选 {next(v['name'] for v in v5_list if v['group_tag'] == 'v5')}"
+                 if n_v5_cand else "") + (f", 闸门外 {n_off} 只" if n_off else ""))
+        # V5 名单快照落库(v5_results): 候选 + 闸门外 + 对照组, 收盘后 --label 打标
+        store.save_v5_results(date_str, v5_list)
         n_v5_ctl = sum(1 for v in v5_list if (v.get("group_tag") or "").startswith("v5_rej"))
-        print(f"      → v5_results 落库: 候选 {n_v5_cand} + 对照 {n_v5_ctl}")
+        print(f"      → v5_results 落库: 候选 {n_v5_cand} + 闸门外 {n_off} + 对照 {n_v5_ctl}")
     except Exception as e:
         print(f"      ⚠️ V5 筛选失败(不影响主流程): {e}")
         v5_list = []
@@ -1371,6 +1418,14 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         "env": result["env"], "boards": boards,
         "candidates": result["candidates"], "watch": result.get("watch", []),
         "v5": v5_list, "regime": regime,
+        "cycle": ({
+            "stage": cycle_res["stage"], "confidence": cycle_res["confidence"],
+            "gate": {"退潮": "closed", "冰点": "closed", "分歧": "half",
+                     "发酵": "open", "高潮": "open"}.get(cycle_res["stage"], "off"),
+            "mainlines": [m["board"] for m in cycle_res["mainlines"]],
+            "leaders": [{"code": l["code"], "name": l["name"],
+                         "pid": l["pid"], "role": l["role"]} for l in cycle_res["leaders"]],
+        } if cycle_res else None),
         "empty_reason": result["empty_reason"],
         "rejected": result.get("rejected", [])[:50],  # JSON 只保留前 50 条(全量已落库)
         "stats": {"pool": len(pool), "genes": len(genes), "boards": len(boards)},
@@ -1385,7 +1440,9 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     print(f"✅ auction.json 已写入 {AUCTION_OUT} (核心 {len(result['candidates'])} + 备选 {len(result.get('watch', []))} 只 + V5 {len(v5_list)} 只)")
 
     if not dry_run:
-        text = build_message(date_str, result, boards, crawl_time) + build_v5_message(v5_list, regime)
+        v5_push = [v for v in v5_list if v.get("group_tag") == "v5"]
+        text = build_message(date_str, result, boards, crawl_time) \
+            + build_v5_message(v5_push, regime, cycle_res)
         try:
             resp = DingTalk().send_markdown(f"竞价抢筹 {date_str} {crawl_time}", text)
             print(f"📣 钉钉推送: {resp}")

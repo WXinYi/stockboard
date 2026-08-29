@@ -194,6 +194,21 @@ class KPLSpider:
                           "Index": 0, "Money": money, "apiv": "w31",
                           "StockID": stock_id, "UserID": "1973778", "IsBS": 0}, KPL_HOST_APP)
 
+    def stock_pankou(self, stock_id: str) -> Dict:
+        """盘口五档+实时快照(仅当日实时, 无历史): real{last_px,px_change_rate,avg_px,entrust_rate委比,
+        vol_ratio,turnover_ratio,up_px涨停价,down_px跌停价,preclose_px...}, weituo{s1..s10/b1..b10五档}"""
+        return self._get({"a": "GetStockPanKou", "c": "StockL2Data", "PhoneOSNew": 1,
+                          "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3", "VerSion": "5.20.0.2",
+                          "Token": self.token, "apiv": "w41", "StockID": stock_id,
+                          "UserID": self.user_id}, KPL_HOST_RT)
+
+    def stock_trend(self, stock_id: str, type_: int = 1) -> Dict:
+        """个股分时(增量, 仅当日实时): 含分时序列/实时涨幅/竞价成交额, 用于盘中走势与水下拉升识别"""
+        return self._get({"a": "GetStockTrendIncremental", "c": "StockL2Data", "PhoneOSNew": 1,
+                          "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3", "VerSion": "5.20.0.2",
+                          "Token": self.token, "apiv": "w41", "Type": type_,
+                          "StockID": stock_id, "UserID": self.user_id}, KPL_HOST_RT)
+
 
 # =============================================================================
 # 落库(独立 auction.db, 按日期当日覆盖)
@@ -206,6 +221,12 @@ class AuctionStore:
         self.db_path = db_path or (DATA_DIR / "auction.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        # 周期闸门: v5_results 记录选股时点的周期阶段(回测按阶段分组)
+        try:
+            with self._conn() as c:
+                c.execute("ALTER TABLE v5_results ADD COLUMN cycle_stage TEXT")
+        except Exception:
+            pass  # 列已存在
 
     def _init_db(self):
         with self._conn() as c:
@@ -508,13 +529,13 @@ class AuctionStore:
             c.executemany("""INSERT OR REPLACE INTO v5_results
                 (date, code, name, bid_pct, turnover, circ_mv,
                  prev_pct, height, was_limit, fade, half_pos,
-                 pos_tag, group_tag, boards)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 pos_tag, group_tag, boards, cycle_stage)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [(date_str, r["code"], r["name"], r.get("bid_pct"), r.get("turnover"),
                   r.get("circ_mv"), r.get("prev_pct"), r.get("height"),
                   int(bool(r.get("was_limit"))), int(bool(r.get("fade"))),
                   int(bool(r.get("half_pos"))), r.get("pos_tag"), r.get("group_tag"),
-                  ",".join(r.get("boards") or [])) for r in rows])
+                  ",".join(r.get("boards") or []), r.get("cycle_stage")) for r in rows])
 
     def load_v5_results(self, date_str: str) -> List[Dict]:
         with self._conn() as c:
