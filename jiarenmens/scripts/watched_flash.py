@@ -75,12 +75,9 @@ def build_markdown(date_str: str, data: dict, hhmm: str) -> str:
             ss = "、".join(_stock_link(t.get("stock_code", ""), t.get("stock_name", "")) +
                            (f" {t.get('position_ratio', '')}" if t.get("position_ratio") else "")
                            for t in sells) or "无"
-            po = " · ".join(f"{p.get('stock_name', '?')} {(p.get('profit_ratio') or 0):+.1f}%"
-                            for p in (o.get("positions") or [])[:3]) or "空仓"
             lines.append(f"**[{nm}]({BASE_URL}/#/player/{zh})**")
             lines.append(f"🛒 买: {bs}")
             lines.append(f"🏃🏻‍♂️ 卖: {ss}")
-            lines.append(f"💼 持仓: {po}")
             lines.append("")
     else:
         lines.append("13 名关注选手竞价阶段均无成交。")
