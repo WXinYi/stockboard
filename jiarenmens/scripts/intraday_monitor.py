@@ -46,29 +46,31 @@ BOOST_INTERVAL = 15
 SIGNAL_COOLDOWN = 600             # 同票同信号冷却(s)
 BOARD_COOLDOWN = 300
 
-# ---------------- 信号定义 → 买卖建议(话术, 来源: 龙头战法文章) ----------------
+# ---------------- 信号定义 → 动作结论(直白版) + 纪律话术(来源: 龙头战法文章) ----------------
 ADVICE = {
-    "水下直线拉升": ("🚀", "green",
-        "弱转强候选：低开被拉起，看是否站稳分时均价；回踩不破均价可低吸，不追已高开>7%的票"),
-    "快速拉升": ("🚀", "green",
-        "直线拉升：结合板块同动判断是主线修复还是个股脉冲；放量站稳均价才动手"),
-    "封板": ("🔴", "bright",
-        "封板：首次封板看封单是否持续增大；持仓拿住（看准坚定持有到巅峰），未持有打板需确认板块共振"),
-    "炸板": ("💥", "red",
-        "炸板：封单不稳，纪律第一——不板即出（非趋势/逻辑票），持仓先减半，观察回封力度"),
-    "回封": ("♻️", "green",
-        "回封：分歧转一致信号，封单回补才算数；二次炸板直接走"),
-    "封单松动": ("⚠️", "yellow",
-        "封单骤降：涨停不烂不是牛，烂板次日预期差大；尾盘松动按炸板预案处理"),
-    "委比骤降": ("⚠️", "yellow",
-        "委比骤降/撤单：买盘承接减弱，冲高票防回落，持仓做好兑现准备"),
-    "跌破均价": ("📉", "red",
-        "冲高回落跌破分时均价：冲高兑现纪律，持有减仓，勿接飞刀"),
-    "急跌": ("🩸", "red",
-        "急跌：止损纪律优先，退潮期不吸不及预期的杀跌"),
-    "板块同动": ("🌐", "cyan",
-        "板块级信号：多票同动=板块修复/启动，看板块内最强势标的，跟风只做最强（去弱留强）"),
+    "水下直线拉升": ("🚀", "green", "🟢 买入机会 · 弱转强低吸",
+        "回踩不破分时均价可低吸；不追已高开>7%的票"),
+    "快速拉升": ("🚀", "green", "🟡 关注 · 确认后再买",
+        "看两点：放量站稳分时均价 + 板块是否同动；缺一个就等"),
+    "封板": ("🔴", "bright", "🔴 已涨停 · 持有拿住 / 想买只能排板",
+        "封单持续增大=强；持仓不动（看准坚定持有到巅峰）"),
+    "炸板": ("💥", "red", "🔻 卖出 · 先减一半仓",
+        "不板即出（非趋势/逻辑票）；剩余仓位观察回封力度"),
+    "回封": ("♻️", "green", "🟢 买入机会 · 分歧转一致",
+        "封单回补才算数；二次炸板直接走"),
+    "封单松动": ("⚠️", "yellow", "🟠 减仓预警 · 封单腰斩",
+        "涨停不烂不是牛；尾盘松动按炸板预案处理"),
+    "委比骤降": ("⚠️", "yellow", "🟠 警惕 · 买盘在撤",
+        "承接减弱，冲高票防回落，持仓做好兑现准备"),
+    "跌破均价": ("📉", "red", "🔻 卖出 · 冲高兑现",
+        "跌回分时均价下方=转弱；持仓减仓，勿接飞刀"),
+    "急跌": ("🩸", "red", "🔻 止损卖出",
+        "退潮期不吸不及预期的杀跌；破位先出来"),
+    "板块同动": ("🌐", "cyan", "🔵 方向信号 · 只做板块内最强",
+        "多票同动=板块修复/启动；跟风只买最强的，杂毛不碰"),
 }
+VERDICT_BUY = ("买入机会", "方向信号")
+VERDICT_SELL = ("卖出", "止损", "减仓")
 BOOSTABLE = {"水下直线拉升", "快速拉升", "封板", "炸板", "回封"}
 
 
@@ -276,13 +278,15 @@ class Monitor:
     def handle(self, s: WatchStock, ts, snap, sigs):
         now = datetime.now()
         for sig, detail in sigs:
-            emoji, color, advice = ADVICE.get(sig, ("❓", "", ""))
-            line = f"{now:%H:%M:%S} {emoji}[{sig}] {s.name}({s.code}) {detail} [{'/'.join(s.tags)}]"
-            print(colorize(line, color))
-            print(colorize(f"          └─ 建议: {advice}", "dim"))
-            self.save_signal(s, ts, sig, detail, advice)
+            emoji, color, verdict, advice = ADVICE.get(sig, ("❓", "", "❓ 待判断", ""))
+            bell = "\a" if any(k in verdict for k in VERDICT_BUY + VERDICT_SELL) else ""
+            print(bell + colorize("━" * 52, color))
+            print(colorize(f"{verdict}  |  {sig}  ·  {s.name}({s.code})  [{'/'.join(s.tags)}]", color))
+            print(f"   {now:%H:%M:%S} {emoji} {detail}")
+            print(colorize(f"   ➤ 纪律: {advice}", "dim"))
+            self.save_signal(s, ts, sig, detail, f"{verdict}｜{advice}")
             html_events.append({"t": now.strftime("%H:%M:%S"), "code": s.code, "name": s.name,
-                                "sig": sig, "detail": detail, "advice": advice,
+                                "sig": sig, "verdict": verdict, "detail": detail, "advice": advice,
                                 "tags": "/".join(s.tags), "color": color})
         # 板块同动(誉衡案例): 5分钟内同板块≥2只出现拉升类信号
         if sigs:
@@ -295,13 +299,15 @@ class Monitor:
                     if prev and ts - prev <= 300:
                         if ts - self.board_last_fire.get("bd_" + key, 0) >= BOARD_COOLDOWN:
                             self.board_last_fire["bd_" + key] = ts
-                            msg = (f"🌐[板块同动] {key}: {s.name} 等 5 分钟内多票拉升"
-                                   f" → 板块修复/启动信号，只做板块内最强")
-                            print(colorize(f"{now:%H:%M:%S} {msg}", "cyan"))
+                            verdict, color, advice = ADVICE["板块同动"][2], "cyan", ADVICE["板块同动"][3]
+                            msg = f"{key}: {s.name} 等 5 分钟内多票拉升"
+                            print("\a" + colorize("━" * 52, color))
+                            print(colorize(f"{verdict}  |  板块同动  ·  {msg}", color))
+                            print(colorize(f"   ➤ 纪律: {advice}", "dim"))
                             html_events.append({"t": now.strftime("%H:%M:%S"), "code": "",
-                                                "name": key, "sig": "板块同动", "detail": msg,
-                                                "advice": ADVICE["板块同动"][2],
-                                                "tags": "板块", "color": "cyan"})
+                                                "name": key, "sig": "板块同动", "verdict": verdict,
+                                                "detail": msg, "advice": advice,
+                                                "tags": "板块", "color": color})
 
     # ---------- HTML ----------
     def write_html(self):
@@ -452,9 +458,12 @@ def init_db():
 def render_html(day, rows, events, cycle_line=""):
     now = datetime.now().strftime("%H:%M:%S")
     ev = "".join(
-        f"<div class='ev {e['color']}'><b>{e['t']} [{e['sig']}]</b> "
-        f"{e['name'] or e['code']} <span class='tag'>{e['tags']}</span><br>"
-        f"<small>{e['detail']}</small><br><span class='adv'>{e['advice']}</span></div>"
+        f"<div class='ev {e['color']}'>"
+        f"<div class='vline'>{e.get('verdict', '')} <span class='sig'>[{e['sig']}]</span> "
+        f"{e['name'] or e['code']} <span class='tag'>{e['tags']}</span> "
+        f"<span class='tm'>{e['t']}</span></div>"
+        f"<div class='dt'>{e['detail']}</div>"
+        f"<div class='adv'>➤ {e['advice']}</div></div>"
         for e in reversed(events)) or "<p class='dim'>暂无信号（每 15s 自动刷新）</p>"
     tr_parts = []
     for r in rows:
@@ -468,11 +477,16 @@ def render_html(day, rows, events, cycle_line=""):
             entrust_cell = "-"
         cls = "up" if (chg or 0) > 0 else "dn"
         st = r.get("status", "")
-        st_cls = "up" if st.startswith("可做") else ("dim" if st == "禁碰" else "")
+        if st.startswith("可做"):
+            st_cell = "<span class='badge buy'>✅ " + st + "</span>"
+        elif st == "禁碰":
+            st_cell = "<span class='badge ban'>⛔ 禁碰</span>"
+        else:
+            st_cell = "<span class='badge watch'>👀 " + (st or "观察") + "</span>"
         tr_parts.append(
             f"<tr><td>{r['code']}</td><td>{r['name']}</td><td class='tag'>{r['tags']}</td>"
             f"<td class='{cls}'>{r['px'] or '-'} ({(chg or 0):+.2f}%)</td>"
-            f"<td>{entrust_cell}</td><td class='{st_cls}'>{st}</td></tr>")
+            f"<td>{entrust_cell}</td><td>{st_cell}</td></tr>")
     tr = "".join(tr_parts)
     return f"""<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
 <meta http-equiv="refresh" content="15"><title>盘中监控 {day}</title>
@@ -484,10 +498,17 @@ td,th{{border:1px solid #333;padding:4px 8px;font-size:13px}}
 .tag{{color:#7ab8ff;font-size:12px}}
 .cycle{{background:#1b1b1b;border:1px solid #444;border-radius:6px;padding:10px 14px;margin:10px 0;line-height:1.7}}
 .cycle b{{color:#f5c542}}
-.ev{{border-left:4px solid #444;padding:6px 10px;margin:6px 0;background:#1b1b1b;border-radius:4px}}
+.ev{{border-left:6px solid #444;padding:8px 12px;margin:8px 0;background:#1b1b1b;border-radius:4px}}
 .ev.green{{border-color:#4cd964}} .ev.red{{border-color:#ff5a5a}} .ev.yellow{{border-color:#f5a623}}
 .ev.cyan{{border-color:#4cb9ff}} .ev.bright{{border-color:#fff}}
-.adv{{color:#f5c542;font-size:13px}}
+.vline{{font-size:16px;font-weight:700;color:#fff}}
+.sig{{color:#999;font-weight:400;font-size:13px}} .tm{{color:#666;font-size:12px;font-weight:400}}
+.dt{{font-size:13px;margin-top:2px}}
+.adv{{color:#f5c542;font-size:13px;margin-top:2px}}
+.badge{{display:inline-block;padding:2px 10px;border-radius:10px;font-size:13px;font-weight:700}}
+.badge.buy{{background:#1d3a1d;color:#4cd964;border:1px solid #4cd964}}
+.badge.ban{{background:#3a1d1d;color:#ff5a5a;border:1px solid #ff5a5a}}
+.badge.watch{{background:#3a311d;color:#f5c542;border:1px solid #f5c542}}
 </style></head><body>
 <h2>📡 盘中实时监控 · {day} · 更新 {now}</h2>
 <div class="cycle">{cycle_line or '周期引擎未接入：仅异动信号'}</div>
