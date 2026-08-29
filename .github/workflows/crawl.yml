@@ -32,14 +32,37 @@ jobs:
       - name: 安装依赖
         run: pip install requests aiohttp
 
-      # 午盘格局推送(仅 cron-job.org 的 crawl dispatch 触发; push 触发不推, 防重复)
+      # 格局推送搭 crawl 便车(每日12次 dispatch), 时间窗各只触发一次:
+      # 午盘=13:05 那次 / 尾盘=14:40 那次; push 触发不推
       - name: 午盘格局推送
         if: github.event_name == 'repository_dispatch'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
-        run: cd jiarenmens && python scripts/cycle_push.py --session midday
+        run: |
+          cd jiarenmens
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -ge 1300 ] && [ "$H" -le 1320 ]; then
+            python scripts/cycle_push.py --session midday
+          else
+            echo "非午盘时段($H), 跳过"
+          fi
+
+      - name: 尾盘格局推送
+        if: github.event_name == 'repository_dispatch'
+        continue-on-error: true
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -ge 1430 ] && [ "$H" -le 1455 ]; then
+            python scripts/cycle_push.py --session eod
+          else
+            echo "非尾盘时段($H), 跳过"
+          fi
 
       - name: 数据采集
         run: cd jiarenmens && python main.py --checkpoint-reset
