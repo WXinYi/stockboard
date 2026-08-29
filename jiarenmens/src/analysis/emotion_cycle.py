@@ -58,13 +58,18 @@ def _ma(seq, n):
     return sum(seq) / len(seq) if seq else None
 
 
-def load_pool(days=40):
-    """近 N 个池日全量行 + 每股真实连板高度反推"""
+def load_pool(days=40, extra_rows=None, exclude_date=None):
+    """近 N 个池日全量行(+可选当日实时行, exclude_date=实时行覆盖的库内日期) + 真实连板高度反推"""
     rows = _rows("""SELECT date, code, name, pid_type, zt_time, seal_amount, main_net,
                            amount, plates FROM limit_pool
                    WHERE date >= (SELECT MIN(date) FROM (SELECT DISTINCT date FROM limit_pool
                                     ORDER BY date DESC LIMIT ?))
                    ORDER BY date""", (days,))
+    if exclude_date:
+        rows = [r for r in rows if r["date"] != exclude_date]
+    if extra_rows:
+        rows = rows + extra_rows
+        rows.sort(key=lambda r: r["date"])
     streaks: dict[tuple, int] = {}
     prev_date, prev_codes = None, {}
     for r in rows:
@@ -168,8 +173,15 @@ def classify_leaders(cur_rows, mainlines):
     return out
 
 
-def compute_cycle(date_str: str | None = None, persist: bool = True) -> dict:
-    pool_rows = load_pool()
+def compute_cycle(date_str: str | None = None, persist: bool = True,
+                  rt_today: dict | None = None) -> dict:
+    """rt_today(盘中实时注入): {"rows": 当日涨停池行, "breadth": [涨停,跌停,自然涨停,
+    曾跌停,破板率,炸板数,日期]} — 提供时以实时数据为当日口径(午盘/尾盘推送用)"""
+    if rt_today:
+        rt_date = rt_today["rows"][0]["date"] if rt_today["rows"] else None
+        pool_rows = load_pool(extra_rows=rt_today["rows"], exclude_date=rt_date)
+    else:
+        pool_rows = load_pool()
     dates = sorted({r["date"] for r in pool_rows})
     date_str = date_str or dates[-1]
     cur_rows = [r for r in pool_rows if r["date"] == date_str]
@@ -177,8 +189,15 @@ def compute_cycle(date_str: str | None = None, persist: bool = True) -> dict:
     prev_date = dates[idx - 1] if idx > 0 else None
     prev_rows = [r for r in pool_rows if r["date"] == prev_date]
 
-    breadth = _rows("""SELECT date, zt, broke_rate FROM market_breadth WHERE date<=?
-                       ORDER BY date DESC LIMIT 10""", (date_str,))
+    breadth_db = _rows("""SELECT date, zt, broke_rate FROM market_breadth WHERE date<=?
+                          ORDER BY date DESC LIMIT 10""", (date_str,))
+    if rt_today and rt_today.get("breadth"):
+        b = rt_today["breadth"]
+        # 实时行作为"今日"，库内 ma5 窗口排除今日(防重复计入)
+        breadth = [{"date": str(b[6]), "zt": b[0], "broke_rate": b[4]}] + \
+                  [x for x in breadth_db if x["date"] < date_str][:9]
+    else:
+        breadth = breadth_db
     cfg = CYCLE_CFG
     zt = breadth[0]["zt"] if breadth else None
     zt_ma5 = _ma([b["zt"] for b in breadth[1:6]], 5)   # 前 5 日均值(不含当日)

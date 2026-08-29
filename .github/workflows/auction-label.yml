@@ -31,6 +31,11 @@ jobs:
       - name: 结果标签(今日选股 → 收盘表现)
         run: cd jiarenmens && python scripts/auction_scan.py --label $(TZ=Asia/Shanghai date +%F)
 
+      - name: 涨停池全字段落库(周期引擎数据源, 修复当日断档)
+        if: success()
+        continue-on-error: true
+        run: cd jiarenmens && python scripts/backfill_emotion.py --pool $(TZ=Asia/Shanghai date +%F) $(TZ=Asia/Shanghai date +%F)
+
       - name: 提交 auction.db(候选 + 结果标签)
         run: |
           git config user.name "bot"

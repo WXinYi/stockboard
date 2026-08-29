@@ -712,7 +712,12 @@ def build_v5_message(v5_list: List[Dict], regime: Optional[Dict] = None,
                     "分歧": "🟡半开(仅主线内·一律半仓)", "发酵": "🟢开启(仅主线内)",
                     "高潮": "🟢开启(仅主线内)"}.get(cycle_res["stage"], "off")
         main_txt = "/".join(m["board"] for m in cycle_res["mainlines"][:3]) or "无"
-        lines.append(f"**🧭 周期: {cycle_res['stage']}** · V5闸门 {gate_txt} · 主线: {main_txt}")
+        lead_txt = " | ".join(f"**{l['name']}**{l['pid']}板[{l['role']}]"
+                              for l in cycle_res["leaders"][:3]) or "无"
+        lines.append(f"**🧭 周期: {cycle_res['stage']}**(置信度 {cycle_res['confidence']}/9) · V5闸门 {gate_txt}")
+        lines.append(f"**🎨 主线**: {main_txt}")
+        lines.append(f"**👑 龙头谱系**: {lead_txt}")
+        lines.append(f"**📌 阶段纪律**: {cycle_res['playbook']}")
     if not v5_list:
         head = ""
         if regime:

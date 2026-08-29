@@ -1,0 +1,34 @@
+name: 尾盘格局推送
+# 收盘前(约 14:45, cron-job.org repository_dispatch / workflow_dispatch)触发。
+# 实时涨停池(涨停时间/封单) + 实时涨跌炸板 → 周期引擎当日口径
+# → 钉钉: 周期阶段 / 梯队晋级 / 龙头谱系 / 高位梯队时间线 / 尾盘纪律 / 明日竞价观察名单。
+
+on:
+  repository_dispatch:
+    types: [cycle-eod]
+  workflow_dispatch:  # 手动触发(验证用)
+
+concurrency:
+  group: cycle-eod
+  cancel-in-progress: true
+
+jobs:
+  eod:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 尾盘格局推送
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: cd jiarenmens && python scripts/cycle_push.py --session eod

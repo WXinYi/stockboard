@@ -209,6 +209,18 @@ class KPLSpider:
                           "Token": self.token, "apiv": "w41", "Type": type_,
                           "StockID": stock_id, "UserID": self.user_id}, KPL_HOST_RT)
 
+    def zt_pool_rt(self, pid_type: int = 1, st: int = 500) -> Dict:
+        """涨停板列表·当日实时(HomeDingPan, 盘中/盘后均可取当日): 字段同 zt_pool"""
+        return self._get({"a": "DailyLimitPerformance", "c": "HomeDingPan", "PhoneOSNew": 1,
+                          "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3", "VerSion": "5.18.0.2",
+                          "PidType": pid_type, "Type": 4, "Index": 0, "Order": 0, "st": st,
+                          "apiv": "w39"}, KPL_HOST_RT)
+
+    def rise_fall_rt(self) -> Dict:
+        """涨跌/炸板分析·当日实时: info[0] = [涨停,跌停,自然涨停,曾跌停,破板率,炸板数,日期]"""
+        return self._get({"a": "RiseFallAnalysis", "apiv": "w43", "c": "HomeDingPan",
+                          "PhoneOSNew": 1}, KPL_HOST_APP)
+
 
 # =============================================================================
 # 落库(独立 auction.db, 按日期当日覆盖)
