@@ -1,90 +1,86 @@
 #!/usr/bin/env python3
-"""每日钉钉通知（由 crawl.yml 的「钉钉通知」步骤调用）
+"""超短跟单日报（由 crawl.yml 的「钉钉通知」步骤调用，crawl 每天触发 12 次）
 
-读 stockboard-app/public/data/latest/*.json，发送两条 markdown：
-  1. 「StockBoard 日期」—— 特别关注(置顶9人)调仓 + 周榜前5有调仓
-  2. 「龙头战法 日期」—— 独立一条消息：4 名龙头战法跟踪选手今日操作
-     （含成交价@仓位 + 实时当日涨幅）+ 操作风格说明
+一条合并消息覆盖全部 13 名关注选手：
+  🧭 环境线(周期引擎) → 🔥 当日共识(≥2人同向) → 13 人逐人卡片(买/卖/持仓/跟随) → ➤ 跟单纪律
 
-「金额」说明：东财接口 tradeSummary/position 无股数与总资产字段，
-精确成交金额不可得，故用「成交价@仓位」表达操作规模。
-「当下涨幅」来自腾讯实时行情（qt.gtimg.cn，当日涨跌%）。
+增量机制：trades 带 _id，推送后记入 last_notify_state.json；同日无新增操作且已推送过
+则跳过（防 12 次 crawl dispatch 重复轰炸）。首条消息列出当日全部操作。
 
-环境变量: DINGTALK_URL / DINGTALK_SECRET（与 crawl.yml 一致）
+「金额」说明：东财接口无股数/总资产字段，用「成交价@仓位」表达操作规模。
+现价/涨幅来自腾讯实时行情（新浪降级）。
+
+环境变量: DINGTALK_URL / DINGTALK_SECRET
 用法（在 jiarenmens/ 目录下）:
-    python3 scripts/notify_daily.py
+    python3 scripts/notify_daily.py                     # 正式推送
+    python3 scripts/notify_daily.py --date 2026-08-28 --dry-run
 """
 import json
 import os
 import re
 import sys
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.notify.dingtalk import DingTalk  # noqa: E402
 
-DATA_DIR = (Path(__file__).resolve().parents[2] / "stockboard-app" / "public" / "data" / "latest")
 REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "stockboard-app" / "public" / "data" / "latest"
 BASE_URL = "https://WXinYi.github.io/stockboard"
-
-# 推送状态（记录上次已推送的操作 _id，用于对比"本次新增"）
 STATE_FILE = REPO_ROOT / "jiarenmens" / "data" / "last_notify_state.json"
+
+# 关注名单单一数据源 = main.py 的 WATCHED_PLAYERS（顺序即置顶顺序, 前四位为龙头验证组）
+from main import WATCHED_PLAYERS  # noqa: E402
+WATCHED = {zh: name for zh, name in WATCHED_PLAYERS}
+VERIFY_IDS = [zh for zh, _ in WATCHED_PLAYERS[:4]]
+
+# 验证组跟随提示(手工维护, 按选手打法而定)
+FOLLOW_HINT = {
+    "900456476": "满仓单票每日接力: 明日看它新买入标的的竞价承接",
+    "900450475": "跨周期买中段确认龙头: 它下一个买的板块龙头=新主线信号",
+    "900351276": "高频试错: 只跟连续 2 日同向的票",
+    "900401128": "空间锚接力: 它买的空间锚次日溢价=接力质量标尺",
+}
+# 操作风格标签
+STYLES = {
+    "900456476": "满仓单票每日接力", "900450475": "跨周期中段龙头", "900351276": "高频试错",
+    "900401128": "空间锚接力", "900422074": "满仓隔日超短", "900443192": "打板+波段",
+    "900315547": "埋伏型", "900240956": "波段", "900438148": "医药波段", "900376763": "高频切换",
+    "900013608": "科技埋伏", "900369020": "多线持仓", "900439290": "短线收割",
+}
+# 回撤警示(周线为负 → 暂停跟单)
+PAUSE_IF_WEEK_NEG = {"900443192"}
 
 
 def load_state() -> dict:
-    """上次推送状态 → {"seen": {player_id: [id, ...]}}；无状态返回空"""
     if STATE_FILE.exists():
         return json.loads(STATE_FILE.read_text())
     return {"seen": {}}
 
 
-def save_state(seen: dict) -> None:
-    """写回推送状态（seen: {player_id: sorted [id,...]}）"""
+def save_state(seen: dict, sent_date: str | None = None) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps({"seen": seen}, ensure_ascii=False, indent=2))
-
-# 置顶特别关注（原 crawl.yml 内联逻辑，保持行为不变）
-WATCHED = {
-    "900240956": "股得猫咛",
-    "900354116": "不服输不认命MG",
-    "900438148": "我嘚财富",
-    "900376763": "东之福气娟子",
-    "900013608": "wxm1988蒙",
-    "900429191": "涛哥啦",
-    "900369020": "年年纳福地风清扬",
-    "900223455": "鑫泰和周星星",
-    "900372673": "五年内财富自由",
-    "900439290": "兴奋之青果",  # 2026-08-24 新增: 50天+45%, 满仓单票超短
-}
-
-# 龙头战法跟踪选手: id -> (名称, 操作风格标签)
-DRAGON = {
-    "900422074": ("三石问路", "满仓隔日超短龙头"),
-    "900443192": ("渔樵对二", "打板+波段双修"),
-    "900315547": ("西门星辰啊", "埋伏型龙头"),
-    # 2026-08-22 龙头筛选(涨停池 07-15~08-21)后保留的新筛选手
-    "900450475": ("敢作敢当的武研琳", "连板打板,跨周期买中段确认龙头,月+81.9%"),
-}
+    st = {"seen": {k: sorted(v) for k, v in seen.items()}}
+    if sent_date:
+        st["sent_date"] = sent_date
+    STATE_FILE.write_text(json.dumps(st, ensure_ascii=False, indent=2))
 
 
-def _player_link(wid: str, name: str) -> str:
-    return f"[{name}]({BASE_URL}/#/player/{wid})"
+def _player_detail(wid: str, date_str: str):
+    """读选手详情 → (当日 trades, 持仓列表)；缺失返回 (None, [])"""
+    path = DATA_DIR / "players" / f"{wid}.json"
+    if not path.exists():
+        return None, []
+    d = json.loads(path.read_text())
+    trades = [t for t in d.get("t", []) if t.get("td") == date_str]
+    return trades, d.get("p", []) or []
 
 
-def _today_trades(wid: str, date_str: str):
-    """读选手详情，返回当日原始调仓记录列表；详情缺失返回 None"""
-    detail_path = DATA_DIR / "players" / f"{wid}.json"
-    if not detail_path.exists():
-        return None
-    d = json.loads(detail_path.read_text())
-    return [t for t in d.get("t", []) if t.get("td") == date_str]
-
-
-# ── 腾讯实时行情（当日涨跌幅）────────────────────────────
+# ── 腾讯实时行情（当日涨跌幅, 新浪降级）────────────────────────────
 def _market(code: str) -> str:
-    """A股代码 → 市场前缀（sh/sz/bj）"""
     if code.startswith(("6", "5", "9")):
         return "sh"
     if code.startswith(("4", "8")):
@@ -93,7 +89,6 @@ def _market(code: str) -> str:
 
 
 def _quotes_tencent(codes) -> dict:
-    """腾讯行情 → {code: {"price": 现价, "pct": 涨跌%}}"""
     out = {}
     for i in range(0, len(codes), 30):
         symbols = ",".join(f"{_market(c)}{c}" for c in codes[i:i + 30])
@@ -123,7 +118,6 @@ def _quotes_tencent(codes) -> dict:
 
 
 def _quotes_sina(codes) -> dict:
-    """新浪行情降级 → 同上结构（涨跌%由现价/昨收推算）"""
     out = {}
     for i in range(0, len(codes), 30):
         symbols = ",".join(f"{_market(c)}{c}" for c in codes[i:i + 30])
@@ -144,19 +138,17 @@ def _quotes_sina(codes) -> dict:
             if len(fields) < 6:
                 continue
             try:
-                price = float(fields[3])
-                prev = float(fields[2])
+                price, prev = float(fields[3]), float(fields[2])
             except (ValueError, TypeError):
                 continue
             if price <= 0:
                 continue
-            pct = (price - prev) / prev * 100 if prev > 0 else None
-            out[m.group(1)] = {"price": price, "pct": pct}
+            out[m.group(1)] = {"price": price,
+                               "pct": (price - prev) / prev * 100 if prev > 0 else None}
     return out
 
 
 def fetch_quotes(codes) -> dict:
-    """行情查询（腾讯为主，新浪降级）→ {code: {price, pct}}；失败返回 {}（不阻塞推送）"""
     if not codes:
         return {}
     out = _quotes_tencent(codes)
@@ -166,170 +158,159 @@ def fetch_quotes(codes) -> dict:
     return out
 
 
+def _player_link(wid: str, name: str) -> str:
+    return f"[{name}]({BASE_URL}/#/player/{wid})"
+
+
 def _stock_link(code: str, name: str) -> str:
-    """股票 → 看板股票详情页链接（/stock/:code，StockTab 同款）"""
     return f"[{name}]({BASE_URL}/#/stock/{code}?name={quote(name)})"
 
 
-def _op_line(t: dict, quotes: dict, is_buy: bool, is_new: bool = False) -> str:
-    """单笔操作行：方向 股票 仓位｜成交价｜现价｜当前涨幅（每值带字段名）；新操作行首加 🆕"""
-    emoji = "🟢 买入" if is_buy else "🔴 卖出"
-    rr = t.get("rr", "") or ""
-    name = t.get("sn", "") or ""
-    head = f"{_stock_link(t.get('sc', ''), name)} {rr}" if rr else _stock_link(t.get("sc", ""), name)
-    flag = "🆕 " if is_new else ""
-    head = flag + head
-    cols = []
-    price = t.get("pr")
-    if price:
-        cols.append(f"成交价 {price:.2f}")
-    q = quotes.get(t.get("sc", ""))
-    if q and q.get("price") is not None:
-        cols.append(f"现价 {q['price']:.2f}")
-        if q.get("pct") is not None:
-            cols.append(f"当前涨幅 {q['pct']:+.2f}%")
-    return f"{emoji} {head}" + ("｜" + "｜".join(cols) if cols else "")
+def _side_line(label: str, trades: list, quotes: dict, seen_set: set, first_run: bool,
+               new_counter: list) -> str:
+    """一行买卖明细: 买: [票](链接) 仓位 @成交价｜现价(+x%)🆕、..."""
+    if not trades:
+        return f"{label}: 无"
+    parts = []
+    for t in trades:
+        is_new = (not first_run) and t.get("_id") not in seen_set
+        if t.get("_id"):
+            seen_set.add(t["_id"])
+            new_counter[0] += 1 if is_new else 0
+        flag = "🆕 " if is_new else ""
+        seg = _stock_link(t.get("sc", ""), t.get("sn", "")) + f" {t.get('rr', '') or ''}"
+        price = t.get("pr")
+        if price:
+            seg += f" @{price:.2f}"
+        q = quotes.get(t.get("sc", ""))
+        if q and q.get("price") is not None:
+            seg += f"（现价 {q['price']:.2f}"
+            if q.get("pct") is not None:
+                seg += f" {q['pct']:+.2f}%"
+            seg += "）"
+        parts.append(flag + seg)
+    return f"{label}: " + "、".join(parts)
 
 
-def build_watched(date_str: str, crawl_time: str, seen: dict = None):
-    """特别关注消息体（仅股票名，不带仓位）+ 新增操作 🆕 标记
-
-    seen: {"player_id": set(已推送 _id)}。返回 (text, new_count, updated_seen)。
-    """
-    seen = seen or {}
-    first_run = not STATE_FILE.exists()  # 首次推送无上次基线，全部不标 🆕
+def build_follow_report(date_str: str, seen: dict, first_run: bool):
+    """合并版跟单日报。返回 (text, new_count, updated_seen)"""
     updated = {wid: set(seen.get(wid, set())) for wid in WATCHED}
-    watched_lines = []
-    new_count = 0
-    for wid, wname in WATCHED.items():
-        link = _player_link(wid, wname)
-        trades = _today_trades(wid, date_str)
-        if trades is not None:
-            buys, sells = [], []
-            for t in trades:
-                if t.get("_id"):
-                    updated[wid].add(t["_id"])
-                is_new = (not first_run) and t.get("_id") not in seen.get(wid, set())
-                if is_new:
-                    new_count += 1
-                sn = f"{t['sn']}🆕" if is_new else t["sn"]
-                (buys if t.get("dr") == "买入" else sells).append(sn)
-            parts = []
-            if buys:
-                parts.append(f"买入 {', '.join(buys)}")
-            if sells:
-                parts.append(f"卖出 {', '.join(sells)}")
-            watched_lines.append(f"{link}: {' | '.join(parts)}" if parts else f"{link}: 今日无调仓")
-        else:
-            watched_lines.append(f"{link}: —")
+    new_counter = [0]
 
-    # 周榜前5中有调仓的（players_index.json: [id,name,followers,T,d,w,m,y,v,dd,wr,dy,lb,rk,tp,q,ss]）
-    s = json.loads((DATA_DIR / "summary.json").read_text())
-    traded_set = set(s.get("tradedPlayerIds", []))
-    players_idx = json.loads((DATA_DIR / "players_index.json").read_text())
-    weekly_top = sorted(players_idx, key=lambda p: p[6] or 0, reverse=True)[:5]  # p[6]=weekly_return
-    top_traded = [p for p in weekly_top if p[0] in traded_set]  # p[0]=id
-    if top_traded:
-        top_links = ["、".join(_player_link(p[0], p[1]) for p in top_traded)]  # p[1]=name
-        top5_text = "".join(top_links) + " 有调仓"
+    details = {}
+    quote_codes = set()
+    for wid in WATCHED:
+        trades, positions = _player_detail(wid, date_str)
+        details[wid] = (trades or [], positions)
+        for t in trades or []:
+            quote_codes.add(t.get("sc", ""))
+        for p in positions:
+            quote_codes.add(p.get("sc", ""))
+    quotes = fetch_quotes(sorted(c for c in quote_codes if c))
+
+    # ── 环境线(周期引擎, 失败静默) ──
+    lines = [f"## 📋 超短跟单日报 · {date_str}"]
+    try:
+        from src.analysis.emotion_cycle import compute_cycle
+        c = compute_cycle(date_str, persist=False)
+        m = c["metrics"]
+        ml = "/".join(a["board"] for a in c["mainlines"][:3]) or "无"
+        lines.append(f"**🧭 环境**: 周期 **{c['stage']}**(置信度 {c['confidence']}/9) · "
+                     f"主线 {ml} · 高度 {m['height']}B · 涨停 {m['zt']} 只 · 破板率 {m['broke_rate']}%")
+        lines.append(f"**📌 阶段纪律**: {c['playbook']}")
+        lines.append("")
+    except Exception as e:
+        print(f"⚠️ 周期引擎不可用({e}), 日报不含环境线")
+
+    # ── 当日共识(≥2人同向) ──
+    buy_cnt, sell_cnt = defaultdict(set), defaultdict(set)
+    names = {}
+    for wid in WATCHED:
+        for t in details[wid][0]:
+            names[t.get("sc", "")] = t.get("sn", "")
+            (buy_cnt if t.get("dr") == "买入" else sell_cnt)[t.get("sc", "")].add(wid)
+    lines.append("**🔥 当日共识**")
+    hot = [(s, len(v), "🛒") for s, v in buy_cnt.items() if len(v) >= 2] + \
+          [(s, len(v), "🏃") for s, v in sell_cnt.items() if len(v) >= 2]
+    if hot:
+        hot.sort(key=lambda x: -x[1])
+        for s, n, ic in hot[:6]:
+            who = " / ".join(WATCHED[w] for w in (buy_cnt if ic == "🛒" else sell_cnt)[s])
+            lines.append(f"- {ic} **{_stock_link(s, names.get(s, s))}**: {who} {n}人同向")
     else:
-        top5_text = "今日均无调仓"
+        lines.append("- 无 ≥2 人同向的票(单人动作见下)")
+    lines.append("")
 
-    new_note = f"  ·  🆕 新增 {new_count} 笔" if new_count else ""
-    text = (
-        f"## 📊 东财实盘排行榜已更新\n\n"
-        f"> 采集时间: {crawl_time}{new_note}\n\n"
-        f"---\n\n"
-        f"### ⭐ 特别关注\n\n"
-        + "\n\n".join(watched_lines)
-        + f"\n\n---\n\n"
-        f"### 🏆 周榜前5\n\n"
-        f"{top5_text}\n\n"
-        f"---\n\n"
-        f"📈 [打开看板](https://WXinYi.github.io/stockboard/)"
-    )
-    updated_seen = {k: sorted(v) for k, v in updated.items()}
-    return text, new_count, updated_seen
-
-
-def build_dragon(date_str: str, crawl_time: str, seen: dict = None):
-    """短线选手跟踪消息体（单独一条）：操作 + 成交价/涨幅 + 风格说明 + 新增标识
-
-    seen: {"player_id": set(已推送 _id)}。返回 (text, new_count, updated_seen)。
-    """
-    seen = seen or {}
-    first_run = not STATE_FILE.exists()  # 首次推送无上次基线，全部不标 🆕
-    per_player = []
-    all_codes = set()
-    for wid, (wname, style) in DRAGON.items():
-        trades = _today_trades(wid, date_str)
-        per_player.append((wid, wname, style, trades))
+    # ── 逐人卡片 ──
+    for wid in WATCHED:
+        trades, positions = details[wid]
+        nm = WATCHED[wid]
+        head = f"**{_player_link(wid, nm)}**"
+        p = None
         if trades:
-            all_codes.update(t["sc"] for t in trades if t.get("sc"))
-    quotes = fetch_quotes(sorted(all_codes)) if all_codes else {}
-    live_note = "  ·  现价/涨幅为实时行情" if quotes else ""
-
-    updated = {wid: set(seen.get(wid, set())) for wid in DRAGON}
-    dragon_lines = []
-    new_count = 0
-    for wid, wname, style, trades in per_player:
-        link = _player_link(wid, wname)
+            head += f"（当日 {len(trades)} 笔）"
+        lines.append(head)
         if trades is None:
-            dragon_lines.append(f"▸ {link} · {style}\n—（详情缺失）")
+            lines.append("⚠️ 数据缺失")
+            lines.append("")
             continue
         buys = [t for t in trades if t.get("dr") == "买入"]
         sells = [t for t in trades if t.get("dr") == "卖出"]
-        parts = []
-        for t in buys + sells:
-            if t.get("_id"):
-                updated[wid].add(t["_id"])
-            is_new = (not first_run) and t.get("_id") not in seen.get(wid, set())
-            if is_new:
-                new_count += 1
-            parts.append(_op_line(t, quotes, t.get("dr") == "买入", is_new))
-        if not parts:
-            parts = ["⚪ 今日无调仓"]
-        # 列表项强制每笔单独一行（钉钉 markdown 单换行会被合并）
-        op_lines = "\n".join(f"- {p}" for p in parts)
-        dragon_lines.append(f"▸ {link} · {style}\n" + op_lines)
+        lines.append(_side_line("买", buys, quotes, updated[wid], first_run, new_counter))
+        lines.append(_side_line("卖", sells, quotes, updated[wid], first_run, new_counter))
+        if positions:
+            po = " · ".join(
+                _stock_link(x.get("sc", ""), x.get("sn", "")) +
+                (f" {x.get('pr'):+.1f}%" if x.get("pr") is not None else "")
+                for x in positions[:5])
+            lines.append(f"持仓: {po}")
+        if wid in FOLLOW_HINT:
+            lines.append(f"➤ 跟随: {FOLLOW_HINT[wid]}")
+        lines.append("")
 
-    new_note = f"  ·  🆕 本次新增 {new_count} 笔" if new_count else ""
-    text = (
-        f"## 🐉 短线选手跟踪 · 成交日 {date_str}\n\n"
-        f"> 采集 {crawl_time}{live_note}{new_note}\n\n"
-        + "\n\n".join(dragon_lines)
-        + f"\n\n📈 [打开看板](https://WXinYi.github.io/stockboard/)"
-    )
-    updated_seen = {k: sorted(v) for k, v in updated.items()}
-    return text, new_count, updated_seen
+    lines.append("---")
+    lines.append("**➤ 跟单纪律**")
+    lines.append("- 验证组动作=方向参考, 跟随须次日竞价确认(高开强才跟)")
+    lines.append("- 共识≥2人同向才构成信号; 退潮期通知后只看不做")
+    text = "\n".join(lines)
+    return text, new_counter[0], updated
 
 
 def main():
-    if not os.environ.get("DINGTALK_URL"):
+    import argparse
+    ap = argparse.ArgumentParser(description="超短跟单日报")
+    ap.add_argument("--date", help="YYYY-MM-DD(默认取 summary.json)")
+    ap.add_argument("--dry-run", action="store_true", help="只打印不推送不落状态")
+    args = ap.parse_args()
+
+    if not args.dry_run and not os.environ.get("DINGTALK_URL"):
         print("缺少 DINGTALK_URL，跳过钉钉通知")
         return 0
-    s = json.loads((DATA_DIR / "summary.json").read_text())
-    date_str = s["date"]
-    crawl_time = s.get("crawl_time", "")
+    if args.date:
+        date_str = args.date
+    else:
+        s = json.loads((DATA_DIR / "summary.json").read_text())
+        date_str = s["date"]
 
-    dt = DingTalk()
     state = load_state()
     seen = {k: set(v) for k, v in state.get("seen", {}).items()}
+    first_run = not STATE_FILE.exists()
 
-    w_text, w_new, w_seen = build_watched(date_str, crawl_time, seen)
-    dt.send_markdown(f"StockBoard {date_str}", w_text)
-    print(f"✅ 钉钉通知(特别关注) {date_str} (新增 {w_new} 笔)")
+    text, new_count, updated = build_follow_report(date_str, seen, first_run)
 
-    d_text, d_new, d_seen = build_dragon(date_str, crawl_time, seen)
-    dt.send_markdown(f"短线选手 {date_str}", d_text)
-    print(f"✅ 钉钉通知(短线选手) {date_str} (新增 {d_new} 笔)")
+    if args.dry_run:
+        print(text)
+        return 0
 
-    # 合并两条消息的 seen 写回（供下次对比），随 crawl.yml「提交数据」步骤提交
-    merged = {}
-    for m in (w_seen, d_seen):
-        for k, v in m.items():
-            merged[k] = sorted(set(merged.get(k, [])) | set(v))
-    save_state(merged)
+    # 同日无新增且已推送过 → 跳过(crawl 每天触发 12 次, 防重复轰炸)
+    if new_count == 0 and state.get("sent_date") == date_str:
+        print(f"无新增操作且今日已推送, 跳过 ({date_str})")
+        return 0
+
+    dt = DingTalk()
+    dt.send_markdown(f"超短跟单日报 {date_str}", text)
+    print(f"✅ 钉钉推送(超短跟单日报) {date_str} (新增 {new_count} 笔)")
+    save_state({k: sorted(v) for k, v in updated.items()}, sent_date=date_str)
     print(f"✅ 推送状态已保存: {STATE_FILE}")
     return 0
 
