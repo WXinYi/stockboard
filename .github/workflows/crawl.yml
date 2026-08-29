@@ -32,6 +32,15 @@ jobs:
       - name: 安装依赖
         run: pip install requests aiohttp
 
+      # 午盘格局推送(仅 cron-job.org 的 crawl dispatch 触发; push 触发不推, 防重复)
+      - name: 午盘格局推送
+        if: github.event_name == 'repository_dispatch'
+        continue-on-error: true
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: cd jiarenmens && python scripts/cycle_push.py --session midday
+
       - name: 数据采集
         run: cd jiarenmens && python main.py --checkpoint-reset
 
