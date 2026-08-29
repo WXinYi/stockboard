@@ -28,6 +28,14 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
+      # 竞价跟单快报(09:26, 先于扫描推): 13 名关注选手竞价阶段成交 + 持仓快照
+      - name: 竞价跟单快报
+        continue-on-error: true
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: cd jiarenmens && python scripts/watched_flash.py
+
       - name: 竞价扫描 + 钉钉主结论(09:29 前)
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
