@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, inject, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, inject, watch, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { rankCellHtml, drawdownColor } from '../utils/format.js'
 import { RecycleScroller } from 'vue3-virtual-scroller'
@@ -92,6 +92,31 @@ const sortHeaders = computed(() => {
 // ── 虚拟滚动：RecycleScroller（固定行高）──
 const ROW_H = 40
 const rankScroller = ref(null)
+
+// ── 详情返回保持列表位置 ──
+// 关键坑(3个, 全踩过):
+// 1. 真实滚动容器是 RecycleScroller 内部(.rank-vscroll), 不是 window
+// 2. KeepAlive 停用时先摘 DOM 再触发 onDeactivated, 摘出后无布局盒 scrollTop 恒 0
+//    → 必须在路由离开守卫(onBeforeRouteLeave)里保存, DOM 尚在文档读数才准确
+// 3. 后台标签页 requestAnimationFrame 不触发 → 恢复用 setTimeout;
+//    重新插入初帧布局未稳 scrollTop 可能被钳回 0 → 验证不达就重试(最多 20×120ms)
+let savedListScroll = 0
+onBeforeRouteLeave(() => {
+  savedListScroll = rankScroller.value?.$el?.scrollTop ?? 0
+})
+onActivated(() => {
+  if (!savedListScroll) return
+  const pos = savedListScroll
+  let tries = 0
+  const restore = () => {
+    const sc = rankScroller.value
+    if (!sc) return
+    sc.scrollToPosition(pos)
+    const got = sc.$el?.scrollTop ?? 0
+    if (Math.abs(got - pos) > 1 && tries++ < 20) setTimeout(restore, 120)
+  }
+  nextTick(restore)
+})
 
 // 筛选/排序/搜索变化 → 回到顶部
 watch(
