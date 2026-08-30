@@ -599,7 +599,8 @@ const lhbSorted = computed(() => {
             </span>
           </div>
           <div class="lb-banner" :style="battle.strike.gate.cap === 0 ? {} : { borderColor: cyColor }">
-            {{ battle.strike.gate.banner }}
+            <div>{{ battle.strike.gate.banner.split('📐')[0].trim() }}</div>
+            <div v-if="battle.strike.gate.matrix" class="lb-mtx">📐 高位{{ battle.strike.gate.matrix.high }}×中位{{ battle.strike.gate.matrix.mid }}：{{ battle.strike.gate.matrix.note }}</div>
           </div>
           <div v-for="c in strikeShown" :key="c.code" class="lb-cand" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
             <div class="lb-cand-top">
@@ -982,16 +983,21 @@ const lhbSorted = computed(() => {
 .cy-gate.ban { background: #9b6bde; }
 .lb-toggle { text-align: center; font-size: 12px; color: #2a7fd4; padding: 6px 0 2px; cursor: pointer; }
 .cy-tabs { margin: 10px 0 2px; }
+/* Tab 内容卡片化: 行内容不再浮在页面渐变底上 */
+.cy-pane .md-group { background: #fff; border: 1px solid #eceff3; border-radius: 12px; padding: 8px 12px 6px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
+.cy-pane .md-group-head { margin: 4px 0 2px; }
+.cy-pane .cy-line:last-child, .cy-pane .lb-rel:last-child { border-bottom: none; }
 .cy-pane { min-height: 120px; }
 .mt-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; }
 .mt-tab { flex-shrink: 0; border: 1px solid #e5e9f0; background: #fff; border-radius: 14px; padding: 5px 14px; font-size: 13px; color: #667; }
 .mt-tab.on { background: #2c3e50; border-color: #2c3e50; color: #fff; font-weight: 700; }
 /* 龙头博弈 + 今日出击 /market/cycle */
-.lb-banner { border: 1px dashed #e5e9f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #556; background: #f8fafc; margin-bottom: 8px; }
+.lb-banner { border: 1px solid #e5e9f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #556; line-height: 1.6; background: #f8fafc; margin-bottom: 8px; }
+.lb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed #dfe6ee; color: #2b6cb0; }
 .lb-banned { color: #ff5a5a; font-weight: 700; }
-.lb-cand { border: 1px solid #eef1f5; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
-.lb-cand.st-go { border-left-color: #ff5a5a; background: #fff7f7; }
-.lb-cand.st-alt { border-left-color: #f5a623; }
+.lb-cand { border: 1px solid #e9edf3; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: #fbfcfe; }
+.lb-cand.st-go { border-left-color: #ff5a5a; background: #fff5f5; }
+.lb-cand.st-alt { border-left-color: #f5a623; background: #fffbf0; }
 .lb-cand.st-watch { border-left-color: #cfd8e3; }
 .lb-cand-top { display: flex; align-items: center; gap: 6px; }
 .lb-cand-top b { font-size: 14px; }
