@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks, trendMinute, trendX } from '../chartDraw.js'
 
 describe('panelRects', () => {
-  it('三区 3:1:1 高度比, 区间距 2', () => {
+  it('三区 2.3:1:1 高度比(东财占比), 区间距 2', () => {
     const r = panelRects(400, 300, true, { leftGutter: 0, rightGutter: 0 })
-    expect(r.main.height).toBeGreaterThan(r.vol.height * 2.8)
+    expect(r.main.height).toBeGreaterThan(r.vol.height * 2.2)
     expect(r.vol.height).toBeGreaterThan(r.sub.height * 0.9)
     expect(r.main.y).toBe(0)
     expect(r.vol.y - (r.main.y + r.main.height)).toBe(2)

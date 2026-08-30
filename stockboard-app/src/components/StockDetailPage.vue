@@ -799,7 +799,7 @@ onUnmounted(() => {
 .sd-qr3 { margin-top: 3px; }   /* 东财第三行全宽: 总值/流值/市盈 + 更多 */
 .sd-qmore { flex: none; border: 1px solid #d5dbe3; background: #fff; color: #555; font-size: 11px; padding: 2px 8px; border-radius: 5px; cursor: pointer; }
 /* 分时信息行(画布上方, 东财): 均价黄 / 最新+涨跌红绿 */
-.sd-tinfo { display: flex; align-items: baseline; gap: 10px; font-size: 12px; padding: 0 12px 4px; }
+.sd-tinfo { display: flex; align-items: baseline; gap: 10px; font-size: 13px; padding: 0 12px 4px; }
 .sd-tinfo-avg { color: #f2a900; }
 .sd-tinfo b { font-weight: 600; }
 
@@ -826,16 +826,16 @@ onUnmounted(() => {
 
 /* 图表容器: height 100% 令 StockChartCanvas(.scc-wrap height:100%) 填充到与右盘口同高(flex stretch 已定高);
    垂直手势交还页面滚动(上下滑=滚页面), 水平拖动/缩放归画布组件处理 */
-.sd-chart { position: relative; width: 100%; height: 100%; min-height: 280px; touch-action: pan-y !important; }
+.sd-chart { position: relative; width: 100%; height: 100%; min-height: 430px; touch-action: pan-y !important; }
 @media (min-width: 481px) {
-  .sd-chart { min-height: 360px; }
+  .sd-chart { min-height: 480px; }
 }
 /* 副图指标下拉: 定位在副图(pane 2)区域左上角, 半透明底避免挡K线 */
 .sd-subind-select {
   position: absolute;
   left: 8px;
-  /* 副图(3:1:1 底部 1/5)顶部一行: top ≈ 0.8×画布高 − 2×gap; 副图已留 16px 头部条带, 下拉收在条带内不压图形 */
-  top: calc(80% - 12px);
+  /* 副图(2.3:1:1 底部约 23%)顶部一行: sub.y ≈ 0.74×画布高, 东财布局下拉在副图左上, 数值行在其右 */
+  top: calc(74% - 1px);
   bottom: auto;
   height: 16px;
   line-height: 1;
