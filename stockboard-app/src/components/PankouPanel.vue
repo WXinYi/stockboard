@@ -26,11 +26,12 @@ const curChg = computed(() => {
 
 function px(v) { return typeof v === 'number' ? v.toFixed(2) : '—' }
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
+// 平盘(price==prevClose)惯例显灰, 不并入红涨
+function curColor(pk) { return pk.price > pk.prevClose ? UP : pk.price < pk.prevClose ? DOWN : '#888' }
 function barStyle(vol, color) {
   const pctw = (vol / maxVol.value) * 100
   return { background: `linear-gradient(90deg, ${color}1f 0%, ${color}1f ${pctw}%, transparent ${pctw}%)` }
 }
-function isUp(pk) { return pk.price >= pk.prevClose }
 </script>
 
 <template>
@@ -39,7 +40,7 @@ function isUp(pk) { return pk.price >= pk.prevClose }
       <!-- 委比/委差 -->
       <div class="pk-wei">
         <span class="pk-wei-item">委比 <b :style="{ color: wei.weiBi >= 0 ? UP : DOWN }">{{ pct(wei.weiBi) }}</b></span>
-        <span class="pk-wei-item">委差 <b :style="{ color: wei.weiCha >= 0 ? UP : DOWN }">{{ wei.weiCha }}</b></span>
+        <span class="pk-wei-item">委差 <b :style="{ color: wei.weiCha >= 0 ? UP : DOWN }">{{ fmtHand(wei.weiCha) }}</b></span>
       </div>
 
       <!-- 卖5→卖1 -->
@@ -51,8 +52,8 @@ function isUp(pk) { return pk.price >= pk.prevClose }
 
       <!-- 现价 -->
       <div class="pk-cur">
-        <span class="pk-cur-px" :style="{ color: isUp(pk) ? UP : DOWN }">{{ px(pk.price) }}</span>
-        <span class="pk-cur-chg" :style="{ color: isUp(pk) ? UP : DOWN }">{{ pct(curChg) }}</span>
+        <span class="pk-cur-px" :style="{ color: curColor(pk) }">{{ px(pk.price) }}</span>
+        <span class="pk-cur-chg" :style="{ color: curColor(pk) }">{{ pct(curChg) }}</span>
       </div>
 
       <!-- 买1→买5 -->
@@ -89,4 +90,10 @@ function isUp(pk) { return pk.price >= pk.prevClose }
 .pk-foot-row { display: flex; justify-content: space-between; }
 .pk-foot-row b { color: #555; font-weight: 500; }
 .pk-empty { padding: 24px 0; text-align: center; color: #bbb; font-size: 11px; }
+/* 移动端面板 116px(内容 100px): 默认列宽 28+52 只给量列剩 12px 会换行/溢出 → 压缩列宽保住挂单量 */
+@media (max-width: 480px) {
+  .pk-lvl { width: 20px; font-size: 9px; }
+  .pk-px { width: 42px; }
+  .pk-vol { font-size: 10px; }
+}
 </style>

@@ -2,13 +2,14 @@
 // 坐标系: 内容区左上角 (0,0), y 向下增大
 
 // 三区矩形 (sub=true → main:vol:sub=3:1:1; sub=false → main:vol=2.2:1)
-// opts: { leftGutter, rightGutter } 轴带(分时左轴百分比/右轴价格, K线仅右轴)
-// 每区含 1px 边框(几何按直角), 区间距 2px
+// opts: { leftGutter, rightGutter, axisH } 轴带(左右轴带 + 底部时间轴带)
+// 每区含 1px 边框(几何按直角), 区间距 2px; 底部预留 axisH 给时间刻度, 否则刻度画在画布外不可见
 export function panelRects(w, h, sub, opts = {}) {
   const gap = 2
   const lg = opts.leftGutter || 0
   const rg = opts.rightGutter || 0
-  const avail = Math.max(0, h - gap * 2)
+  const axisH = opts.axisH ?? 16
+  const avail = Math.max(0, h - gap * 2 - axisH)
   const innerW = Math.max(0, w - lg - rg)
   let main, vol, subR = null
   if (sub) {
@@ -65,7 +66,9 @@ export function trendX(time, w) {
 // 底部时间刻度: 分时固定 5 刻度(09:30~15:00, 按交易分钟比例); 其他均匀 4~6 个(含首末)
 export function timeTicks(items, w, isIntraday) {
   if (isIntraday) {
-    const labels = ['09:30', '10:30', '11:30/13:00', '14:00', '15:00']
+    // 窄内容区(<150px, 移动端扣掉盘口+双轴带后)放下 11 字符的 '11:30/13:00' 会与相邻刻度叠字 → 缩写
+    const mid = w < 150 ? '11:30' : '11:30/13:00'
+    const labels = ['09:30', '10:30', mid, '14:00', '15:00']
     const mins = [0, 60, 120, 180, 240]
     return labels.map((label, i) => ({ x: mins[i] / 240 * w, label }))
   }
@@ -87,10 +90,12 @@ function fmtTime(item) {
     if (t < 1e11) return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
     return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
   }
-  return typeof t === 'string' ? String(t).slice(5, 10) : ''
+  // 日/周/月线 time 为 'YYYY-MM-DD' → 东财式全日期 'YYYYMMDD'
+  return typeof t === 'string' ? String(t).replaceAll('-', '') : ''
 }
 
-// 分时双轴: 左轴=涨跌幅度%(5 等分, 顶部 +pctSpan → 底部 -pctSpan), 右轴=价格(上界涨停 upPx, 下界跌停 downPx, 昨收居中), 两轴同 y
+// 分时双轴(参考东财: 左轴=价格, 右轴=涨跌幅度%): 5 等分, 上界涨停 upPx / 下界跌停 downPx, 昨收居中, 两轴同 y
+// 返回 up/down = 实际采用的上下界(upPx/downPx 缺失时 ±10% fallback), 绘制端 yMin/yMax 须与此同源, 否则刻度错位/NaN
 export function priceTicksTrend(upPx, downPx, prevClose, rect) {
   const fallback = prevClose * 0.1
   const up = typeof upPx === 'number' && upPx > 0 ? upPx : prevClose + fallback
@@ -102,10 +107,10 @@ export function priceTicksTrend(upPx, downPx, prevClose, rect) {
     const pct = pctSpan * f
     const price = prevClose * (1 + pct / 100)
     const y = rect.y + k / 4 * rect.height
-    left.push({ y, label: `${pct > 0 ? '+' : ''}${Math.round(pct)}%` })
-    right.push({ y, label: round2(price) })
+    left.push({ y, label: round2(price) })
+    right.push({ y, label: `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` })
   }
-  return { left, right }
+  return { left, right, up, down }
 }
 
 // K线右轴刻度 (min/max 5 等分, 仅价格)

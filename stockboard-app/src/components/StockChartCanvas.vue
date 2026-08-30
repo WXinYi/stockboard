@@ -6,6 +6,7 @@ import {
   panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks, trendX, trendMinute,
 } from '../utils/chartDraw.js'
 import { calcMACD, calcKDJ, calcRSI, calcWR, VIEW_MAX_BARS } from '../utils/indicators.js'
+import { fmtHand } from '../utils/pankou.js'
 
 const props = defineProps({
   view: { type: String, required: true },          // 'trend'|'day'|'week'|'month'|'m60'
@@ -102,24 +103,27 @@ function drawTrend() {
   const prevClose = quote.prevClose
   if (!t.length || typeof prevClose !== 'number' || !ctx) return
   const w = canvasRef.value.clientWidth, h = canvasRef.value.clientHeight
-  const rects = panelRects(w, h, props.subInd !== 'none', { leftGutter: 32, rightGutter: 40 })
+  // 东财式布局: 双轴标签叠在绘图区内侧边缘(见 drawTrendAxis), 绘图区拉通全宽 — 移动端折线不过窄;
+  // 均价/最新信息行由宿主 HTML 渲染在画布上方(sd-tinfo), 不占画布
+  const rects = panelRects(w, h, props.subInd !== 'none', { leftGutter: 0, rightGutter: 0 })
   const { main, vol, sub } = rects
   const upP = quote.upPx, downP = quote.downPx
   const axis = priceTicksTrend(upP, downP, prevClose, main)
-  const yMin = downP, yMax = upP
+  // y 轴上下界与刻度同源: upPx/downPx 缺失时用刻度的 ±10% fallback, 避免直接取 null 致 priceToY 全 NaN 整图空白
+  const yMin = axis.down, yMax = axis.up
   plotX = main.x; plotW = main.width
   const x0 = main.x, w0 = main.width   // 分时 x 以内容区为基准, 避免线/量柱/副图越过 y 轴带
 
   // 1. 网格 + 昨收 + 涨跌停线
   drawGrid(main)
   drawHLine(main, prevClose, yMin, yMax, C.preClose, 'dashed')
-  if (typeof upP === 'number' && typeof downP === 'number' && upP > downP) {
-    drawHLine(main, upP, yMin, yMax, 'rgba(231,76,60,.55)', 'dashed')
-    drawHLine(main, downP, yMin, yMax, 'rgba(39,174,96,.55)', 'dashed')
+  if (axis.up > axis.down) {
+    drawHLine(main, axis.up, yMin, yMax, 'rgba(231,76,60,.55)', 'dashed')
+    drawHLine(main, axis.down, yMin, yMax, 'rgba(39,174,96,.55)', 'dashed')
   }
   // 2. 左右双轴刻度
-  drawTrendAxis(axis, main, rects)
-  // 3. 分时线 + 均价线
+  drawTrendAxis(axis, main)
+  // 3. 分时线 + 均价线(信息行在宿主 HTML)
   drawTrendLine(main, t, prevClose, yMin, yMax, x0, w0)
   drawAvgLine(main, t, prevClose, yMin, yMax, x0, w0)
   // 4. 量能
@@ -158,21 +162,27 @@ function drawHLine(rect, price, yMin, yMax, color, style) {
   ctx.setLineDash([])
 }
 
-function drawTrendAxis(axis, main, rects) {
+function drawTrendAxis(axis, main) {
   if (!ctx) return
   ctx.font = FONT_SM
   ctx.fillStyle = C.axisText
-  ctx.textBaseline = 'middle'
-  // 左轴百分比 (main.x 左侧)
+  // 标签叠在绘图区内侧(东财式): 白色描边垫底, 折线/网格穿过时仍可读
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'
   for (const t of axis.left) {
-    ctx.textAlign = 'right'
-    ctx.fillText(t.label, main.x - 5, t.y)
-  }
-  // 右轴价格 (main 右侧)
-  for (const t of axis.right) {
+    // 首尾刻度在面板边缘, 'middle' 会让文字半截出界被裁 → 按位置换 baseline
+    ctx.textBaseline = t.y <= main.y + 6 ? 'top' : t.y >= main.y + main.height - 6 ? 'bottom' : 'middle'
     ctx.textAlign = 'left'
-    ctx.fillText(String(t.label), main.x + main.width + 5, t.y)
+    ctx.strokeText(t.label, main.x + 3, t.y)
+    ctx.fillText(t.label, main.x + 3, t.y)
   }
+  for (const t of axis.right) {
+    ctx.textBaseline = t.y <= main.y + 6 ? 'top' : t.y >= main.y + main.height - 6 ? 'bottom' : 'middle'
+    ctx.textAlign = 'right'
+    ctx.strokeText(String(t.label), main.x + main.width - 3, t.y)
+    ctx.fillText(String(t.label), main.x + main.width - 3, t.y)
+  }
+  ctx.lineWidth = 1
 }
 
 function drawTrendLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
@@ -191,15 +201,6 @@ function drawTrendLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
     else ctx.lineTo(x, y)
   })
   ctx.stroke()
-  // 区顶标签
-  ctx.font = FONT
-  ctx.fillStyle = C.axisText
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'top'
-  ctx.fillText('分时', main.x + 4, main.y + 3)
-  const avgX = main.x + 4 + ctx.measureText('分时 ').width
-  ctx.fillStyle = C.avg
-  ctx.fillText('─ 均价', avgX, main.y + 3)
 }
 
 function drawAvgLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
@@ -228,16 +229,25 @@ function drawAvgLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
 function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   if (!ctx || !t.length) return
   const w = w0 || canvasRef.value.clientWidth
+  // 顶部 16px 头部条带(东财"成交量"行), 量柱只画条带下方, 互不遮挡
+  const HEADER_H = 16
+  const plot = { x: vol.x, y: vol.y + HEADER_H, width: vol.width, height: vol.height - HEADER_H }
   const maxVol = Math.max(...t.map(p => p.vol), 1)
   const barW = Math.max(1, w / 240 * 0.6)   // 按 240 交易分钟定柱宽, 午休不占位
   for (let i = 0; i < t.length; i++) {
     const p = t[i]
     const x = x0 + trendX(p.time, w)
     if (x < x0) continue          // 午休点跳过
-    const h = (p.vol / maxVol) * (vol.height - 4)
+    const h = (p.vol / maxVol) * (plot.height - 4)
     ctx.fillStyle = typeof prevClose === 'number' && p.price >= prevClose ? C.volUp : C.volDown
-    ctx.fillRect(x - barW / 2, vol.y + vol.height - h - 2, barW, h)
+    ctx.fillRect(x - barW / 2, plot.y + plot.height - h - 2, barW, h)
   }
+  // 头部统计行: 总量 + 现量(最新一分钟)
+  ctx.font = FONT
+  ctx.fillStyle = C.axisText
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillText(`量 ${fmtHand(t.reduce((s, p) => s + (p.vol || 0), 0))}  现量:${fmtHand(t[t.length - 1].vol || 0)}`, x0 + 4, vol.y + 2)
 }
 
 function drawTimeAxis(rects, ticks, isIntraday, x0 = 0) {
@@ -262,14 +272,20 @@ function drawKline() {
   if (!kl.length || !ctx) return
   const w = canvasRef.value.clientWidth, h = canvasRef.value.clientHeight
   const hasSub = props.subInd !== 'none'
-  const rects = panelRects(w, h, hasSub, { leftGutter: 0, rightGutter: 40 })
+  // 东财式: K线绘图区同样拉通全宽, 刻度叠在图内左缘(见 drawKlineAxis)
+  const rects = panelRects(w, h, hasSub, { leftGutter: 0, rightGutter: 0 })
   const { main, vol, sub } = rects
   const count = Math.min(VIEW_MAX_BARS[props.view] || 60, kl.length)
   const { window: win, offset: off } = klineWindow(kl, count, offset)
   const baseI = kl.length - win.length - off   // win[0] ↔ 全局索引(指标数组与 kline 同索引)
   const { yMin, yMax } = range(win)
   plotX = main.x; plotW = main.width
-  const pw = main.width   // 内容区宽, 蜡烛/MACD 不进右轴带
+  const pw = main.width   // 内容区宽
+  const q = props.quote || {}
+  // 涨跌停虚线(东财): 落在可视价格区间内才画
+  drawGrid(main)
+  if (Number.isFinite(q.upPx) && q.upPx >= yMin && q.upPx <= yMax) drawHLine(main, q.upPx, yMin, yMax, 'rgba(243,156,18,.55)', 'dashed')
+  if (Number.isFinite(q.downPx) && q.downPx >= yMin && q.downPx <= yMax) drawHLine(main, q.downPx, yMin, yMax, 'rgba(243,156,18,.55)', 'dashed')
   // 蜡烛
   drawCandles(main, win, yMin, yMax, pw)
   // 叠加
@@ -277,8 +293,10 @@ function drawKline() {
   if (props.overlays.boll) drawBoll(main, win, yMin, yMax, pw, baseI)
   if (props.chan && props.view !== 'm60') drawChan(main, win, yMin, yMax, pw)
   if (props.wave) drawWave(main, win, yMin, yMax, pw)
-  // 右轴
-  drawKlineAxis(main, priceTicks(yMin, yMax, main))
+  // 轴(左缘刻度 + 右缘最新价标注)
+  drawKlineAxis(main, priceTicks(yMin, yMax, main), win, yMin, yMax)
+  // MA/BOLL 值图例
+  drawMALegend(main, win, baseI)
   // 量能
   drawVolumePane(vol, win, pw, baseI)
   // 副图
@@ -474,25 +492,103 @@ function drawWave(main, win, yMin, yMax, w) {
   }
 }
 
-function drawKlineAxis(main, ticks) {
+// K线轴(东财): 刻度叠在图内左缘(白色描边垫底), 右缘标注最新收盘价(按当日收开红绿)
+function drawKlineAxis(main, ticks, win, yMin, yMax) {
   if (!ctx) return
   ctx.font = FONT_SM
   ctx.fillStyle = C.axisText
-  ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
-  for (const t of ticks) ctx.fillText(String(t.label), main.x + main.width + 5, t.y)
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'
+  for (const t of ticks) {
+    // 首尾刻度换 baseline 防边缘裁切
+    ctx.textBaseline = t.y <= main.y + 6 ? 'top' : t.y >= main.y + main.height - 6 ? 'bottom' : 'middle'
+    ctx.strokeText(String(t.label), main.x + 3, t.y)
+    ctx.fillText(String(t.label), main.x + 3, t.y)
+  }
+  const last = win[win.length - 1]
+  if (last && Number.isFinite(last.close)) {
+    const y = clamp(priceToY(last.close, yMin, yMax, main), main.y + 6, main.y + main.height - 6)
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'right'
+    ctx.fillStyle = last.close >= last.open ? C.up : C.down
+    const s = `${last.close.toFixed(2)} →`
+    ctx.strokeText(s, main.x + main.width - 3, y)
+    ctx.fillText(s, main.x + main.width - 3, y)
+  }
+  ctx.lineWidth = 1
+}
+
+// MA/BOLL 值图例(东财): 叠在主图左上两行, 值取可视窗口最后一根, ↑/↓ 表较前一根方向
+function drawMALegend(main, win, baseI) {
+  const ic = props.indCache
+  if (!ic || (!props.overlays.ma && !props.overlays.boll)) return
+  const li = baseI + win.length - 1
+  const arrow = vals => (Number.isFinite(vals?.[li]) && Number.isFinite(vals?.[li - 1])) ? (vals[li] >= vals[li - 1] ? '↑' : '↓') : ''
+  const f2 = v => Number.isFinite(v) ? v.toFixed(2) : '—'
+  const rows = [[], []]
+  if (props.overlays.ma && ic.ma) {
+    rows[0].push(
+      [`MA5:${f2(ic.ma[5]?.[li])}${arrow(ic.ma[5])}`, MA_COLORS[5]],
+      [`10:${f2(ic.ma[10]?.[li])}${arrow(ic.ma[10])}`, MA_COLORS[10]],
+      [`20:${f2(ic.ma[20]?.[li])}${arrow(ic.ma[20])}`, MA_COLORS[20]],
+    )
+    rows[1].push([`60:${f2(ic.ma[60]?.[li])}${arrow(ic.ma[60])}`, MA_COLORS[60]])
+  }
+  if (props.overlays.boll && ic.boll) {
+    rows[1].push(
+      [`UP:${f2(ic.boll.up?.[li])}`, BOLL_COLORS.up],
+      [`MID:${f2(ic.boll.mid?.[li])}`, BOLL_COLORS.mid],
+      [`LOW:${f2(ic.boll.lo?.[li])}`, BOLL_COLORS.lo],
+    )
+  }
+  ctx.font = FONT_SM
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'
+  rows.forEach((parts, r) => {
+    let x = main.x + 4
+    for (const [text, color] of parts) {
+      ctx.fillStyle = color
+      ctx.strokeText(text, x, main.y + 3 + r * 12)
+      ctx.fillText(text, x, main.y + 3 + r * 12)
+      x += ctx.measureText(text + ' ').width
+    }
+  })
+  ctx.lineWidth = 1
 }
 
 function drawVolumePane(vol, win, w, baseI = 0) {
   if (!ctx) return
+  // 与分时量能区同款: 顶部 16px 头部条带, 量柱/均线只画条带下方
+  const HEADER_H = 16
+  const plot = { x: vol.x, y: vol.y + HEADER_H, width: vol.width, height: vol.height - HEADER_H }
   const maxVol = Math.max(...win.map(k => k.volume), 1)
   const barW = Math.max(1, w / win.length * 0.6)
   for (let i = 0; i < win.length; i++) {
     const k = win[i]
     const x = idxToX(i, w, win.length) - barW / 2
-    const h = (k.volume / maxVol) * (vol.height - 4)
+    const h = (k.volume / maxVol) * (plot.height - 4)
     ctx.fillStyle = k.close >= k.open ? C.volUp : C.volDown
-    ctx.fillRect(x, vol.y + vol.height - h - 2, barW, h)
+    ctx.fillRect(x, plot.y + plot.height - h - 2, barW, h)
+  }
+  // 头部统计行(东财): 总量(较前一根↑/↓) + MA1/MA2(量均线 5/10 值, 带方向箭头)
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.font = FONT_SM
+  const lastK = win[win.length - 1], prevK = win[win.length - 2]
+  const vDir = prevK ? (lastK.volume >= prevK.volume ? '↑' : '↓') : ''
+  const li = baseI + win.length - 1
+  const vArr = vals => (Number.isFinite(vals?.[li]) && Number.isFinite(vals?.[li - 1])) ? (vals[li] >= vals[li - 1] ? '↑' : '↓') : ''
+  const parts = [[`量 ${fmtHand(win.reduce((s, k) => s + (k.volume || 0), 0))}${vDir}`, C.axisText]]
+  if (props.indCache?.volma?.[5]) parts.push([`MA1:${fmtHand(props.indCache.volma[5][li])}${vArr(props.indCache.volma[5])}`, C.avg])
+  if (props.indCache?.volma?.[10]) parts.push([`MA2:${fmtHand(props.indCache.volma[10][li])}${vArr(props.indCache.volma[10])}`, C.signal])
+  let hx = vol.x + 4
+  for (const [text, color] of parts) {
+    ctx.fillStyle = color
+    ctx.fillText(text, hx, vol.y + 3)
+    hx += ctx.measureText(text + ' ').width
   }
   // volma 5/10
   const ic = props.indCache
@@ -500,7 +596,7 @@ function drawVolumePane(vol, win, w, baseI = 0) {
     for (const n of [5, 10]) {
       const vals = ic.volma[n]
       if (!vals) continue
-      drawVolLine(vol, vals, win, w, n === 5 ? C.avg : C.signal, baseI)
+      drawVolLine(plot, vals, win, w, n === 5 ? C.avg : C.signal, baseI)
     }
   }
 }
@@ -525,26 +621,49 @@ function drawVolLine(vol, vals, win, w, color, baseI = 0) {
 }
 
 // 副图指标: ic 缺省取宿主 indCache; 分时视图由 drawTrend 现算传入 (isIntraday=true → x 按交易分钟)
+// 顶部 16px 头部条带(东财"MACD ▾"行): 下拉/数值行在条带内, 指标图形只画条带下方
 function drawSubPane(sub, win, ic = props.indCache, x0 = 0, w0 = 0, baseI = 0, isIntraday = false) {
   const s = props.subInd
   if (s === 'none' || !ic) return
   const w = w0 || canvasRef.value.clientWidth
+  const HEADER_H = 16
+  const plot = { x: sub.x, y: sub.y + HEADER_H, width: sub.width, height: sub.height - HEADER_H }
   ctx.font = FONT_SM
   ctx.fillStyle = C.axisText
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   if (s === 'macd' && ic.macd) {
-    drawSubMacd(sub, win, w, ic.macd, x0, baseI, isIntraday)
-    ctx.fillText('MACD', sub.x + 4, sub.y + 3)
+    drawSubMacd(plot, win, w, ic.macd, x0, baseI, isIntraday)
+    drawSubMacdHeader(sub, ic.macd, baseI + win.length - 1)
   } else if (s === 'kdj' && ic.kdj) {
-    drawSubOsc(sub, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j }, x0, baseI, isIntraday)
-    ctx.fillText('KDJ', sub.x + 4, sub.y + 3)
+    drawSubOsc(plot, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j }, x0, baseI, isIntraday)
   } else if (s === 'rsi' && ic.rsi) {
-    drawSubOsc(sub, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] }, x0, baseI, isIntraday)
-    ctx.fillText('RSI', sub.x + 4, sub.y + 3)
+    drawSubOsc(plot, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] }, x0, baseI, isIntraday)
   } else if (s === 'wr' && ic.wr) {
-    drawSubOsc(sub, win, w, { 10: ic.wr[10], 6: ic.wr[6] }, x0, baseI, isIntraday)
-    ctx.fillText('WR', sub.x + 4, sub.y + 3)
+    drawSubOsc(plot, win, w, { 10: ic.wr[10], 6: ic.wr[6] }, x0, baseI, isIntraday)
+  }
+}
+
+// MACD 副图头部(参考东财): 数值取可视窗口最后一根, ↑/↓ 表较前一根方向; 静态参考不随十字线联动。
+// x 从 88px 起: 左侧留给宿主的指标下拉(.sd-subind-select 与本行同一行, 东财布局)
+function drawSubMacdHeader(sub, m, lastIdx) {
+  if (!ctx) return
+  const arr = (vals, i) => (Number.isFinite(vals?.[i]) && Number.isFinite(vals?.[i - 1])) ? (vals[i] >= vals[i - 1] ? '↑' : '↓') : ''
+  const f3 = v => !Number.isFinite(v) ? '—' : Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(2)
+  const dif = m.dif?.[lastIdx], dea = m.dea?.[lastIdx], hist = m.hist?.[lastIdx]
+  ctx.font = FONT_SM
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  const parts = [
+    [`DIF:${f3(dif)}${arr(m.dif, lastIdx)}`, C.avg],
+    [`DEA:${f3(dea)}${arr(m.dea, lastIdx)}`, C.signal],
+    [`M:${f3(hist)}${arr(m.hist, lastIdx)}`, hist >= 0 ? C.up : C.down],
+  ]
+  let x = sub.x + 68
+  for (const [text, color] of parts) {
+    ctx.fillStyle = color
+    ctx.fillText(text, x, sub.y + 4)
+    x += ctx.measureText(text + ' ').width
   }
 }
 
