@@ -9,13 +9,21 @@
 
 | 事项 | 状态 | 说明 |
 |---|---|---|
-| 文档 | ✅ 完成 | 本文件；另含 08-31 起的实施调试记录 |
-| ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：crawl-2026-07.db.gz 5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计暂不封版（当月由周层覆盖，9 月首个收盘 run 自动封入冷层） |
-| ② crawl.yml 改造 | ✅ 代码已推送 | 收盘 run（≥15:10）流程=下载热层→采集→prune→`release_db.py --sync`（热层覆盖+当周温层+已完成月冷层+温层滚动清理）；git 永不提交 db。**待今日收盘 run 实战验证** |
-| ③ fetch_db.py 回测取数 | 🔶 基本可用 | `--list`/tag 解析已验证；本地下载遇 GitHub S3 主机 SSL 瞬断（大陆直连特性），已加 3 次退避重试；**待办：下载环节加 curl 兜底**（curl 实测能通，urllib TLS 指纹被掐） |
-| ⑤ export_json 清理旧 players | ✅ 代码已推送 | 导出后删除跌榜选手旧 JSON（曾累积 23192 个/92MB）；待下次 run 日志确认 |
-| ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 现状 .git 721MB；前置条件=三层归档已验证（已满足）；会重写全部 commit hash |
-| 观察期 ⑥ | ⏳ 未开始 | 连续 5 个交易日核对 manifest/页面/钉钉（依赖②实战） |
+| 文档 | ✅ 完成 | 本文件；含实施调试记录 |
+| ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计当月不封版（9 月首个收盘 run 自动封入冷层） |
+| ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 08-31 00:56 北京时间 run 全步骤成功：下载热层→采集→prune→导出→提交→部署；quality 3901→3895 数据完整。上传 sync 步骤同样跑通（本次因凌晨未过 15:10 闸门正确跳过，热层保持 init 版本；**首次真实 sync=今日收盘 15:10 run**） |
+| ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
+| ⑤ players 导出收窄 | ✅ 代码已推送 | 实测 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；目录随每日导出自动淘汰跌榜冻结选手。待下次 run 后核对远端目录规模 |
+| ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push |
+| 观察期 ⑥ | ⏳ 进行中(第1天) | 已核对: 00:56 run 数据完整; 待验证: 今日 15:10 run 的 sync 上传、明日热层日期=当日、页面/钉钉正常 |
+
+### ⚠️ 事故记录（08-31 凌晨，已修复，后人必读）
+
+**空库导出污染页面**：迁移切换当晚，一次白天逻辑的 run 在 db 已移出 git、热层下载又被"白天跳过"闸门挡住的情况下，用**空库**跑了 export_json，产出退化数据（index 2148 人/quality 886/无持仓变动）提交并部署。
+
+- **根因**：白天跳过下载的设计假设"白天 run 不需要历史库"，但 export_json 的持仓变动/卖出预警/高手判定全部依赖 40 日历史，空库导出即数据污染。
+- **修复**（commit `🐛 白天run也必须恢复热层`）：**每次 run 一律恢复热层**（下载失败且无本地 db 才终止）；只有"上传"保留 15:10 收盘闸门。`--download-latest` 加 3 次退避重试。
+- **教训**：改存储架构时，"读路径"（每次 run 都要）和"写路径"（收盘一次）必须分开考虑闸门。
 
 ### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
 
@@ -29,7 +37,8 @@
 
 - 仓库实测为 **public**（`private=false`），Release 资产可匿名下载（已验证）；用户配置标注"私有"以 API 实测为准。
 - WXinYi 的 classic PAT 已提供（用于 API 调试与 gh CLI）。**安全建议**：该 token 已出现在会话记录中，稳定运行后建议在 GitHub → Settings → Developer settings 里 revoke 并换新。
-- 大陆直连 GitHub：API 域名偶发 SSL 瞬断（重试可过），S3 资产主机（objects.githubusercontent.com 302 跳转后）对 Python urllib 的 TLS 指纹掐流较狠，curl 通常能过 → 这就是 fetch_db 要加 curl 兜底的原因。
+- 大陆直连 GitHub：API 域名偶发 SSL 瞬断（重试可过），S3 资产主机（objects.githubusercontent.com 302 跳转后）对 Python urllib 的 TLS 指纹掐流较狠，curl 通常能过 → fetch_db/release_db 均已带重试，fetch_db 另有 curl 兜底。
+- 回测归档产物在 `jiarenmens/data/archive/`（已 .gitignore），勿 `git add -A` 误提交（08-31 曾误提交 2 个 19MB 文件，已及时移除）。
 
 ---
 
@@ -134,6 +143,7 @@ latest/name_map.json    — 被引用选手 name→id
 latest/changes_summary.json — 持仓变动计数
 latest/summary.json     — 全量聚合(调试参照, 前端不再 fetch)
 latest/players/<id>.json — 选手详情, 前端按需加载
+  (✅ 08-31 起: 只导出"优质∪当日活跃∪被引用"集合, 曾累积 23192 个/92MB 的问题已根治, 详见 §0)
 latest/auction.json     — 竞价扫描快照(intraday_monitor 也读)
 latest/players_index.json
 ```
@@ -224,10 +234,10 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 
 - [x] **① 存量数据上云**：当前 crawl_data.db 已上传 Release `db-state`（热层）+ `db-m2026-07`（冷层首档）；匿名下载 + integrity_check 已验证。✅ 2026-08-31
 - [x] **② 改造 crawl.yml**：下载热层（失败且有 git 内 db 则过渡放行）、`--sync` 上传（失败即终止）、integrity_check+manifest；提交数据步骤 `git reset` db（git 永不提交）。✅ 代码已推送
-- [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+可选 token）。✅ 已推送（curl 兜底待加）
+- [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+curl 兜底）。✅ 端到端验证
 - [ ] **④ （可选）filter-repo 历史重写** + force push（需用户确认；前置条件①已满足）
-- [x] **⑤ 导出清理**：export_json.py 删除跌榜选手旧 JSON。✅ 已推送
-- [ ] **⑥ 观察期**：连续 5 个交易日核对——每日 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
+- [x] **⑤ 导出收窄**：players/ 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件（23192→5133 实测）。✅ 已推送
+- [~] **⑥ 观察期**：第 1/5 天——00:56 run 数据完整已核对；今日 15:10 run 验证首次 sync 上传，之后每日核对 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
 
 ## 七、影响分析
 
