@@ -51,6 +51,11 @@ def _token() -> str:
     return t
 
 
+def _opt_token() -> str:
+    """读操作(公开仓匿名也可), 有 token 就带上。"""
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+
+
 def _api(method: str, url: str, *, token: str = "", data=None, ctype: str = "application/json"):
     """返回 (status, 解析后的json或bytes)。404 时 status=404 不抛错。"""
     req = urllib.request.Request(url, method=method, data=data)
@@ -72,7 +77,7 @@ def _api(method: str, url: str, *, token: str = "", data=None, ctype: str = "app
 
 
 def get_release(tag: str):
-    st, rel = _api("GET", f"{API_BASE}/releases/tags/{tag}", token=_token())
+    st, rel = _api("GET", f"{API_BASE}/releases/tags/{tag}", token=_opt_token())
     return rel if st == 200 else None
 
 
@@ -111,7 +116,7 @@ def delete_release(tag: str):
 
 
 def list_releases() -> list:
-    _, rels = _api("GET", f"{API_BASE}/releases?per_page=100", token=_token())
+    _, rels = _api("GET", f"{API_BASE}/releases?per_page=100", token=_opt_token())
     return rels if isinstance(rels, list) else []
 
 
