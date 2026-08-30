@@ -236,7 +236,7 @@ function mergeBid() {
     if (!(hh === 9 && mm >= 15 && mm <= 25)) continue
     const vol = Math.max(0, (p.cumVol || 0) - prevCum)
     prevCum = p.cumVol || 0
-    auction.push({ time: day + hh * 3600 + mm * 60, price: p.price, vol, amount: p.price * vol * 100 })
+    auction.push({ time: day + hh * 3600 + mm * 60, price: p.price, vol, amount: p.price * vol * 100, side: p.side, cum: p.cumVol })
   }
   if (!auction.length) return
   trend.value = [...auction, ...t]
