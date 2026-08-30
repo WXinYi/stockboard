@@ -8,6 +8,7 @@ import { useRelativeTime } from './composables/useRelativeTime.js'
 import { useDataRefresh } from './composables/useUX.js'
 import NavBar from './components/NavBar.vue'
 import PullToRefresh from './components/PullToRefresh.vue'
+import StockSearch from './components/StockSearch.vue'
 
 const stockData = useData()
 const stockHistory = useHistory()
@@ -52,6 +53,7 @@ const isStockDetail = computed(() => route.path.startsWith('/stock/'))
 const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value || route.path.startsWith('/info/') || route.path.startsWith('/board/') || route.path.startsWith('/market/'))
 
 const refreshing = ref(false)
+const showSearch = ref(false)   // 全局股票搜索浮层(详情页顶栏窄, 不展示入口)
 
 // 统一刷新入口：清缓存 → 重载 core + 当前路由分片 + 变化摘要
 async function refreshData() {
@@ -115,6 +117,7 @@ onMounted(async () => {
           <span class="header-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
+          <button v-if="!isDetailPage" class="refresh-btn" title="搜索股票" @click="showSearch = true">🔍</button>
           <span v-if="crawlTime" class="header-time-label">采集</span>
           <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeRelative }}</span>
           <!-- 依赖 players_index 懒加载：首屏 /copy 不显示，进入榜单/重仓等页后出现 -->
@@ -151,5 +154,8 @@ onMounted(async () => {
     </main>
 
     <footer class="footer">StockBoard · {{ currentDate || '—' }}</footer>
+
+    <!-- 全局股票搜索浮层 -->
+    <StockSearch v-if="showSearch" @close="showSearch = false" />
   </div>
 </template>
