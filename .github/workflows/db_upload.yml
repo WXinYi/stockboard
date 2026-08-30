@@ -1,0 +1,22 @@
+name: Release 数据库初始化/重建
+# 一次性迁移工具: 把库内 crawl_data.db 上传到 Release 三层存储(热层 db-state + 已完成月冷层)。
+# 手动触发(Actions → Run workflow), 也可在数据损坏时重放。日常增量由 crawl.yml 收盘后 --sync 维护。
+
+on:
+  workflow_dispatch:
+  push:               # 编辑本文件即触发一次重建(幂等), 便于首次迁移无需手动点
+    paths: [.github/workflows/db_upload.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 上传 Release 存储
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 jiarenmens/scripts/release_db.py --init

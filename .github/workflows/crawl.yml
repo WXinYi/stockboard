@@ -64,6 +64,21 @@ jobs:
             echo "非尾盘时段($H), 跳过"
           fi
 
+      # 收盘后(≥15:10)的 run: 先从 Release 热层恢复 db 再采集, 保证 40 日滚动窗口增量连续。
+      # 白天 run 跳过(当天状态不持久化, 由收盘 run 全量重采覆盖, 见提交数据步骤注释)。
+      - name: 下载热层库
+        run: |
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -lt 1510 ]; then echo "白天 run: 跳过热层下载"; exit 0; fi
+          cd jiarenmens
+          if python3 scripts/release_db.py --download-latest; then
+            echo "✅ 已恢复热层"
+          elif [ -f data/crawl_data.db ]; then
+            echo "⚠️ 热层不存在(迁移过渡期), 使用 git 内 db 继续"
+          else
+            echo "❌ 热层下载失败且本地无 db, 终止以防数据断链"; exit 1
+          fi
+
       - name: 数据采集
         run: cd jiarenmens && python main.py --checkpoint-reset
 
@@ -100,22 +115,27 @@ jobs:
       - name: 清理过期采集数据
         run: cd jiarenmens && python3 scripts/prune_crawl_db.py --apply
 
+      # 收盘后: 快照→热层覆盖 + 当周→温层 + 已完成月→冷层 + 温层滚动清理。
+      # 上传失败立即终止并告警——宁可停, 不可断链(明天恢复时热层还是今天的完整状态)。
+      - name: 上传 Release 存储(热/温/冷层)
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -lt 1510 ]; then echo "白天 run: 跳过上传"; exit 0; fi
+          cd jiarenmens && python3 scripts/release_db.py --sync
+
       - name: 提交数据
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
           git add -f stockboard-app/public/data/ jiarenmens/data/
-          # crawl_data.db 二进制 80MB 级, 每日 12 次高频提交是仓库膨胀主因(每天 pack +20~40MB)。
-          # 只在收盘后(北京时间>=15:10)提交一次; 白天不提交也安全: trades/positions 按 (zh_id,crawl_date)
-          # 先删后写, 当日重采幂等。代价: 若当天最后一次 run 失败, 当天 db 数据缺失(页面 JSON 不受影响)。
-          # 注意只挡 crawl_data.db: 其余状态 JSON(last_notify_state/checkpoint 等)必须每次提交,
-          # 否则钉钉增量推送会因状态回退而白天重复推送。
-          if [ "$(TZ=Asia/Shanghai date +%H%M)" -ge 1510 ]; then
-            :
-          else
-            git reset -q jiarenmens/data/crawl_data.db
-            echo "收盘前: crawl_data.db 留待收盘后提交"
-          fi
+          # crawl_data.db 已迁往 Release 三层存储(db-state/db-w*/db-m*), git 永不提交:
+          # 二进制快照进 git 是仓库膨胀主因(.git 曾 721MB), 历史取数改用 scripts/fetch_db.py。
+          # 白天不持久化 db 也安全: trades/positions 按 (zh_id,crawl_date) 先删后写,
+          # 收盘 run 会全量重采当日数据(经热层恢复后增量入库)。
+          git reset -q jiarenmens/data/crawl_data.db 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "数据无变化，跳过提交"
           else

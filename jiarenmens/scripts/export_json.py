@@ -646,6 +646,15 @@ def export(db_path, crawl_date, out_dir):
         with open(players_out_dir / f"{pid}.json", "w", encoding="utf-8") as f:
             json.dump(detail, f, ensure_ascii=False, separators=(",", ":"))
 
+    # 清理跌出榜单选手的旧 JSON: 只增不删会永久累积(曾达 23192 个/92MB 随 git 提交膨胀)。
+    # 前端按 players_index/name_map 引用, 旧文件无消费方, 可安全删除。
+    exported_ids = {str(p["id"]) for p in players_flat}
+    removed_players = 0
+    for f in players_out_dir.glob("*.json"):
+        if f.stem not in exported_ids:
+            f.unlink()
+            removed_players += 1
+
     # 15c. index.json（不变）
     index_path = out_dir / "index.json"
     existing_dates = []
@@ -668,7 +677,7 @@ def export(db_path, crawl_date, out_dir):
 
     print(f"✅ 导出完成 ({crawl_date})")
     print(f"   summary.json → {summary_size:.0f}KB")
-    print(f"   players/ → {n_players} 个选手详情文件")
+    print(f"   players/ → {n_players} 个选手详情文件 (清理旧文件 {removed_players} 个)")
     print(f"   选手: {len(all_players_raw)} | 持仓: {len(positions_raw)} | 调仓: {len(trades_raw)} | 高手: {len(quality_ids)}")
 
 
