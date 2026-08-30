@@ -55,3 +55,6 @@ jiarenmens/data/watchlist_extra.txt
 # 会话/误写产物, 不入库
 .zcode/
 jiarenmens/jiarenmens/
+
+# 数据库已迁往 Release 三层存储(db-state/db-w*/db-m*), git 不再跟踪(见 docs/DATA_PIPELINE.md)
+jiarenmens/data/crawl_data.db
