@@ -47,7 +47,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from) => {
-  if (from.name) scrollMemory.set(from.fullPath, { left: window.scrollX, top: window.scrollY })
+  // matched 为空 = 首次导航(START); Tab 页路由大多无 name, 不能用 from.name 判断
+  if (from.matched.length) scrollMemory.set(from.fullPath, { left: window.scrollX, top: window.scrollY })
 })
 
 export default router
