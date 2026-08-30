@@ -8,8 +8,11 @@ import {
   fetchGlobalIndexes, fetchInstitutionIncrease,
   fetchMarketMood, fetchMarketHighlights, fetchLhbList,
   fetchBoardAnnotations, fetchMoneyEffect,
+  fetchLimitPool, fetchRiseFall, fetchUnsealedPool,
   getLatestTradingDay, getLatestReportDate, isTradingTime,
 } from '../composables/useKplApi.js'
+import { loadCycleData, STAGE_COLORS } from '../utils/emotionCycle.js'
+import { loadBattleData } from '../utils/leaderBattle.js'
 
 defineOptions({ name: 'MarketTab' })
 
@@ -30,6 +33,21 @@ const live = ref(null)
 const lhb = ref(null)
 const annotations = ref(null)   // 板块标注(#9 GetPoint)
 const effect = ref(null)        // 赚钱效应(#29 GetMoneyDetail)
+// 今日决策(情绪周期+龙头博弈): cycle 供决策卡, battle 供出击Tab
+const cycle = ref(null)
+const battle = ref(null)
+const cycleDataDay = ref('')
+
+async function loadCycleBattle(silent = false) {
+  try {
+    const day = await getLatestTradingDay()
+    const dayDash = day ? `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}` : ''
+    const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
+    cycle.value = cd.cycle
+    cycleDataDay.value = cd.cycle?.date || dayDash
+    battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd)
+  } catch (e) { if (!silent) console.error('[MarketTab cycle]', e?.message) }
+}
 
 async function loadAll(silent = false) {
   try {
@@ -74,6 +92,7 @@ function startTimer() {
   timer = setInterval(() => {
     if (!isTradingTime()) { stopTimer(); return }
     loadAll(true)
+    loadCycleBattle(true)
   }, 30000)
 }
 function stopTimer() { clearInterval(timer); timer = null }
@@ -84,7 +103,7 @@ function onVisibility() {
 }
 
 // 下拉刷新: 仅当前激活页面响应(usePullRefresh 按激活态过滤)
-usePullRefresh(() => { loadAll(); loadAuction() })
+usePullRefresh(() => { loadAll(); loadAuction(); loadCycleBattle() })
 
 // KeepAlive: onUnmounted 不触发 → 轮询必须 onDeactivated 停 / onActivated 恢复, 防泄漏防重复(startTimer 有 guard)
 let inited = false
@@ -92,7 +111,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', onVisibility)
 })
 onActivated(() => {
-  if (!inited) { inited = true; loadAll(); loadAuction() } else if (isTradingTime()) loadAll(true)
+  if (!inited) { inited = true; loadAll(); loadAuction(); loadCycleBattle() } else if (isTradingTime()) { loadAll(true); loadCycleBattle(true) }
   startTimer()
 })
 onDeactivated(() => { stopTimer() })
@@ -107,15 +126,32 @@ function goBoard(bk) { if (bk.bkCode) router.push({ path: '/board/' + bk.bkCode,
 function fmt(v, d = 2) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(d) : '—' }
 function pct(v) { return (typeof v === 'number' && isFinite(v)) ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
 
-// ── 分段 Tab(板块优先) ──
-const tab = ref('board')
+// ── 分段 Tab(出击优先) ──
+const tab = ref('strike')
 const TABS = [
+  { key: 'strike', label: '🎯 出击' },
   { key: 'board', label: '板块' },
   { key: 'live', label: '异动' },
   { key: 'zt', label: '涨停' },
   { key: 'lhb', label: '龙虎榜' },
   { key: 'more', label: '更多' },
 ]
+
+// ── 今日决策(情绪周期+龙头博弈) ──
+const stageName = computed(() => cycle.value?.stage || '')
+const stageColor = computed(() => STAGE_COLORS[stageName.value] || '#8a97a8')
+const gateTxt = computed(() => {
+  const g = battle.value?.strike?.gate
+  if (!g) return ''
+  if (g.cap === 0) return '禁买'
+  if (g.cap >= 100) return '可出击'
+  return `限${g.cap}分`
+})
+const strikeTop3 = computed(() => (battle.value?.strike?.candidates || []).filter(c => c.status.startsWith('出击') || c.status.startsWith('备选')).slice(0, 3))
+const strikeAll = computed(() => battle.value?.strike?.candidates || [])
+const warTop4 = computed(() => (battle.value?.boardWars?.wars || []).slice(0, 4))
+const mainSwitchNote = computed(() => battle.value?.boardWars?.mainSwitch?.note || '')
+const brokenHighsTop = computed(() => (battle.value?.risks?.brokenHighs || []).slice(0, 4))
 
 // ── 竞价(情绪条徽标) ──
 const auctionBadge = computed(() => {
@@ -263,11 +299,33 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         <span class="me-net" :style="{ color: effectNet >= 0 ? '#c0392b' : '#27ae60' }">{{ effectNet >= 0 ? '净赚' : '净亏' }} {{ Math.abs(effectNet) }} 家</span>
       </div>
 
-      <!-- 情绪周期入口(实时计算: 六段/矩阵/主线/龙头谱系) -->
-      <div class="mt-cycle-entry" @click="open('cycle')">
-        <span class="mce-tag">🧭 情绪周期</span>
-        <span class="mce-txt">六段阶段 · 高中位矩阵 · 主线与龙头谱系</span>
-        <span class="mce-arrow">›</span>
+      <!-- 今日决策卡: 阶段+闸门+出击top3+警示(点击进 cycle 详情) -->
+      <div class="mt-decide" @click="open('cycle')">
+        <template v-if="stageName && battle && !battle.empty">
+          <div class="mtd-top">
+            <span class="mtd-stage" :style="{ color: stageColor }">{{ stageName }}</span>
+            <span class="mtd-gate" :class="{ ban: gateTxt === '禁买' }">{{ gateTxt }}</span>
+            <span class="mtd-more">决策详情 ›</span>
+          </div>
+          <div v-if="strikeTop3.length" class="mtd-strikes">
+            <span v-for="c in strikeTop3" :key="c.code" class="mtd-stock" :class="{ go: c.status.startsWith('出击') }" @click.stop="goStock(c)">
+              <b>{{ c.name }}</b><i>{{ c.score }}</i>
+            </span>
+            <span v-if="strikeAll.length > strikeTop3.length" class="mtd-plus">+{{ strikeAll.length - strikeTop3.length }}</span>
+          </div>
+          <div v-else class="mtd-none">本阶段无出击候选（纪律优先）</div>
+          <div v-if="mainSwitchNote || brokenHighsTop.length" class="mtd-alert">
+            <span v-if="mainSwitchNote">🔄 {{ mainSwitchNote }}</span>
+            <span v-if="brokenHighsTop.length">🚨 高标开板: {{ brokenHighsTop.map(b => b.name).join('、') }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <div class="mtd-top">
+            <span class="mtd-stage" style="color:#8a97a8">🧭 情绪周期</span>
+            <span class="mtd-more">决策详情 ›</span>
+          </div>
+          <div class="mtd-none">{{ cycleDataDay ? `${cycleDataDay} 数据加载中…` : '打开时实时计算六段阶段 · 出击清单' }}</div>
+        </template>
       </div>
 
     </div>
@@ -297,7 +355,65 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
       <button v-for="t in TABS" :key="t.key" class="mt-tab" :class="{ on: tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
     </div>
 
-    <!-- ④ 板块: 最强风口 + 板块标注 -->
+    <!-- ④ 出击: 今日出击清单 + 板块之争精简 + 高标开板 -->
+    <div v-show="tab === 'strike'" class="mt-pane">
+      <section v-if="battle && !battle.empty" class="mt-sec">
+        <div class="mt-sec-head">
+          <h3>🎯 今日出击</h3>
+          <em>{{ battle.strike.gate.stage }} · 上限 {{ battle.strike.gate.cap || '禁买' }}</em>
+          <button class="mt-more" @click="open('cycle')">决策详情 ›</button>
+        </div>
+        <div class="mt-strike-banner">{{ battle.strike.gate.banner }}</div>
+        <div v-for="c in strikeAll" :key="c.code" class="mt-strike" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
+          <div class="mt-strike-top">
+            <b>{{ c.name }}</b>
+            <span v-if="c.level" class="mt-strike-lv">{{ c.level }}板</span>
+            <span class="mt-strike-plates">{{ c.platesTxt }}</span>
+            <span class="mt-strike-score" :class="{ hi: c.score >= 75 }">{{ c.score }}</span>
+            <span class="mt-strike-status">{{ c.status }}</span>
+          </div>
+          <div class="mt-strike-mid">
+            <span class="mt-strike-mode">{{ c.mode }}</span>
+            <span v-if="c.sealTxt">{{ c.sealTxt }}</span>
+            <span v-if="c.strength">💪 {{ c.strength }}</span>
+          </div>
+          <div class="mt-strike-logic">{{ c.logic }}</div>
+          <div v-if="c.risk" class="mt-strike-risk">⚠️ {{ c.risk }}</div>
+        </div>
+        <div v-if="!strikeAll.length" class="mt-hold">本阶段无出击候选（纪律优先）</div>
+        <div class="mt-strike-note">{{ battle.strike.disclaimer }}</div>
+      </section>
+      <section v-if="warTop4.length" class="mt-sec">
+        <div class="mt-sec-head">
+          <h3>⚔️ 板块之争</h3>
+          <em v-if="mainSwitchNote" style="color:#e67e22">{{ mainSwitchNote }}</em>
+          <button class="mt-more" @click="open('cycle')">全部 ›</button>
+        </div>
+        <div v-for="w in warTop4" :key="w.board" class="mt-war-row" @click="open('cycle')">
+          <span class="mt-war-tag" :class="{ hot: w.tag === '主线' }">{{ w.tag }}</span>
+          <span class="mt-row-name">{{ w.board }}</span>
+          <span class="mt-row-count">今 {{ w.count }} 只</span>
+          <span class="mt-war-delta" :class="w.dCount >= 0 ? 'up' : 'dn'">{{ w.dCount >= 0 ? '+' : '' }}{{ w.dCount }}</span>
+          <span class="mt-war-sub">昨 {{ w.prevCount }} · 最高{{ w.maxH }}板</span>
+        </div>
+      </section>
+      <section v-if="brokenHighsTop.length" class="mt-sec mt-sec-plain">
+        <div class="mt-sec-head">
+          <h3>🚨 高标开板</h3>
+          <em>盘中分歧信号</em>
+          <button class="mt-more" @click="open('cycle')">全部 ›</button>
+        </div>
+        <div v-for="b in brokenHighsTop" :key="b.code" class="mt-row" @click="goStock(b)">
+          <span class="mt-row-name">{{ b.name }}</span>
+          <span class="mt-war-tag">{{ b.level }}板</span>
+          <span class="mt-war-delta dn">{{ b.pct.toFixed(1) }}%</span>
+          <span class="mt-war-sub">{{ b.note }}</span>
+        </div>
+      </section>
+      <div v-if="!battle || battle.empty" class="mt-hold" style="padding:20px 0;text-align:center;">周期数据加载中…</div>
+    </div>
+
+    <!-- ⑤ 板块: 最强风口 + 板块标注 -->
     <div v-show="tab === 'board'" class="mt-pane">
       <section class="mt-sec">
         <div class="mt-sec-head">
@@ -584,8 +700,45 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
 }
 
 /* 情绪周期入口 */
-.mt-cycle-entry { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; cursor: pointer; }
-.mce-tag { font-size: 13px; font-weight: 700; color: #2c3e50; }
-.mce-txt { flex: 1; font-size: 11px; color: #999; }
-.mce-arrow { color: #bbb; font-size: 16px; }
+/* 今日决策卡 */
+.mt-decide { background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; cursor: pointer; }
+.mtd-top { display: flex; align-items: center; gap: 8px; }
+.mtd-stage { font-size: 22px; font-weight: 800; letter-spacing: 2px; }
+.mtd-gate { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #ff5a5a; color: #fff; }
+.mtd-gate.ban { background: #9b6bde; }
+.mtd-more { margin-left: auto; font-size: 11px; color: #bbb; }
+.mtd-strikes { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.mtd-stock { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #eef1f5; border-radius: 8px; padding: 4px 8px; font-size: 13px; }
+.mtd-stock.go { border-color: #ff5a5a; background: #fff7f7; }
+.mtd-stock i { font-style: normal; font-weight: 800; color: #ff5a5a; }
+.mtd-plus { font-size: 11px; color: #999; }
+.mtd-none { font-size: 12px; color: #999; margin-top: 8px; }
+.mtd-alert { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; font-size: 11px; color: #e67e22; }
+/* 出击 Tab */
+.mt-strike-banner { font-size: 12px; color: #556; background: #f8fafc; border: 1px dashed #e5e9f0; border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
+.mt-strike { border: 1px solid #eef1f5; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
+.mt-strike.st-go { border-left-color: #ff5a5a; background: #fff7f7; }
+.mt-strike.st-alt { border-left-color: #f5a623; }
+.mt-strike-top { display: flex; align-items: center; gap: 6px; }
+.mt-strike-top b { font-size: 14px; }
+.mt-strike-lv { font-size: 11px; color: #b8860b; font-weight: 700; }
+.mt-strike-plates { font-size: 11px; color: #778; }
+.mt-strike-score { margin-left: auto; font-size: 17px; font-weight: 800; color: #8a97a8; }
+.mt-strike-score.hi { color: #ff5a5a; }
+.mt-strike-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: #667; }
+.st-go .mt-strike-status { background: #ff5a5a; color: #fff; }
+.st-alt .mt-strike-status { background: #f5a623; color: #fff; }
+.mt-strike-mid { display: flex; gap: 8px; font-size: 11px; color: #778; margin: 3px 0; flex-wrap: wrap; }
+.mt-strike-mode { color: #2bc4a8; font-weight: 700; }
+.mt-strike-logic { font-size: 12px; color: #556; }
+.mt-strike-risk { font-size: 11px; color: #ff5a5a; margin-top: 2px; }
+.mt-strike-note { font-size: 10px; color: #a0aab8; margin-top: 4px; }
+.mt-war-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; border-bottom: 1px dashed #eef1f5; cursor: pointer; }
+.mt-war-tag { font-size: 10px; padding: 0 5px; border-radius: 4px; background: #eef1f5; color: #667; }
+.mt-war-tag.hot { background: #ff5a5a; color: #fff; }
+.mt-row-count { font-size: 12px; color: #556; }
+.mt-war-delta { font-size: 11px; font-weight: 700; }
+.mt-war-delta.up { color: #ff5a5a; }
+.mt-war-delta.dn { color: #4cd964; }
+.mt-war-sub { margin-left: auto; font-size: 11px; color: #999; }
 </style>

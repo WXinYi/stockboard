@@ -50,6 +50,18 @@ const pctTxt = v => (v === null || v === undefined) ? '无数据' : Math.round(v
 const yiTxt = v => !v ? '0' : v >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : v >= 1e4 ? (v / 1e4).toFixed(0) + '万' : String(Math.round(v))
 const tagCls = t => ({ '主线': 'hot', '卡位上位': 'rise', '扩容': 'up', '萎缩·被抽血': 'fade' }[t] || 'plain')
 // goStock 复用下方既有函数(签名 row, 取 row.code)
+// cycle 页布局: 决策区(出击默认top3) + 三个分析Tab
+const cyTab = ref('war')
+const CY_TABS = [
+  { key: 'war', label: '⚔️ 博弈' },
+  { key: 'leader', label: '👑 龙头' },
+  { key: 'cycle2', label: '📐 周期' },
+]
+const showAllStrike = ref(false)
+const strikeShown = computed(() => {
+  const all = battle.value?.strike?.candidates || []
+  return showAllStrike.value ? all : all.slice(0, 3)
+})
 const MATRIX_DESC = {
   '强|强': '上升前期 · 最适合做接力，龙头战法最暴力',
   '强|平衡': '上升中后期 · 资金抱团龙头/妖股，开始转低切',
@@ -561,21 +573,24 @@ const lhbSorted = computed(() => {
 
     <template v-else-if="section === 'cycle'">
       <div v-if="cycle" class="md-cycle">
-        <!-- 阶段大字卡 -->
+        <!-- 决策区①: 紧凑阶段条(阶段+依据+纪律一行) + 六段刻度 -->
         <div class="cy-hero" :style="{ borderColor: cyColor }">
-          <div class="cy-stage" :style="{ color: cyColor }">{{ cycle.stage }}</div>
-          <div class="cy-conf">置信度 {{ cycle.confidence }}/9 · 数据日 {{ cycle.date }}</div>
+          <div class="cy-hero-row">
+            <span class="cy-stage" :style="{ color: cyColor }">{{ cycle.stage }}</span>
+            <span class="cy-conf">置信度 {{ cycle.confidence }}/9 · 数据日 {{ cycle.date }}</span>
+            <span v-if="battle && !battle.empty" class="cy-gate" :class="{ ban: battle.strike.gate.cap === 0 }">
+              闸门: {{ battle.strike.gate.cap === 0 ? '禁买' : battle.strike.gate.cap >= 100 ? '全开' : '限' + battle.strike.gate.cap }}
+            </span>
+          </div>
           <ul class="cy-reasons"><li v-for="r in cycle.reasons" :key="r">{{ r }}</li></ul>
           <div class="cy-playbook">📌 {{ cycle.playbook }}</div>
         </div>
-
-        <!-- 六段刻度条 -->
         <div class="cy-scale">
           <div v-for="s in cycleStages" :key="s" class="cy-seg" :class="{ on: s === cycle.stage }"
                :style="s === cycle.stage ? { background: cyColor, borderColor: cyColor } : {}">{{ s }}</div>
         </div>
 
-        <!-- 🎯 今日出击: 阶段闸门 + 确定性评分候选 -->
+        <!-- 决策区②: 今日出击(默认top3, 可展开) -->
         <div v-if="battle && !battle.empty" class="md-group lb-strike">
           <div class="md-group-head">
             <span class="md-group-tag">🎯 今日出击</span>
@@ -586,7 +601,7 @@ const lhbSorted = computed(() => {
           <div class="lb-banner" :style="battle.strike.gate.cap === 0 ? {} : { borderColor: cyColor }">
             {{ battle.strike.gate.banner }}
           </div>
-          <div v-for="c in battle.strike.candidates" :key="c.code" class="lb-cand" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
+          <div v-for="c in strikeShown" :key="c.code" class="lb-cand" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
             <div class="lb-cand-top">
               <b>{{ c.name }}</b>
               <span v-if="c.level" class="lb-lv">{{ c.level }}板</span>
@@ -603,128 +618,130 @@ const lhbSorted = computed(() => {
             <div v-if="c.risk" class="lb-cand-risk">⚠️ {{ c.risk }}</div>
           </div>
           <div v-if="!battle.strike.candidates.length" class="lb-empty">当前阶段无符合条件的候选（纪律优先）</div>
+          <div v-if="battle.strike.candidates.length > 3" class="lb-toggle" @click="showAllStrike = !showAllStrike">
+            {{ showAllStrike ? '收起 ▲' : `展开全部 ${battle.strike.candidates.length} 只 ▼` }}
+          </div>
           <div class="lb-note">{{ battle.strike.disclaimer }}</div>
         </div>
 
-        <!-- ⚔️ 板块之争 -->
-        <div v-if="battle && !battle.empty" class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">⚔️ 板块之争</span>
-            <span v-if="battle.boardWars.mainSwitch" class="md-group-count lb-switch">{{ battle.boardWars.mainSwitch.note }}</span>
+        <!-- 分析Tab: 博弈 / 龙头 / 周期 -->
+        <div class="mt-tabs cy-tabs">
+          <button v-for="t in CY_TABS" :key="t.key" class="mt-tab" :class="{ on: cyTab === t.key }" @click="cyTab = t.key">{{ t.label }}</button>
+        </div>
+
+        <!-- Tab ⚔️ 博弈 -->
+        <div v-show="cyTab === 'war'" class="cy-pane">
+          <div v-if="battle && !battle.empty" class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">⚔️ 板块之争</span>
+              <span v-if="battle.boardWars.mainSwitch" class="md-group-count lb-switch">{{ battle.boardWars.mainSwitch.note }}</span>
+            </div>
+            <div v-for="w in battle.boardWars.wars.slice(0, 6)" :key="w.board" class="cy-line">
+              <span class="lb-tag" :class="tagCls(w.tag)">{{ w.tag }}</span>
+              <b>{{ w.board }}</b> 今 {{ w.count }} 只
+              <span class="lb-delta" :class="w.dCount >= 0 ? 'up' : 'dn'">{{ w.dCount >= 0 ? '+' : '' }}{{ w.dCount }}</span>
+              <span class="cy-names">昨 {{ w.prevCount }} 只 · 最高 {{ w.maxH }}板 · 封单合计 {{ yiTxt(w.sealSum) }}</span>
+            </div>
+            <div v-for="r in battle.boardWars.relations" :key="r.a + r.b" class="lb-rel">
+              <b>{{ r.a }}</b> × <b>{{ r.b }}</b>
+              <span class="lb-tag" :class="r.rel === '竞争切换' ? 'fade' : 'rise'">{{ r.rel }}</span>
+              <span class="cy-names">{{ r.note }}</span>
+            </div>
           </div>
-          <div v-for="w in battle.boardWars.wars.slice(0, 6)" :key="w.board" class="cy-line">
-            <span class="lb-tag" :class="tagCls(w.tag)">{{ w.tag }}</span>
-            <b>{{ w.board }}</b> 今 {{ w.count }} 只
-            <span class="lb-delta" :class="w.dCount >= 0 ? 'up' : 'dn'">{{ w.dCount >= 0 ? '+' : '' }}{{ w.dCount }}</span>
-            <span class="cy-names">昨 {{ w.prevCount }} 只 · 最高 {{ w.maxH }}板 · 封单合计 {{ yiTxt(w.sealSum) }}</span>
+          <div v-if="battle && !battle.empty && battle.duels.length" class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">🥊 高标对决</span>
+              <span class="md-group-count">压制 / 卡位 / 接棒</span>
+            </div>
+            <div v-for="(d, i) in battle.duels" :key="i" class="cy-line">
+              <span class="lb-tag plain">{{ d.type }}</span>
+              <b @click.stop="d.a && d.a.code && goStock(d.a)" class="lb-link">{{ d.a?.name || d.a?.board }}</b>
+              <template v-if="d.b"> × <b @click.stop="d.b.code && goStock(d.b)" class="lb-link">{{ d.b.name }}</b></template>
+              <span class="cy-names">{{ d.verdict }}</span>
+            </div>
           </div>
-          <div v-for="r in battle.boardWars.relations" :key="r.a + r.b" class="lb-rel">
-            <b>{{ r.a }}</b> × <b>{{ r.b }}</b>
-            <span class="lb-tag" :class="r.rel === '竞争切换' ? 'fade' : 'rise'">{{ r.rel }}</span>
-            <span class="cy-names">{{ r.note }}</span>
+          <div v-if="battle && !battle.empty && battle.risks.brokenHighs.length" class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">🚨 高标开板</span>
+              <span class="md-group-count">盘中分歧信号</span>
+            </div>
+            <div v-for="b in battle.risks.brokenHighs" :key="b.code" class="cy-line" @click="goStock(b)">
+              <b class="lb-link">{{ b.name }}</b> <span class="lb-lv">{{ b.level }}板</span>
+              <span class="lb-delta dn">{{ b.pct.toFixed(1) }}%</span>
+              <span class="cy-names">{{ b.note }}</span>
+            </div>
+          </div>
+          <div v-if="battle && !battle.empty && battle.risks.watch.length" class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">🔭 卡位雷达</span>
+              <span class="md-group-count">早封+封单保持+主力净买</span>
+            </div>
+            <div v-for="w in battle.risks.watch" :key="w.code" class="cy-line" @click="goStock(w)">
+              <b class="lb-link">{{ w.name }}</b> <span class="lb-lv">{{ w.level }}板</span>
+              <span class="lb-tag rise">{{ w.board }}</span>
+              <span class="cy-names">{{ w.note }}</span>
+              <span v-if="w.tip" class="lb-tip">{{ w.tip }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- 🥊 高标对决 -->
-        <div v-if="battle && !battle.empty && battle.duels.length" class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">🥊 高标对决</span>
-            <span class="md-group-count">压制 / 卡位 / 接棒</span>
+        <!-- Tab 👑 龙头 -->
+        <div v-show="cyTab === 'leader'" class="cy-pane">
+          <div class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">👑 龙头谱系</span>
+            </div>
+            <div v-for="l in cycle.leaders" :key="l.code + l.role" class="cy-line" @click="goStock(l)">
+              <b class="lb-link">{{ l.name }}</b> {{ l.pid }}板 <span class="cy-role">[{{ l.role }}]</span>
+              <span class="cy-names">{{ l.note }}</span>
+            </div>
           </div>
-          <div v-for="(d, i) in battle.duels" :key="i" class="cy-line">
-            <span class="lb-tag plain">{{ d.type }}</span>
-            <b @click.stop="d.a && d.a.code && goStock(d.a)" class="lb-link">{{ d.a?.name || d.a?.board }}</b>
-            <template v-if="d.b"> × <b @click.stop="d.b.code && goStock(d.b)" class="lb-link">{{ d.b.name }}</b></template>
-            <span class="cy-names">{{ d.verdict }}</span>
-          </div>
-        </div>
-
-        <!-- 🚨 高标开板风险 -->
-        <div v-if="battle && !battle.empty && battle.risks.brokenHighs.length" class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">🚨 高标开板</span>
-            <span class="md-group-count">盘中分歧信号</span>
-          </div>
-          <div v-for="b in battle.risks.brokenHighs" :key="b.code" class="cy-line" @click="goStock(b)">
-            <b class="lb-link">{{ b.name }}</b> <span class="lb-lv">{{ b.level }}板</span>
-            <span class="lb-delta dn">{{ b.pct.toFixed(1) }}%</span>
-            <span class="cy-names">{{ b.note }}</span>
+          <div class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">🎨 主线板块</span>
+              <span class="md-group-count">按涨停家数排序</span>
+            </div>
+            <div v-for="a in cycle.mainlines" :key="a.board" class="cy-line">
+              <b>{{ a.board }}</b> {{ a.count }} 只 · 最高 {{ a.maxLevel }} 板
+              <span class="cy-names">{{ a.names.slice(0, 5).join('、') }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- 🔭 明日卡位雷达 -->
-        <div v-if="battle && !battle.empty && battle.risks.watch.length" class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">🔭 卡位雷达</span>
-            <span class="md-group-count">早封+封单保持+主力净买</span>
+        <!-- Tab 📐 周期 -->
+        <div v-show="cyTab === 'cycle2'" class="cy-pane">
+          <div class="cy-metrics">
+            <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.height }}B</span><span class="cy-mi-l">最高连板(昨 {{ cycle.metrics.heightPrev ?? '-' }})</span></div>
+            <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.zt }}</span><span class="cy-mi-l">涨停(ma5 {{ Math.round(cycle.metrics.ztMa5 || 0) }})</span></div>
+            <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.brokeRate }}%</span><span class="cy-mi-l">破板率</span></div>
           </div>
-          <div v-for="w in battle.risks.watch" :key="w.code" class="cy-line" @click="goStock(w)">
-            <b class="lb-link">{{ w.name }}</b> <span class="lb-lv">{{ w.level }}板</span>
-            <span class="lb-tag rise">{{ w.board }}</span>
-            <span class="cy-names">{{ w.note }}</span>
-            <span v-if="w.tip" class="lb-tip">{{ w.tip }}</span>
+          <div class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">🪜 梯队晋级</span>
+              <span class="md-group-count">低位 {{ cycle.metrics.ladder.low }} · 中位 {{ cycle.metrics.ladder.mid }} · 高位 {{ cycle.metrics.ladder.high }}</span>
+            </div>
+            <div class="cy-promo">
+              <div class="cy-pi"><span>低位(1-2板)</span><b>{{ pctTxt(cycle.metrics.promo.low) }}</b></div>
+              <div class="cy-pi"><span>中位(3-5板)</span><b>{{ pctTxt(cycle.metrics.promo.mid) }}</b></div>
+              <div class="cy-pi"><span>高位(≥6板)</span><b>{{ pctTxt(cycle.metrics.promo.high) }}</b></div>
+            </div>
           </div>
-        </div>
-
-        <!-- 指标网格 -->
-        <div class="cy-metrics">
-          <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.height }}B</span><span class="cy-mi-l">最高连板(昨 {{ cycle.metrics.heightPrev ?? '-' }})</span></div>
-          <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.zt }}</span><span class="cy-mi-l">涨停(ma5 {{ Math.round(cycle.metrics.ztMa5 || 0) }})</span></div>
-          <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.brokeRate }}%</span><span class="cy-mi-l">破板率</span></div>
-        </div>
-
-        <!-- 梯队晋级 -->
-        <div class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">🪜 梯队晋级</span>
-            <span class="md-group-count">低位 {{ cycle.metrics.ladder.low }} · 中位 {{ cycle.metrics.ladder.mid }} · 高位 {{ cycle.metrics.ladder.high }}</span>
-          </div>
-          <div class="cy-promo">
-            <div class="cy-pi"><span>低位(1-2板)</span><b>{{ pctTxt(cycle.metrics.promo.low) }}</b></div>
-            <div class="cy-pi"><span>中位(3-5板)</span><b>{{ pctTxt(cycle.metrics.promo.mid) }}</b></div>
-            <div class="cy-pi"><span>高位(≥6板)</span><b>{{ pctTxt(cycle.metrics.promo.high) }}</b></div>
-          </div>
-        </div>
-
-        <!-- 3x3 矩阵 -->
-        <div class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">🧮 高中位矩阵</span>
-            <span class="md-group-count">当前: 高位{{ cycle.matrix.high }} × 中位{{ cycle.matrix.mid }}</span>
-          </div>
-          <div class="cy-matrix">
-            <div class="cy-cell head"></div>
-            <div class="cy-cell head" v-for="mid in ['强', '平衡', '弱']" :key="'h' + mid">中位{{ mid }}</div>
-            <template v-for="cell in matrixCells" :key="cell.k">
-              <div class="cy-cell head" v-if="cell.mid === '强'">高位{{ cell.high }}</div>
-              <div class="cy-cell" :class="{ on: cell.on }">
-                <span class="cy-cell-t">{{ cell.on ? '◀ 当前' : cell.high + '-' + cell.mid }}</span>
-                <span class="cy-cell-d">{{ cell.d }}</span>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- 主线板块 -->
-        <div class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">🎨 主线板块</span>
-            <span class="md-group-count">按涨停家数排序</span>
-          </div>
-          <div v-for="a in cycle.mainlines" :key="a.board" class="cy-line">
-            <b>{{ a.board }}</b> {{ a.count }} 只 · 最高 {{ a.maxLevel }} 板
-            <span class="cy-names">{{ a.names.slice(0, 5).join('、') }}</span>
-          </div>
-        </div>
-
-        <!-- 龙头谱系 -->
-        <div class="md-group">
-          <div class="md-group-head">
-            <span class="md-group-tag">👑 龙头谱系</span>
-          </div>
-          <div v-for="l in cycle.leaders" :key="l.code + l.role" class="cy-line">
-            <b>{{ l.name }}</b> {{ l.pid }}板 <span class="cy-role">[{{ l.role }}]</span>
-            <span class="cy-names">{{ l.note }}</span>
+          <div class="md-group">
+            <div class="md-group-head">
+              <span class="md-group-tag">🧮 高中位矩阵</span>
+              <span class="md-group-count">当前: 高位{{ cycle.matrix.high }} × 中位{{ cycle.matrix.mid }}</span>
+            </div>
+            <div class="cy-matrix">
+              <div class="cy-cell head"></div>
+              <div class="cy-cell head" v-for="mid in ['强', '平衡', '弱']" :key="'h' + mid">中位{{ mid }}</div>
+              <template v-for="cell in matrixCells" :key="cell.k">
+                <div class="cy-cell head" v-if="cell.mid === '强'">高位{{ cell.high }}</div>
+                <div class="cy-cell" :class="{ on: cell.on }">
+                  <span class="cy-cell-t">{{ cell.on ? '◀ 当前' : cell.high + '-' + cell.mid }}</span>
+                  <span class="cy-cell-d">{{ cell.d }}</span>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
 
@@ -959,6 +976,16 @@ const lhbSorted = computed(() => {
 .cy-line b { color: #2c3e50; }
 .cy-names { color: #999; font-size: 11px; display: block; }
 .cy-role { color: #b8860b; font-size: 11px; }
+/* cycle 页重排: 决策区 + 分析Tab */
+.cy-hero-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cy-gate { margin-left: auto; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #ff5a5a; color: #fff; }
+.cy-gate.ban { background: #9b6bde; }
+.lb-toggle { text-align: center; font-size: 12px; color: #2a7fd4; padding: 6px 0 2px; cursor: pointer; }
+.cy-tabs { margin: 10px 0 2px; }
+.cy-pane { min-height: 120px; }
+.mt-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; }
+.mt-tab { flex-shrink: 0; border: 1px solid #e5e9f0; background: #fff; border-radius: 14px; padding: 5px 14px; font-size: 13px; color: #667; }
+.mt-tab.on { background: #2c3e50; border-color: #2c3e50; color: #fff; font-weight: 700; }
 /* 龙头博弈 + 今日出击 /market/cycle */
 .lb-banner { border: 1px dashed #e5e9f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #556; background: #f8fafc; margin-bottom: 8px; }
 .lb-banned { color: #ff5a5a; font-weight: 700; }
