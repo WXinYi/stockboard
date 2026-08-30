@@ -8,8 +8,11 @@ import {
   fetchNewHighBoards, fetchNewHighStocks, fetchNewHighTrend,
   fetchGlobalIndexes, fetchInstitutionIncrease,
   fetchMarketMood, fetchMoneyEffect, fetchMarketHighlights, fetchBoardAnnotations, fetchLhbList,
+  fetchLimitPool, fetchRiseFall, fetchUnsealedPool,
   getLatestTradingDay, getLatestReportDate, isTradingTime,
 } from '../composables/useKplApi.js'
+import { loadCycleData, STAGES, STAGE_COLORS } from '../utils/emotionCycle.js'
+import { loadBattleData } from '../utils/leaderBattle.js'
 
 defineOptions({ name: 'MarketDetail' })
 
@@ -20,7 +23,7 @@ const section = computed(() => route.params.section)
 const SECTION_TITLES = {
   auction: '竞价抢筹', wind: '最强风口', ladder: '涨停天梯', reasons: '涨停原因',
   newhighs: '百日新高', global: '外围市场', institution: '机构增仓',
-  mood: '市场情绪', live: '盘面动态', lhb: '龙虎榜',
+  mood: '市场情绪', live: '盘面动态', lhb: '龙虎榜', cycle: '情绪周期',
 }
 const title = computed(() => SECTION_TITLES[section.value] || '盘面详情')
 
@@ -35,6 +38,36 @@ const nhMode = ref('stocks')
 const isBX = ref(false)
 // 涨停原因: 行级全文展开
 const openIdx = ref(null)
+
+// 情绪周期: JS 引擎实时计算(双实现 — 推送/回测以 emotion_cycle.py 为准, 见 utils/emotionCycle.js 头注)
+const cycle = computed(() => data.value?.cycle || null)
+// 龙头博弈+今日出击: 纯规则引擎(utils/leaderBattle.js), 出击规则与 stage_candidates.py 成对维护
+const battle = computed(() => data.value?.battle || null)
+const cyColor = computed(() => STAGE_COLORS[cycle.value?.stage] || '#8a97a8')
+const cycleStages = STAGES
+const cycleFetchedAt = ref('')
+const pctTxt = v => (v === null || v === undefined) ? '无数据' : Math.round(v * 100) + '%'
+const yiTxt = v => !v ? '0' : v >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : v >= 1e4 ? (v / 1e4).toFixed(0) + '万' : String(Math.round(v))
+const tagCls = t => ({ '主线': 'hot', '卡位上位': 'rise', '扩容': 'up', '萎缩·被抽血': 'fade' }[t] || 'plain')
+// goStock 复用下方既有函数(签名 row, 取 row.code)
+const MATRIX_DESC = {
+  '强|强': '上升前期 · 最适合做接力，龙头战法最暴力',
+  '强|平衡': '上升中后期 · 资金抱团龙头/妖股，开始转低切',
+  '强|弱': '情绪末端 · 中位核按钮频发，抱团龙头或转低切',
+  '平衡|强': '大周期分歧 · 高位打开赚钱效应，中低位非常活跃',
+  '平衡|平衡': '混沌盘面 · 中位均出现分歧，甚至出现退潮风险',
+  '平衡|弱': '退潮期 · 情绪很差，低位套利空间不大',
+  '弱|强': '大周期分歧 · 空间受压，中位强势补涨',
+  '弱|平衡': '试探期 · 高位情绪不佳，整体情绪较差',
+  '弱|弱': '全面退潮 · 寸草不生',
+}
+const matrixCells = computed(() => {
+  const h = cycle.value?.matrix.high, m = cycle.value?.matrix.mid
+  return ['强', '平衡', '弱'].flatMap(mid => ['强', '平衡', '弱'].map(high => {
+    const key = `${high}|${mid}`
+    return { k: key, high, mid, on: !!h && !!m && h === high && m === mid, d: MATRIX_DESC[key] }
+  }))
+})
 
 async function load(silent = false) {
   const s = section.value
@@ -60,6 +93,10 @@ async function load(silent = false) {
       mood: await fetchMarketMood(silent),
       effect: dayDash ? await fetchMoneyEffect(dayDash, silent) : null,   // 赚钱效应按最近交易日展开
     }
+    else if (s === 'cycle') {
+      const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
+      res = { cycle: cd.cycle, battle: await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd) }
+    }
     else if (s === 'live') res = {
       highlights: await fetchMarketHighlights(silent),
       annotations: await fetchBoardAnnotations(silent),
@@ -67,6 +104,7 @@ async function load(silent = false) {
     else if (s === 'lhb') res = await fetchLhbList(silent)
     if (res) data.value = res
     else if (!silent) error.value = true
+    if (s === 'cycle' && res) cycleFetchedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } catch (e) {
     if (!silent) error.value = true
   } finally {
@@ -521,6 +559,179 @@ const lhbSorted = computed(() => {
       </div>
     </template>
 
+    <template v-else-if="section === 'cycle'">
+      <div v-if="cycle" class="md-cycle">
+        <!-- 阶段大字卡 -->
+        <div class="cy-hero" :style="{ borderColor: cyColor }">
+          <div class="cy-stage" :style="{ color: cyColor }">{{ cycle.stage }}</div>
+          <div class="cy-conf">置信度 {{ cycle.confidence }}/9 · 数据日 {{ cycle.date }}</div>
+          <ul class="cy-reasons"><li v-for="r in cycle.reasons" :key="r">{{ r }}</li></ul>
+          <div class="cy-playbook">📌 {{ cycle.playbook }}</div>
+        </div>
+
+        <!-- 六段刻度条 -->
+        <div class="cy-scale">
+          <div v-for="s in cycleStages" :key="s" class="cy-seg" :class="{ on: s === cycle.stage }"
+               :style="s === cycle.stage ? { background: cyColor, borderColor: cyColor } : {}">{{ s }}</div>
+        </div>
+
+        <!-- 🎯 今日出击: 阶段闸门 + 确定性评分候选 -->
+        <div v-if="battle && !battle.empty" class="md-group lb-strike">
+          <div class="md-group-head">
+            <span class="md-group-tag">🎯 今日出击</span>
+            <span class="md-group-count" :class="{ 'lb-banned': battle.strike.gate.cap === 0 }">
+              {{ battle.strike.gate.stage }}闸门 · 上限 {{ battle.strike.gate.cap || '禁买' }}
+            </span>
+          </div>
+          <div class="lb-banner" :style="battle.strike.gate.cap === 0 ? {} : { borderColor: cyColor }">
+            {{ battle.strike.gate.banner }}
+          </div>
+          <div v-for="c in battle.strike.candidates" :key="c.code" class="lb-cand" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
+            <div class="lb-cand-top">
+              <b>{{ c.name }}</b>
+              <span v-if="c.level" class="lb-lv">{{ c.level }}板</span>
+              <span class="lb-score" :class="{ hi: c.score >= 75 }">{{ c.score }}</span>
+              <span class="lb-status">{{ c.status }}</span>
+            </div>
+            <div class="lb-cand-mid">
+              <span class="lb-mode">{{ c.mode }}</span>
+              <span class="lb-plates">{{ c.platesTxt }}</span>
+              <span class="lb-seal">{{ c.sealTxt }}</span>
+            </div>
+            <div class="lb-cand-logic">{{ c.logic }}</div>
+            <div v-if="c.strength" class="lb-cand-str">💪 {{ c.strength }}</div>
+            <div v-if="c.risk" class="lb-cand-risk">⚠️ {{ c.risk }}</div>
+          </div>
+          <div v-if="!battle.strike.candidates.length" class="lb-empty">当前阶段无符合条件的候选（纪律优先）</div>
+          <div class="lb-note">{{ battle.strike.disclaimer }}</div>
+        </div>
+
+        <!-- ⚔️ 板块之争 -->
+        <div v-if="battle && !battle.empty" class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">⚔️ 板块之争</span>
+            <span v-if="battle.boardWars.mainSwitch" class="md-group-count lb-switch">{{ battle.boardWars.mainSwitch.note }}</span>
+          </div>
+          <div v-for="w in battle.boardWars.wars.slice(0, 6)" :key="w.board" class="cy-line">
+            <span class="lb-tag" :class="tagCls(w.tag)">{{ w.tag }}</span>
+            <b>{{ w.board }}</b> 今 {{ w.count }} 只
+            <span class="lb-delta" :class="w.dCount >= 0 ? 'up' : 'dn'">{{ w.dCount >= 0 ? '+' : '' }}{{ w.dCount }}</span>
+            <span class="cy-names">昨 {{ w.prevCount }} 只 · 最高 {{ w.maxH }}板 · 封单合计 {{ yiTxt(w.sealSum) }}</span>
+          </div>
+          <div v-for="r in battle.boardWars.relations" :key="r.a + r.b" class="lb-rel">
+            <b>{{ r.a }}</b> × <b>{{ r.b }}</b>
+            <span class="lb-tag" :class="r.rel === '竞争切换' ? 'fade' : 'rise'">{{ r.rel }}</span>
+            <span class="cy-names">{{ r.note }}</span>
+          </div>
+        </div>
+
+        <!-- 🥊 高标对决 -->
+        <div v-if="battle && !battle.empty && battle.duels.length" class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">🥊 高标对决</span>
+            <span class="md-group-count">压制 / 卡位 / 接棒</span>
+          </div>
+          <div v-for="(d, i) in battle.duels" :key="i" class="cy-line">
+            <span class="lb-tag plain">{{ d.type }}</span>
+            <b @click.stop="d.a && d.a.code && goStock(d.a)" class="lb-link">{{ d.a?.name || d.a?.board }}</b>
+            <template v-if="d.b"> × <b @click.stop="d.b.code && goStock(d.b)" class="lb-link">{{ d.b.name }}</b></template>
+            <span class="cy-names">{{ d.verdict }}</span>
+          </div>
+        </div>
+
+        <!-- 🚨 高标开板风险 -->
+        <div v-if="battle && !battle.empty && battle.risks.brokenHighs.length" class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">🚨 高标开板</span>
+            <span class="md-group-count">盘中分歧信号</span>
+          </div>
+          <div v-for="b in battle.risks.brokenHighs" :key="b.code" class="cy-line" @click="goStock(b)">
+            <b class="lb-link">{{ b.name }}</b> <span class="lb-lv">{{ b.level }}板</span>
+            <span class="lb-delta dn">{{ b.pct.toFixed(1) }}%</span>
+            <span class="cy-names">{{ b.note }}</span>
+          </div>
+        </div>
+
+        <!-- 🔭 明日卡位雷达 -->
+        <div v-if="battle && !battle.empty && battle.risks.watch.length" class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">🔭 卡位雷达</span>
+            <span class="md-group-count">早封+封单保持+主力净买</span>
+          </div>
+          <div v-for="w in battle.risks.watch" :key="w.code" class="cy-line" @click="goStock(w)">
+            <b class="lb-link">{{ w.name }}</b> <span class="lb-lv">{{ w.level }}板</span>
+            <span class="lb-tag rise">{{ w.board }}</span>
+            <span class="cy-names">{{ w.note }}</span>
+            <span v-if="w.tip" class="lb-tip">{{ w.tip }}</span>
+          </div>
+        </div>
+
+        <!-- 指标网格 -->
+        <div class="cy-metrics">
+          <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.height }}B</span><span class="cy-mi-l">最高连板(昨 {{ cycle.metrics.heightPrev ?? '-' }})</span></div>
+          <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.zt }}</span><span class="cy-mi-l">涨停(ma5 {{ Math.round(cycle.metrics.ztMa5 || 0) }})</span></div>
+          <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.brokeRate }}%</span><span class="cy-mi-l">破板率</span></div>
+        </div>
+
+        <!-- 梯队晋级 -->
+        <div class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">🪜 梯队晋级</span>
+            <span class="md-group-count">低位 {{ cycle.metrics.ladder.low }} · 中位 {{ cycle.metrics.ladder.mid }} · 高位 {{ cycle.metrics.ladder.high }}</span>
+          </div>
+          <div class="cy-promo">
+            <div class="cy-pi"><span>低位(1-2板)</span><b>{{ pctTxt(cycle.metrics.promo.low) }}</b></div>
+            <div class="cy-pi"><span>中位(3-5板)</span><b>{{ pctTxt(cycle.metrics.promo.mid) }}</b></div>
+            <div class="cy-pi"><span>高位(≥6板)</span><b>{{ pctTxt(cycle.metrics.promo.high) }}</b></div>
+          </div>
+        </div>
+
+        <!-- 3x3 矩阵 -->
+        <div class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">🧮 高中位矩阵</span>
+            <span class="md-group-count">当前: 高位{{ cycle.matrix.high }} × 中位{{ cycle.matrix.mid }}</span>
+          </div>
+          <div class="cy-matrix">
+            <div class="cy-cell head"></div>
+            <div class="cy-cell head" v-for="mid in ['强', '平衡', '弱']" :key="'h' + mid">中位{{ mid }}</div>
+            <template v-for="cell in matrixCells" :key="cell.k">
+              <div class="cy-cell head" v-if="cell.mid === '强'">高位{{ cell.high }}</div>
+              <div class="cy-cell" :class="{ on: cell.on }">
+                <span class="cy-cell-t">{{ cell.on ? '◀ 当前' : cell.high + '-' + cell.mid }}</span>
+                <span class="cy-cell-d">{{ cell.d }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- 主线板块 -->
+        <div class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">🎨 主线板块</span>
+            <span class="md-group-count">按涨停家数排序</span>
+          </div>
+          <div v-for="a in cycle.mainlines" :key="a.board" class="cy-line">
+            <b>{{ a.board }}</b> {{ a.count }} 只 · 最高 {{ a.maxLevel }} 板
+            <span class="cy-names">{{ a.names.slice(0, 5).join('、') }}</span>
+          </div>
+        </div>
+
+        <!-- 龙头谱系 -->
+        <div class="md-group">
+          <div class="md-group-head">
+            <span class="md-group-tag">👑 龙头谱系</span>
+          </div>
+          <div v-for="l in cycle.leaders" :key="l.code + l.role" class="cy-line">
+            <b>{{ l.name }}</b> {{ l.pid }}板 <span class="cy-role">[{{ l.role }}]</span>
+            <span class="cy-names">{{ l.note }}</span>
+          </div>
+        </div>
+
+        <div class="md-summary">⚡ 打开页面时经 KPL 实时数据计算 · {{ cycleFetchedAt || '计算中' }} · 交易时段 30s 自动刷新</div>
+      </div>
+    </template>
+
     <!-- 盘面动态: 板块标注流 + 亮点播报流 -->
     <template v-else-if="section === 'live'">
       <div v-if="liveAnnotations.length" class="md-group">
@@ -717,4 +928,71 @@ const lhbSorted = computed(() => {
 @media (min-width: 768px) {
   .md-page { padding: 8px 28px 20px; }
 }
+
+/* 情绪周期 /market/cycle */
+.md-cycle { margin-top: 4px; }
+.cy-hero { background: #fff; border: 2px solid #e5e9f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.cy-stage { font-size: 34px; font-weight: 800; letter-spacing: 4px; line-height: 1.2; }
+.cy-conf { font-size: 11px; color: #999; margin: 2px 0 6px; }
+.cy-reasons { margin: 0 0 8px; padding-left: 16px; }
+.cy-reasons li { font-size: 12px; color: #555; line-height: 1.7; }
+.cy-playbook { font-size: 12px; color: #b8860b; background: #fdf6e3; border-radius: 6px; padding: 6px 8px; line-height: 1.6; }
+.cy-scale { display: flex; gap: 4px; margin: 10px 0; }
+.cy-seg { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid #e5e9f0; border-radius: 6px; color: #99a; background: #f7f8fa; }
+.cy-seg.on { color: #fff; font-weight: 700; }
+.cy-metrics { display: flex; gap: 8px; margin: 10px 0; }
+.cy-mi { flex: 1; background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 8px 6px; text-align: center; }
+.cy-mi-v { display: block; font-size: 18px; font-weight: 800; color: #2c3e50; }
+.cy-mi-l { display: block; font-size: 10px; color: #999; margin-top: 2px; }
+.cy-promo { display: flex; flex-direction: column; gap: 6px; }
+.cy-pi { display: flex; justify-content: space-between; align-items: center; font-size: 13px; background: #f7f8fa; border-radius: 8px; padding: 7px 10px; }
+.cy-pi b { color: #2c3e50; }
+.cy-matrix { display: grid; grid-template-columns: 64px repeat(3, 1fr); gap: 4px; }
+.cy-cell { background: #f7f8fa; border-radius: 8px; padding: 6px 6px; font-size: 11px; color: #666; display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
+.cy-cell.head { background: transparent; font-weight: 700; color: #2c3e50; justify-content: center; min-height: 26px; }
+.cy-cell.on { background: #2c3e50; color: #fff; }
+.cy-cell.on .cy-cell-d { color: #dfe6ee; }
+.cy-cell-t { font-weight: 700; }
+.cy-cell-d { font-size: 10px; line-height: 1.4; color: #888; }
+.cy-cell.on .cy-cell-d { color: #dfe6ee; }
+.cy-line { font-size: 13px; line-height: 1.7; padding: 5px 0; border-bottom: 1px dashed #eef1f5; }
+.cy-line b { color: #2c3e50; }
+.cy-names { color: #999; font-size: 11px; display: block; }
+.cy-role { color: #b8860b; font-size: 11px; }
+/* 龙头博弈 + 今日出击 /market/cycle */
+.lb-banner { border: 1px dashed #e5e9f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #556; background: #f8fafc; margin-bottom: 8px; }
+.lb-banned { color: #ff5a5a; font-weight: 700; }
+.lb-cand { border: 1px solid #eef1f5; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
+.lb-cand.st-go { border-left-color: #ff5a5a; background: #fff7f7; }
+.lb-cand.st-alt { border-left-color: #f5a623; }
+.lb-cand.st-watch { border-left-color: #cfd8e3; }
+.lb-cand-top { display: flex; align-items: center; gap: 6px; }
+.lb-cand-top b { font-size: 14px; }
+.lb-lv { font-size: 11px; color: #b8860b; font-weight: 700; }
+.lb-score { margin-left: auto; font-size: 18px; font-weight: 800; color: #8a97a8; }
+.lb-score.hi { color: #ff5a5a; }
+.lb-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: #667; }
+.st-go .lb-status { background: #ff5a5a; color: #fff; }
+.st-alt .lb-status { background: #f5a623; color: #fff; }
+.lb-cand-mid { display: flex; gap: 8px; font-size: 11px; color: #778; margin: 3px 0; }
+.lb-mode { color: #2bc4a8; font-weight: 700; }
+.lb-cand-logic { font-size: 12px; color: #556; }
+.lb-cand-str { font-size: 11px; color: #4cd964; margin-top: 2px; }
+.lb-cand-risk { font-size: 11px; color: #ff5a5a; margin-top: 2px; }
+.lb-note { font-size: 10px; color: #a0aab8; margin-top: 4px; }
+.lb-empty { font-size: 12px; color: #999; padding: 6px 0; }
+.lb-tag { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 4px; margin-right: 4px; vertical-align: 1px; }
+.lb-tag.hot { background: #ff5a5a; color: #fff; }
+.lb-tag.rise { background: #e6f7ef; color: #1a9e6e; }
+.lb-tag.up { background: #e8f4ff; color: #2a7fd4; }
+.lb-tag.fade { background: #fdeeee; color: #d4574f; }
+.lb-tag.plain { background: #eef1f5; color: #667; }
+.lb-delta { font-size: 11px; font-weight: 700; }
+.lb-delta.up { color: #ff5a5a; }
+.lb-delta.dn { color: #4cd964; }
+.lb-rel { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #eef1f5; }
+.lb-rel b { color: #2c3e50; }
+.lb-switch { color: #f5a623; font-weight: 700; }
+.lb-link { cursor: pointer; }
+.lb-tip { display: block; font-size: 11px; color: #f5a623; margin-top: 1px; }
 </style>

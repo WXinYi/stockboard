@@ -164,7 +164,7 @@ def classify_leaders(cur_rows, mainlines):
                             "role": f"中军({m['board']})",
                             "note": f"成交 {mid['amount']/1e8:.1f}亿 容量核心"})
                 used.add(mid["code"])
-            bu = max((r for r in rest if 2 <= r["height"] < lead["height"]),
+            bu = max((r for r in rest if r["code"] not in used and 2 <= r["height"] < lead["height"]),
                      key=lambda r: r["height"], default=None)
             if bu:
                 out.append({"code": bu["code"], "name": bu["name"], "pid": bu["height"],
