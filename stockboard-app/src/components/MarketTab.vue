@@ -262,6 +262,14 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         <span class="me-loss-num">大亏 {{ effectLoss }}</span>
         <span class="me-net" :style="{ color: effectNet >= 0 ? '#c0392b' : '#27ae60' }">{{ effectNet >= 0 ? '净赚' : '净亏' }} {{ Math.abs(effectNet) }} 家</span>
       </div>
+
+      <!-- 情绪周期入口(实时计算: 六段/矩阵/主线/龙头谱系) -->
+      <div class="mt-cycle-entry" @click="open('cycle')">
+        <span class="mce-tag">🧭 情绪周期</span>
+        <span class="mce-txt">六段阶段 · 高中位矩阵 · 主线与龙头谱系</span>
+        <span class="mce-arrow">›</span>
+      </div>
+
     </div>
 
     <!-- ② 竞价抢筹 (常驻, 主页面直接可见) -->
@@ -574,4 +582,10 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
   .mt-page { padding: 8px 28px 20px; }
   .mt-sec { padding: 14px; }
 }
+
+/* 情绪周期入口 */
+.mt-cycle-entry { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; cursor: pointer; }
+.mce-tag { font-size: 13px; font-weight: 700; color: #2c3e50; }
+.mce-txt { flex: 1; font-size: 11px; color: #999; }
+.mce-arrow { color: #bbb; font-size: 16px; }
 </style>

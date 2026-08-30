@@ -232,7 +232,7 @@ export async function fetchFengKou(silent = false) {
 
 // 涨停天梯 #32 GetZhangTingTianTi_W47 (POST, 免Token) — StockList 分组; 行 [code,name,?,ts,bkCode,bkName,?,?,?,流通,总市值,板标签,?,连板数,...]
 // 实测(2026-08-09): 行内板标签 r[11] 大多为空(如"4天4板"只少数有值), 分组必须用 r[13] 连板数(百花医药/沃格光电/云南锗业 r[13]=4=四连板)
-export async function fetchTianTi(silent = false) {
+export async function fetchTianTi(silent = false, capRows = 30) {
   const j = await postForm(HOST_HQ, { a: 'GetZhangTingTianTi_W47', c: 'FuPanLa', DeviceID: KPL_DEVICE, ...COMMON }, silent)
   if (!j || !Array.isArray(j.StockList)) {
     if (silent) return null
@@ -262,7 +262,7 @@ export async function fetchTianTi(silent = false) {
   }
   return [...groups.values()]
     .sort((a, b) => b.level - a.level)
-    .map(g => ({ ...g, rows: g.rows.slice(0, 30) }))
+    .map(g => ({ ...g, rows: g.rows.slice(0, capRows) }))
 }
 
 // 全市场涨停原因 #34 GetPlateInfo_w38 (POST) — nums.ZT 涨停家数; list 按板块分组, 行 [code,name,0,"",0,0,ts,0,amt,"首板",1,"板块tags",a,b,涨幅,amt2,"核心tag","原因全文",...]
@@ -374,6 +374,66 @@ export async function fetchMarketMood(silent = false) {
     day: String(r.Day || ''), strong: +r.strong || 0, zt: +r.ztjs || 0,
     lbgd: +r.lbgd || 0, df: +r.df_num || 0,
   }))
+}
+
+// 涨停池 DailyLimitPerformance — 周期引擎数据源(与 auction_spider.zt_pool 同款字段序)
+// rt=true → 当日实时(c=HomeDingPan, 无 Day); 否则历史(c=HisHomeDingPan, Day=date, 只服务已完成交易日)
+export async function fetchLimitPool(date, pidType = 1, { rt = false, silent = false } = {}) {
+  const base = { a: 'DailyLimitPerformance', PidType: pidType, Type: 4, Index: 0, Order: 0, st: 500, apiv: 'w39', DeviceID: KPL_DEVICE }
+  const j = rt
+    ? await postForm(HOST_HQ, { ...base, c: 'HomeDingPan' }, silent)
+    : await postForm(HOST_HIS, { ...base, c: 'HisHomeDingPan', Day: date }, silent)
+  if (!j || !Array.isArray(j.info)) {
+    if (silent) return []
+    throw new Error('涨停池失败')
+  }
+  const seen = new Set()
+  return j.info.flat().filter(r => {
+    if (!Array.isArray(r) || r.length < 14) return false
+    const code = String(r[0])
+    if (seen.has(code)) return false // RT 接口按板位组返回有跨组重复
+    seen.add(code)
+    return true
+  }).map(r => ({
+    code: String(r[0]), name: String(r[1]), pid: pidType,
+    ztTime: typeof r[4] === 'number' ? r[4] : null,
+    reason: String(r[5] || ''), seal: +r[6] || 0, maxSeal: +r[7] || 0,
+    mainNet: +r[8] || 0, amount: +r[11] || 0,
+    plates: String(r[12] || '').split('、').filter(Boolean), circMv: +r[13] || 0,
+    turnover: +r[14] || 0,
+  }))
+}
+
+// 未涨停池 DailyLimitPerformance2 (RT) — 昨N板今未封(炸板/未封): 1进2半路候选 + 高标开板分歧信号
+// 行: [code,name,?,?,现价,涨幅%,板块,主力净额,主力买入,主力卖出,成交额,...] (kpl-api.md #未涨停)
+export async function fetchUnsealedPool(pidType = 1, silent = false) {
+  const j = await postForm(HOST_HQ, { a: 'DailyLimitPerformance2', PidType: pidType, Type: 5, Order: 1, Index: 0, st: 100, apiv: 'w40', c: 'HomeDingPan', DeviceID: KPL_DEVICE }, silent)
+  if (!j || !Array.isArray(j.info)) {
+    if (silent) return []
+    throw new Error('未涨停池失败')
+  }
+  return j.info.flat().filter(r => Array.isArray(r) && r.length >= 11).map(r => ({
+    code: String(r[0]), name: String(r[1]), pid: pidType,
+    price: +r[4] || 0, pct: +r[5] || 0,
+    plates: String(r[6] || '').split('、').filter(Boolean),
+    mainNet: +r[7] || 0, amount: +r[10] || 0,
+  }))
+}
+
+// 涨跌/炸板分析 RiseFallAnalysis — 实时当日 + 历史 250 天序列
+// 行: [涨停, 跌停, 自然涨停, 曾跌停, 破板率, 炸板数, 日期]
+export async function fetchRiseFall(silent = false) {
+  const rt = await postForm(HOST_HQ, { a: 'RiseFallAnalysis', apiv: 'w43', c: 'HomeDingPan', PhoneOSNew: 1, DeviceID: KPL_DEVICE }, silent)
+  const his = await postForm(HOST_HIS, { a: 'RiseFallAnalysis', st: 250, apiv: 'w43', c: 'HisHomeDingPan', PhoneOSNew: 1, Index: 0, DeviceID: KPL_DEVICE }, silent)
+  const map = r => ({ zt: +r[0] || 0, dt: +r[1] || 0, brokeRate: +r[4] || 0, zhaban: +r[5] || 0, day: String(r[6] || '') })
+  const todayRow = (Array.isArray(rt?.info) && rt.info[0]) || null
+  const series = (Array.isArray(his?.info) ? his.info : []).filter(r => Array.isArray(r) && r.length >= 7).map(map)
+  const today = todayRow ? map(todayRow) : (series[0] || null)
+  if (!today) {
+    if (silent) return null
+    throw new Error('涨跌分析失败')
+  }
+  return { today, series }
 }
 
 // 赚钱效应展开 #29 GetMoneyDetail (POST) — Detail 键 -5..-1(亏) 1..5(赚) 各档家数 + num 总数; ttag 赚钱效应值
