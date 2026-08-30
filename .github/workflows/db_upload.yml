@@ -35,3 +35,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 jiarenmens/scripts/release_db.py --init
+# re-trigger: release_db.py 匿名读修复
