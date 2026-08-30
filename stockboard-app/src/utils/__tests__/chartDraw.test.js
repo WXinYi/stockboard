@@ -58,42 +58,54 @@ describe('idxToX', () => {
 
 describe('trendMinute / trendX', () => {
   const t = (h, mm) => Date.UTC(2026, 7, 10, h, mm) / 1000   // UTC-naive 分时时间戳
-  it('开盘 09:30 → 0, 上午末 11:30 → 120', () => {
-    expect(trendMinute(t(9, 30))).toBe(0)
-    expect(trendMinute(t(10, 30))).toBe(60)
-    expect(trendMinute(t(11, 30))).toBe(120)
+  it('竞价 09:15 → 0, 09:25 → 20(虚拟轴 270 分钟, 竞价段 [0,30])', () => {
+    expect(trendMinute(t(9, 15))).toBe(0)
+    expect(trendMinute(t(9, 20))).toBe(10)
+    expect(trendMinute(t(9, 25))).toBe(20)
+  })
+  it('开盘 09:30 → 30, 上午末 11:30 → 150', () => {
+    expect(trendMinute(t(9, 30))).toBe(30)
+    expect(trendMinute(t(10, 30))).toBe(90)
+    expect(trendMinute(t(11, 30))).toBe(150)
   })
   it('午休 11:31~12:59 → -1(跳过, 不占横轴)', () => {
     expect(trendMinute(t(11, 31))).toBe(-1)
     expect(trendMinute(t(12, 0))).toBe(-1)
     expect(trendMinute(t(12, 59))).toBe(-1)
   })
-  it('下午 13:00 → 120(紧接 11:30), 收盘 15:00 → 240', () => {
-    expect(trendMinute(t(13, 0))).toBe(120)
-    expect(trendMinute(t(14, 0))).toBe(180)
-    expect(trendMinute(t(15, 0))).toBe(240)
+  it('下午 13:00 → 150(紧接 11:30), 收盘 15:00 → 270', () => {
+    expect(trendMinute(t(13, 0))).toBe(150)
+    expect(trendMinute(t(14, 0))).toBe(210)
+    expect(trendMinute(t(15, 0))).toBe(270)
   })
-  it('盘前/盘后/非法输入 → -1', () => {
-    expect(trendMinute(t(9, 29))).toBe(-1)
+  it('盘前(竞价段外)/盘后/非法输入 → -1', () => {
+    expect(trendMinute(t(9, 14))).toBe(-1)
+    expect(trendMinute(t(9, 29))).toBe(28)   // 09:26~09:29 属竞价段 [0,30] 内的间隙(无数据行, 不映射点)
     expect(trendMinute(t(15, 1))).toBe(-1)
     expect(trendMinute(NaN)).toBe(-1)
     expect(trendMinute('x')).toBe(-1)
     expect(trendMinute(-5)).toBe(-1)
   })
-  it('trendX: 交易分钟线性映射, 午休/非法 → -1', () => {
-    expect(trendX(t(9, 30), 400)).toBe(0)
-    expect(trendX(t(11, 30), 400)).toBe(200)
-    expect(trendX(t(13, 0), 400)).toBe(200)     // 午休后紧接上午末
+  it('trendX: 虚拟分钟线性映射, 午休/非法 → -1', () => {
+    expect(trendX(t(9, 15), 400)).toBe(0)
+    expect(trendX(t(9, 30), 400)).toBeCloseTo(400 * 30 / 270, 6)
+    expect(trendX(t(11, 30), 400)).toBeCloseTo(400 * 150 / 270, 6)
+    expect(trendX(t(13, 0), 400)).toBeCloseTo(400 * 150 / 270, 6)   // 午休后紧接上午末
     expect(trendX(t(15, 0), 400)).toBe(400)
     expect(trendX(t(12, 0), 400)).toBe(-1)
   })
 })
 
 describe('timeTicks', () => {
-  it('分时固定 5 刻度, 按交易分钟比例(午休不占位)', () => {
+  it('宽内容区: 东财 5 刻度含竞价 09:15, 虚拟分钟比例', () => {
     const ticks = timeTicks([], 400, true)
-    expect(ticks.map(t => t.label)).toEqual(['09:30', '10:30', '11:30/13:00', '14:00', '15:00'])
-    expect(ticks.map(t => t.x)).toEqual([0, 100, 200, 300, 400])  // 09:30 在左缘, 15:00 在右缘
+    expect(ticks.map(t => t.label)).toEqual(['09:15', '09:30', '11:30/13:00', '14:00', '15:00'])
+    expect(ticks.map(t => t.x).map(Math.round)).toEqual([0, 44, 222, 311, 400])   // 30/150/210/270 ÷ 270 × 400
+  })
+  it('窄内容区: 4 刻度等距(09:30 与 09:15 间距不足会叠字)', () => {
+    const ticks = timeTicks([], 211, true)
+    expect(ticks.map(t => t.label)).toEqual(['09:15', '10:30', '13:30', '15:00'])
+    expect(ticks.map(t => t.x).map(Math.round)).toEqual([0, 70, 141, 211])
   })
 })
 

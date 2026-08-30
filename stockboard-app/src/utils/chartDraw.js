@@ -47,30 +47,37 @@ export function idxToX(i, w, count) {
   return (i + 0.5) / count * w
 }
 
-// 分时: 时间戳(UTC-naive 秒) → 当日交易分钟序号 [0,240]; 午休 11:30~13:00 跳过; 非交易时段返回 -1
+// 分时虚拟时间轴(东财含集合竞价): 共 270 虚拟分钟 —
+// 竞价 09:15~09:30 压缩为 [0,30], 连续竞价 09:30~11:30 → [30,150], 13:00~15:00 → [150,270]; 非交易时段返回 -1
+export const TREND_VMIN = 270
 export function trendMinute(time) {
   if (typeof time !== 'number' || !(time > 0)) return -1
   const d = new Date(time * 1000)
   const m = d.getUTCHours() * 60 + d.getUTCMinutes()
-  if (m >= 570 && m <= 690) return m - 570   // 09:30~11:30 → 0~120
-  if (m >= 780 && m <= 900) return m - 660   // 13:00~15:00 → 120~240 (13:00 紧接 11:30)
+  if (m >= 555 && m < 570) return (m - 555) * 2    // 09:15~09:25 竞价 → 0~20(段宽至 30, 含 09:25~09:30 间隙)
+  if (m >= 570 && m <= 690) return 30 + (m - 570)  // 09:30~11:30 → 30~150
+  if (m >= 780 && m <= 900) return 150 + (m - 780) // 13:00~15:00 → 150~270
   return -1
 }
 
-// 分时 x: 交易分钟 → 像素; 午休/盘前/盘后(无效) → -1
+// 分时 x: 虚拟分钟 → 像素; 午休/盘前/盘后(无效) → -1
 export function trendX(time, w) {
   const m = trendMinute(time)
-  return m < 0 ? -1 : m / 240 * w
+  return m < 0 ? -1 : m / TREND_VMIN * w
 }
 
-// 底部时间刻度: 分时固定 5 刻度(09:30~15:00, 按交易分钟比例); 其他均匀 4~6 个(含首末)
+// 底部时间刻度: 分时含竞价段(东财) — 宽内容区(≥340px) 5 刻度, 窄屏 4 刻度等距
+// ('09:30' 紧邻 '09:15', 间距不足会叠字); 其他视图均匀 4~6 个(含首末)
 export function timeTicks(items, w, isIntraday) {
   if (isIntraday) {
-    // 窄内容区(<150px, 移动端扣掉盘口+双轴带后)放下 11 字符的 '11:30/13:00' 会与相邻刻度叠字 → 缩写
-    const mid = w < 150 ? '11:30' : '11:30/13:00'
-    const labels = ['09:30', '10:30', mid, '14:00', '15:00']
-    const mins = [0, 60, 120, 180, 240]
-    return labels.map((label, i) => ({ x: mins[i] / 240 * w, label }))
+    if (w >= 340) {
+      const labels = ['09:15', '09:30', '11:30/13:00', '14:00', '15:00']
+      const mins = [0, 30, 150, 210, 270]
+      return labels.map((label, i) => ({ x: mins[i] / 270 * w, label }))
+    }
+    const labels = ['09:15', '10:30', '13:30', '15:00']
+    const mins = [0, 90, 180, 270]
+    return labels.map((label, i) => ({ x: mins[i] / 270 * w, label }))
   }
   const n = items.length
   if (!n) return []
