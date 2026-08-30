@@ -237,9 +237,9 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   const maxVol = Math.max(...t.map(p => p.vol), 1)
   const barW = Math.max(1, w / TREND_VMIN * 0.6)   // 按 270 虚拟分钟(含竞价段)定柱宽, 午休不占位
   const isAuction = p => { const m = trendMinute(p.time); return m >= 0 && m < 30 }
-  // 竞价段(东财竞价图): 每 tick 上下两柱 —
-  // 上排: 未匹配量挂单堆积, 红=买方堆积(side0) / 绿=卖方堆积(side1); KPL 无未匹配量数值, 高度以累计撮合量近似(堆积随竞价同步增长)
-  // 下排: 已匹配量 = cumVol 差分, 向下延伸, 柱色按虚拟成交价较前一根红涨绿跌
+  // 竞价段(东财竞价图): 每 tick 上下两柱, 各自贴边生长 —
+  // 上排(从顶部垂下): 未匹配量挂单堆积, 红=买方堆积(side0) / 绿=卖方堆积(side1); KPL 无未匹配量数值, 高度以累计撮合量近似
+  // 下排(从底部升起): 已匹配量 = cumVol 差分, 柱色按虚拟成交价较前一根红涨绿跌
   const aTicks = []
   let prevPx = null, lastCum = 0
   for (const p of t) {
@@ -254,23 +254,16 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
     prevPx = p.price
     lastCum = p.cum || lastCum
   }
-  const midY = plot.y + plot.height / 2
   const halfH = plot.height / 2 - 2
-  if (aTicks.length) {
-    ctx.strokeStyle = '#e8ecf1'   // 竞价上下排分隔轴
-    ctx.beginPath()
-    ctx.moveTo(x0, midY); ctx.lineTo(x0 + plot.width * 30 / TREND_VMIN, midY)
-    ctx.stroke()
-    const upperMax = Math.max(...aTicks.map(k => k.cum), 1)
-    const lowerMax = Math.max(...aTicks.map(k => k.v), 1)
-    for (const tk of aTicks) {
-      ctx.fillStyle = tk.side === 1 ? 'rgba(39,174,96,.8)' : 'rgba(231,76,60,.8)'
-      const uh = (tk.cum / upperMax) * halfH
-      if (uh >= 0.5) ctx.fillRect(tk.x - 1, midY - uh, Math.max(1, barW), uh)
-      ctx.fillStyle = tk.priceUp ? 'rgba(231,76,60,.8)' : 'rgba(39,174,96,.8)'
-      const dh = (tk.v / lowerMax) * halfH
-      if (dh >= 0.5) ctx.fillRect(tk.x - 1, midY, Math.max(1, barW), dh)
-    }
+  const upperMax = Math.max(...aTicks.map(k => k.cum), 1)
+  const lowerMax = Math.max(...aTicks.map(k => k.v), 1)
+  for (const tk of aTicks) {
+    ctx.fillStyle = tk.side === 1 ? 'rgba(39,174,96,.8)' : 'rgba(231,76,60,.8)'
+    const uh = (tk.cum / upperMax) * halfH
+    if (uh >= 0.5) ctx.fillRect(tk.x - 1, plot.y, Math.max(1, barW), uh)      // 未匹配: 顶部垂下
+    ctx.fillStyle = tk.priceUp ? 'rgba(231,76,60,.8)' : 'rgba(39,174,96,.8)'
+    const dh = (tk.v / lowerMax) * halfH
+    if (dh >= 0.5) ctx.fillRect(tk.x - 1, plot.y + plot.height - dh, Math.max(1, barW), dh)   // 已匹配: 底部升起
   }
   // 连续竞价: 分钟成交量柱(红涨绿跌)
   for (let i = 0; i < t.length; i++) {
