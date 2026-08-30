@@ -1,7 +1,7 @@
 // 图表几何/刻度纯函数: 无 DOM 无状态, 供 StockChartCanvas.vue 调用, 可单测
 // 坐标系: 内容区左上角 (0,0), y 向下增大
 
-// 三区矩形 (sub=true → main:vol:sub=3:1:1; sub=false → main:vol=2.2:1)
+// 三区矩形 (sub=true → main:vol:sub=2.3:1:1, 东财占比: 主图约一半/量与副图各约23%; sub=false → main:vol=2.2:1)
 // opts: { leftGutter, rightGutter, axisH } 轴带(左右轴带 + 底部时间轴带)
 // 每区含 1px 边框(几何按直角), 区间距 2px; 底部预留 axisH 给时间刻度, 否则刻度画在画布外不可见
 export function panelRects(w, h, sub, opts = {}) {
@@ -13,8 +13,8 @@ export function panelRects(w, h, sub, opts = {}) {
   const innerW = Math.max(0, w - lg - rg)
   let main, vol, subR = null
   if (sub) {
-    const m = Math.floor(avail * 3 / 5)
-    const v = Math.floor(avail * 1 / 5)
+    const m = Math.floor(avail * 2.3 / 4.3)
+    const v = Math.floor(avail / 4.3)
     main = { x: lg, y: 0, width: innerW, height: m }
     vol = { x: lg, y: m + gap, width: innerW, height: v }
     subR = { x: lg, y: m + gap + v + gap, width: innerW, height: avail - m - v }

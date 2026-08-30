@@ -55,8 +55,8 @@ const C = {
   histUp: 'rgba(231,76,60,.5)', histDown: 'rgba(39,174,96,.5)',
   crosshair: 'rgba(41,128,185,.45)',
 }
-const FONT = '10px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
-const FONT_SM = '9px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
+const FONT = '11px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
+const FONT_SM = '10px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
 const SIGNAL_LABELS = { '1buy': '1买', '2buy': '2买', '3buy': '3买', '1sell': '1卖', '2sell': '2卖', '3sell': '3卖' }
 const CHAN_MAX_ZHONGSHU = 10
 const MA_COLORS = { 5: C.avg, 10: C.signal, 20: C.ma20, 60: C.ma60 }
@@ -608,8 +608,8 @@ function drawMALegend(main, win, baseI) {
     let x = main.x + 4
     for (const [text, color] of parts) {
       ctx.fillStyle = color
-      ctx.strokeText(text, x, main.y + 3 + r * 12)
-      ctx.fillText(text, x, main.y + 3 + r * 12)
+      ctx.strokeText(text, x, main.y + 3 + r * 13)
+      ctx.fillText(text, x, main.y + 3 + r * 13)
       x += ctx.measureText(text + ' ').width
     }
   })
@@ -1081,7 +1081,7 @@ onBeforeUnmount(() => { ro?.disconnect() })
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 280px;
+  min-height: 430px;   /* 东财分时区总高约 450pt, 304px 时量/副图绘图区不足 45px 看不清 */
   touch-action: pan-y;
   -webkit-touch-callout: none;   /* 手机长按不弹复制/粘贴/查询菜单 */
   -webkit-user-select: none;
@@ -1100,6 +1100,6 @@ onBeforeUnmount(() => { ro?.disconnect() })
   -webkit-touch-callout: none;
 }
 @media (min-width: 481px) {
-  .scc-wrap { min-height: 360px; }
+  .scc-wrap { min-height: 480px; }
 }
 </style>

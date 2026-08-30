@@ -76,7 +76,7 @@ function barStyle(vol, color) {
 
 <style scoped>
 .pk { display: flex; flex-direction: column; min-width: 0; }
-.pk-body { display: flex; flex-direction: column; gap: 1px; font-size: 11px; }
+.pk-body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 1px; font-size: 11px; }   /* 均匀分布撑满图高(东财盘口行距) */
 .pk-row { display: flex; align-items: center; gap: 4px; border-radius: 3px; padding: 1px 4px; }
 .pk-lvl { width: 28px; flex: none; font-size: 10px; }
 .pk-px { width: 52px; flex: none; font-weight: 500; }
