@@ -230,8 +230,9 @@ function mergeBid() {
   let prevCum = 0
   const auction = []
   for (const p of b) {
-    const ts = String(p.time).padStart(4, '0')
-    const hh = +ts.slice(0, 2), mm = +ts.slice(2, 4)
+    // KPL 返回 "09:15"(带冒号), 兼容 "0915"
+    const d = String(p.time).replace(/\D/g, '').padStart(4, '0')
+    const hh = +d.slice(0, 2), mm = +d.slice(2, 4)
     if (!(hh === 9 && mm >= 15 && mm <= 25)) continue
     const vol = Math.max(0, (p.cumVol || 0) - prevCum)
     prevCum = p.cumVol || 0
