@@ -12,10 +12,50 @@
 
 V5 竞价首枪作为"容量方向"只在 发酵/高潮 两个阶段开启(周期闸门), 且只保留主线板块内
 的标的 —— 即 V5 的选股池由情绪周期产生与过滤。
+
+高中位矩阵分层闸门(与 stockboard-app/src/utils/leaderBattle.js 的 MATRIX_GATE 镜像同步):
+同一阶段下按 cycle_res["matrix"](高位|中位) 再分 low=1-2板 / mid=3-5板 / high=≥6板 三层
+收紧状态: go=可做 care=可做(矩阵谨慎) watch=观察(矩阵) ban=观察(矩阵禁买); 只收紧不放松。
+(JS 版另有评分上限 cap, Python 无评分, 仅状态语义对齐。)
 """
 from src.analysis.emotion_cycle import load_pool, ladder_split
 
 V5_STAGES = {"发酵", "高潮"}
+
+MATRIX_GATE = {
+    "强|强":     {"tier": {"high": "go",    "mid": "go",    "low": "go"}},
+    "强|平衡":   {"tier": {"high": "go",    "mid": "care",  "low": "go"}},
+    "强|弱":     {"tier": {"high": "care",  "mid": "ban",   "low": "go"}},
+    "平衡|强":   {"tier": {"high": "care",  "mid": "go",    "low": "go"}},
+    "平衡|平衡": {"tier": {"high": "watch", "mid": "care",  "low": "go"}},
+    "平衡|弱":   {"tier": {"high": "ban",   "mid": "ban",   "low": "care"}},
+    "弱|强":     {"tier": {"high": "watch", "mid": "go",    "low": "go"}},
+    "弱|平衡":   {"tier": {"high": "ban",   "mid": "care",  "low": "care"}},
+    "弱|弱":     {"tier": {"high": "ban",   "mid": "ban",   "low": "watch"}},
+}
+
+MATRIX_ACT = {
+    "care": "可做(矩阵谨慎)",
+    "watch": "观察(矩阵)",
+    "ban": "观察(矩阵禁买)",
+}
+
+
+def _tier_of(height: int) -> str:
+    return "low" if height <= 2 else "mid" if height <= 5 else "high"
+
+
+def _apply_matrix(pool: list, cycle_res: dict) -> list:
+    """矩阵分层闸门: 按 高位×中位 状态收紧各层候选状态(只收紧不放松)"""
+    m = cycle_res.get("matrix") or {}
+    gate = MATRIX_GATE.get(f'{m.get("high")}|{m.get("mid")}')
+    if not gate:
+        return pool
+    for p in pool:
+        act = gate["tier"][_tier_of(p["height"])]
+        if act != "go" and p["status"].startswith("可做"):
+            p["status"] = MATRIX_ACT[act]
+    return pool
 
 
 def _bid_pool(date_str):
@@ -64,7 +104,7 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
             f"龙头谱系[{role}] {note}".strip(), st)
 
     if stage == "退潮":
-        return pool[:max_n]
+        return _apply_matrix(pool, cycle_res)[:max_n]
 
     # 2) 阶段扩展候选
     pool_rows = load_pool(days=10)
@@ -116,7 +156,7 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
                     f"V5容量方向({c.get('pos_tag') or '普通'}) [{'/'.join(c.get('boards', [])[:2])}]",
                     "观察(容量)")
 
-    return pool[:max_n]
+    return _apply_matrix(pool, cycle_res)[:max_n]
 
 
 def _load_v5(date_str):
