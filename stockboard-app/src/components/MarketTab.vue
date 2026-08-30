@@ -149,6 +149,8 @@ const gateTxt = computed(() => {
 })
 const strikeTop3 = computed(() => (battle.value?.strike?.candidates || []).filter(c => c.status.startsWith('出击') || c.status.startsWith('备选')).slice(0, 3))
 const strikeAll = computed(() => battle.value?.strike?.candidates || [])
+const gateBanner = computed(() => (battle.value?.strike?.gate?.banner || '').split('📐')[0].trim())
+const gateMatrix = computed(() => battle.value?.strike?.gate?.matrix || null)
 const warTop4 = computed(() => (battle.value?.boardWars?.wars || []).slice(0, 4))
 const mainSwitchNote = computed(() => battle.value?.boardWars?.mainSwitch?.note || '')
 const brokenHighsTop = computed(() => (battle.value?.risks?.brokenHighs || []).slice(0, 4))
@@ -300,7 +302,7 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
       </div>
 
       <!-- 今日决策卡: 阶段+闸门+出击top3+警示(点击进 cycle 详情) -->
-      <div class="mt-decide" @click="open('cycle')">
+      <div class="mt-decide" :style="{ '--sc': stageColor }" @click="open('cycle')">
         <template v-if="stageName && battle && !battle.empty">
           <div class="mtd-top">
             <span class="mtd-stage" :style="{ color: stageColor }">{{ stageName }}</span>
@@ -363,7 +365,10 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
           <em>{{ battle.strike.gate.stage }} · 上限 {{ battle.strike.gate.cap || '禁买' }}</em>
           <button class="mt-more" @click="open('cycle')">决策详情 ›</button>
         </div>
-        <div class="mt-strike-banner">{{ battle.strike.gate.banner }}</div>
+        <div class="mt-strike-banner">
+          <div>{{ gateBanner }}</div>
+          <div v-if="gateMatrix" class="sb-mtx">📐 高位{{ gateMatrix.high }}×中位{{ gateMatrix.mid }}：{{ gateMatrix.note }}</div>
+        </div>
         <div v-for="c in strikeAll" :key="c.code" class="mt-strike" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
           <div class="mt-strike-top">
             <b>{{ c.name }}</b>
@@ -580,7 +585,7 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
 .mt-page { padding: 4px 14px 12px; overflow-x: clip; }
 
 /* ── ① 情绪总览条 ── */
-.mt-hero { background: #fff; border: 1px solid #eceff3; border-radius: 12px; padding: 12px 14px 10px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.03); position: sticky; top: 52px; z-index: 30; }
+.mt-hero { background: #fff; border: 1px solid #eceff3; border-radius: 12px; padding: 12px 14px 10px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.03); }
 .mt-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .mt-hero-strength { display: flex; align-items: baseline; gap: 6px; cursor: pointer; }
 .mt-hero-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
@@ -610,7 +615,7 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
 
 /* ── ③ 区块 ── */
 .mt-pane { margin-bottom: 12px; }
-.mt-sec { background: #fff; border: 1px solid #eceff3; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.03); }
+.mt-sec { background: #fff; border: 1px solid #eef1f5; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
 .mt-sec-plain { padding: 4px 12px; }
 .mt-sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .mt-sec-head h3 { font-size: 13px; font-weight: 600; color: #111; margin: 0; }
@@ -700,25 +705,27 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
 }
 
 /* 情绪周期入口 */
-/* 今日决策卡 */
-.mt-decide { background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; cursor: pointer; }
+/* 今日决策卡: 阶段色渐变 hero(--sc 由模板注入) */
+.mt-decide { --sc: #8a97a8; background: #fff; background-image: linear-gradient(135deg, color-mix(in srgb, var(--sc) 12%, #fff) 0%, #fff 58%); border: 1px solid #e5e9f0; border-color: color-mix(in srgb, var(--sc) 24%, #e5e9f0); border-radius: 12px; padding: 12px; margin: 10px 0 0; cursor: pointer; box-shadow: 0 4px 14px color-mix(in srgb, var(--sc) 14%, rgba(17,24,39,.04)); }
 .mtd-top { display: flex; align-items: center; gap: 8px; }
 .mtd-stage { font-size: 22px; font-weight: 800; letter-spacing: 2px; }
 .mtd-gate { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #ff5a5a; color: #fff; }
 .mtd-gate.ban { background: #9b6bde; }
 .mtd-more { margin-left: auto; font-size: 11px; color: #bbb; }
-.mtd-strikes { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-.mtd-stock { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #eef1f5; border-radius: 8px; padding: 4px 8px; font-size: 13px; }
-.mtd-stock.go { border-color: #ff5a5a; background: #fff7f7; }
+.mtd-strikes { display: flex; align-items: center; gap: 6px; margin-top: 9px; padding-top: 9px; border-top: 1px dashed #e5e9f0; border-top-color: color-mix(in srgb, var(--sc) 25%, #e5e9f0); flex-wrap: wrap; }
+.mtd-stock { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #eef1f5; border-radius: 8px; padding: 4px 8px; font-size: 13px; background: #fff; }
+.mtd-stock.go { border-color: #ff5a5a; background: #fff5f5; }
 .mtd-stock i { font-style: normal; font-weight: 800; color: #ff5a5a; }
 .mtd-plus { font-size: 11px; color: #999; }
 .mtd-none { font-size: 12px; color: #999; margin-top: 8px; }
-.mtd-alert { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; font-size: 11px; color: #e67e22; }
+.mtd-alert { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 9px; font-size: 11px; color: #b9770e; }
+.mtd-alert span { background: #fff7e8; border-radius: 6px; padding: 3px 8px; line-height: 1.5; }
 /* 出击 Tab */
-.mt-strike-banner { font-size: 12px; color: #556; background: #f8fafc; border: 1px dashed #e5e9f0; border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
-.mt-strike { border: 1px solid #eef1f5; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
-.mt-strike.st-go { border-left-color: #ff5a5a; background: #fff7f7; }
-.mt-strike.st-alt { border-left-color: #f5a623; }
+.mt-strike-banner { font-size: 12px; color: #556; background: #f8fafc; border: 1px solid #e8edf3; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; line-height: 1.6; }
+.sb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed #dfe6ee; color: #2b6cb0; }
+.mt-strike { border: 1px solid #e9edf3; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: #fbfcfe; }
+.mt-strike.st-go { border-left-color: #ff5a5a; background: #fff5f5; }
+.mt-strike.st-alt { border-left-color: #f5a623; background: #fffbf0; }
 .mt-strike-top { display: flex; align-items: center; gap: 6px; }
 .mt-strike-top b { font-size: 14px; }
 .mt-strike-lv { font-size: 11px; color: #b8860b; font-weight: 700; }
