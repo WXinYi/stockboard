@@ -12,10 +12,13 @@
 import argparse
 import gzip
 import json
+import os
 import shutil
 import sqlite3
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -23,12 +26,32 @@ REPO = "WXinYi/stockboard"
 API = f"https://api.github.com/repos/{REPO}"
 ROOT = Path(__file__).resolve().parent.parent
 ARCHIVE_DIR = ROOT / "data" / "archive"
+RETRIES = 3
+
+
+def _headers():
+    h = {"User-Agent": "stockboard-fetch-db"}
+    tok = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"   # 私有仓/提高限额(可选)
+    return h
 
 
 def _get(url, raw=False):
-    req = urllib.request.Request(url, headers={"User-Agent": "stockboard-fetch-db"})
-    with urllib.request.urlopen(req) as r:
-        return r.read() if raw else json.loads(r.read())
+    """带重试: 大陆直连 GitHub 常见 SSL 瞬断/重置, 3 次退避; 支持走 HTTPS_PROXY 代理。"""
+    last = None
+    for i in range(RETRIES):
+        try:
+            req = urllib.request.Request(url, headers=_headers())
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.read() if raw else json.loads(r.read())
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            last = e
+            if i < RETRIES - 1:
+                wait = 3 * (i + 1)
+                print(f"⚠️ 请求失败({e}), {wait}s 后重试 {i + 2}/{RETRIES}...", file=sys.stderr)
+                time.sleep(wait)
+    raise last
 
 
 def get_release(tag: str):
@@ -49,7 +72,8 @@ def download_gz(tag: str, asset_name: str, dest_db: Path) -> Path:
         sys.exit(f"❌ {tag} 下无资产 {asset_name}: {[a['name'] for a in rel.get('assets', [])]}")
     dest_db.parent.mkdir(parents=True, exist_ok=True)
     gz = Path(tempfile.mkstemp(suffix=".db.gz")[1])
-    with urllib.request.urlopen(asset["browser_download_url"]) as r, open(gz, "wb") as f:
+    with urllib.request.urlopen(urllib.request.Request(asset["browser_download_url"],
+                                                       headers=_headers()), timeout=120) as r, open(gz, "wb") as f:
         shutil.copyfileobj(r, f)
     with gzip.open(gz, "rb") as s, open(dest_db, "wb") as d:
         shutil.copyfileobj(s, d)
