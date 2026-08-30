@@ -584,6 +584,15 @@ def export(db_path, crawl_date, out_dir):
     # summary.json
     # players_index.json (独立文件，前端并行加载)
     # 体积优化：数字保留 2 位小数（net_value 保留 3 位）、labels 只存数量（前端仅用 .length）
+    # 导出范围收窄：players 表只增不减(累计 23192 人, 多为早已跌榜的冻结数据), 全量导出曾致
+    # players/ 目录 92MB 随 git 无限累积。目录/详情只保留"当前有意义"的选手:
+    #   优质(quality) ∪ 当日有持仓/调仓(活跃) ∪ name_map 被引用 —— 跌出该集合的自然淘汰。
+    active_ids = ({p.get("zh_id") for p in positions_raw}
+                  | {t.get("zh_id") for t in trades_raw}
+                  | set(traded_player_ids)
+                  | set(name_map.values()))
+    export_ids = quality_ids | {i for i in active_ids if i}
+    export_players = [p for p in players_flat if p["id"] in export_ids]
     players_list = [
         [p["id"], p["name"], p["followers"],
          round(p["total_return"], 2), round(p["daily_return"], 2),
@@ -593,7 +602,7 @@ def export(db_path, crawl_date, out_dir):
          p["days"], len(p["labels"] or []), p["ranks"],
          p["total_position"], p["quality"],
          p["stocks"]]
-        for p in players_flat
+        for p in export_players
     ]
     with open(latest_dir / "players_index.json", "w", encoding="utf-8") as f:
         json.dump(players_list, f, ensure_ascii=False, separators=(",", ":"))
@@ -631,7 +640,7 @@ def export(db_path, crawl_date, out_dir):
     # players/{zh_id}.json
     players_out_dir = latest_dir / "players"
     players_out_dir.mkdir(parents=True, exist_ok=True)
-    for p in players_flat:
+    for p in export_players:
         pid = p["id"]
         # 仅保留 id+name 用于识别，持仓/调仓/推测使用缩写键名
         detail = {
@@ -646,9 +655,10 @@ def export(db_path, crawl_date, out_dir):
         with open(players_out_dir / f"{pid}.json", "w", encoding="utf-8") as f:
             json.dump(detail, f, ensure_ascii=False, separators=(",", ":"))
 
-    # 清理跌出榜单选手的旧 JSON: 只增不删会永久累积(曾达 23192 个/92MB 随 git 提交膨胀)。
-    # 前端按 players_index/name_map 引用, 旧文件无消费方, 可安全删除。
-    exported_ids = {str(p["id"]) for p in players_flat}
+    # 清理不在导出集合的旧 JSON: 跌出"优质∪当日活跃∪被引用"集合的选手文件删除,
+    # 避免目录只增不删(曾累积 23192 个/92MB 随 git 提交膨胀)。
+    # 前端按 players_index/name_map 引用, 集合外文件无消费方, 可安全删除。
+    exported_ids = export_ids
     removed_players = 0
     for f in players_out_dir.glob("*.json"):
         if f.stem not in exported_ids:
