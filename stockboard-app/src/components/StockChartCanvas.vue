@@ -237,33 +237,40 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   const maxVol = Math.max(...t.map(p => p.vol), 1)
   const barW = Math.max(1, w / TREND_VMIN * 0.6)   // 按 270 虚拟分钟(含竞价段)定柱宽, 午休不占位
   const isAuction = p => { const m = trendMinute(p.time); return m >= 0 && m < 30 }
-  // 竞价段: 委托量多空柱(东财) — 买委托(side0)红柱从轴向上, 卖委托(side1)绿柱向轴下;
-  // 两方向各自按方向内最大 tick 量定标(若按全天分钟量定标, 竞价量占比小的票会被压成不可见)
+  // 竞价段(东财竞价图): 每 tick 上下两柱 —
+  // 上排: 未匹配量挂单堆积, 红=买方堆积(side0) / 绿=卖方堆积(side1); KPL 无未匹配量数值, 高度以累计撮合量近似(堆积随竞价同步增长)
+  // 下排: 已匹配量 = cumVol 差分, 向下延伸, 柱色按虚拟成交价较前一根红涨绿跌
   const aTicks = []
-  let upMax = 0, downMax = 0, lastCum = 0
+  let prevPx = null, lastCum = 0
   for (const p of t) {
     if (!isAuction(p)) continue
-    const up = p.side !== 1
-    aTicks.push({ x: x0 + trendX(p.time, w), v: p.vol || 0, up })
-    lastCum = p.cum || lastCum   // cumVol 有回撤修订 → 头部展示用最后一笔累计
-    if (up) upMax = Math.max(upMax, p.vol || 0)
-    else downMax = Math.max(downMax, p.vol || 0)
+    aTicks.push({
+      x: x0 + trendX(p.time, w),
+      v: p.vol || 0,
+      priceUp: prevPx == null ? true : p.price >= prevPx,
+      side: p.side,
+      cum: p.cum || 0,
+    })
+    prevPx = p.price
+    lastCum = p.cum || lastCum
   }
   const midY = plot.y + plot.height / 2
   const halfH = plot.height / 2 - 2
   if (aTicks.length) {
-    ctx.strokeStyle = '#e8ecf1'   // 竞价多空中轴
+    ctx.strokeStyle = '#e8ecf1'   // 竞价上下排分隔轴
     ctx.beginPath()
     ctx.moveTo(x0, midY); ctx.lineTo(x0 + plot.width * 30 / TREND_VMIN, midY)
     ctx.stroke()
-  }
-  for (const tk of aTicks) {
-    if (tk.v <= 0) continue
-    const h = tk.up ? (upMax ? tk.v / upMax : 0) * halfH : (downMax ? tk.v / downMax : 0) * halfH
-    if (h < 0.5) continue
-    ctx.fillStyle = tk.up ? 'rgba(231,76,60,.7)' : 'rgba(39,174,96,.7)'
-    if (tk.up) ctx.fillRect(tk.x - barW / 2, midY - h, barW, h)
-    else ctx.fillRect(tk.x - barW / 2, midY, barW, h)
+    const upperMax = Math.max(...aTicks.map(k => k.cum), 1)
+    const lowerMax = Math.max(...aTicks.map(k => k.v), 1)
+    for (const tk of aTicks) {
+      ctx.fillStyle = tk.side === 1 ? 'rgba(39,174,96,.8)' : 'rgba(231,76,60,.8)'
+      const uh = (tk.cum / upperMax) * halfH
+      if (uh >= 0.5) ctx.fillRect(tk.x - 1, midY - uh, Math.max(1, barW), uh)
+      ctx.fillStyle = tk.priceUp ? 'rgba(231,76,60,.8)' : 'rgba(39,174,96,.8)'
+      const dh = (tk.v / lowerMax) * halfH
+      if (dh >= 0.5) ctx.fillRect(tk.x - 1, midY, Math.max(1, barW), dh)
+    }
   }
   // 连续竞价: 分钟成交量柱(红涨绿跌)
   for (let i = 0; i < t.length; i++) {
@@ -283,7 +290,7 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   const lastTrade = [...t].reverse().find(p => trendMinute(p.time) >= 30)
   const parts = []
   if (Number.isFinite(total)) parts.push([`${fmtHand(total)}`, C.axisText])
-  if (aTicks.length) parts.push([`委托量:${fmtHand(lastCum)}`, '#27ae60'])
+  if (aTicks.length) parts.push([`竞价量:${fmtHand(lastCum)}`, '#27ae60'])
   if (lastTrade) parts.push([`现量:${fmtHand(lastTrade.vol || 0)}`, C.axisText])
   ctx.font = FONT_SM
   for (const [text, color] of parts) {
