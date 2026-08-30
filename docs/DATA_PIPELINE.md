@@ -13,9 +13,56 @@
 | ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计当月不封版（9 月首个收盘 run 自动封入冷层） |
 | ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 08-31 00:56 北京时间 run 全步骤成功：下载热层→采集→prune→导出→提交→部署；quality 3901→3895 数据完整。上传 sync 步骤同样跑通（本次因凌晨未过 15:10 闸门正确跳过，热层保持 init 版本；**首次真实 sync=今日收盘 15:10 run**） |
 | ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
-| ⑤ players 导出收窄 | ✅ 代码已推送 | 实测 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；目录随每日导出自动淘汰跌榜冻结选手。待下次 run 后核对远端目录规模 |
-| ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push |
-| 观察期 ⑥ | ⏳ 进行中(第1天) | 已核对: 00:56 run 数据完整; 待验证: 今日 15:10 run 的 sync 上传、明日热层日期=当日、页面/钉钉正常 |
+| ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
+| ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
+| 观察期 ⑥ | ⏳ 进行中(第1/5天) | 已核对: 00:56 与 01:07 两次 run 数据完整、导出收窄生效；余项见下方待办 B |
+
+---
+
+## 待办清单（按优先级，含验收标准；随进度更新）
+
+### A.【今晚必须】首次 sync 上传验证 — 08-31 收盘 run（≥15:10 北京时间）
+
+改造后收盘 run 第一次真正执行 `--sync`（凌晨的 run 因未过闸门正确跳过，热层还是 08-30 的 init 版本）。
+
+验证步骤（收盘 run 结束后）：
+```bash
+# 1. Release 资产时间戳应变为今日(08-31), 且出现温层 db-w2026-W35
+curl -s https://api.github.com/repos/WXinYi/stockboard/releases | grep -E 'tag_name|updated_at'
+# 2. 热层 manifest: date_range 应含 2026-08-31, trades 行数 ≈ 20.3万+
+# 3. 页面 core.json date 应为 08-31 且 quality ~3900
+# 4. Actions 该 run 全步骤 success(重点"上传 Release 存储"步骤)
+```
+不通过时的处置：看该步骤日志定位（可能=热层资产删除/上传 API 限流），必要时手动 `gh workflow run db_upload.yml` 重建。
+
+### B.【连续 5 个交易日】观察期每日检查（至 09-05）
+
+每天收盘 run 后核对四项：
+1. `crawl-latest.manifest.json` 行数较昨日单调不减、date_range 尾部=当日；
+2. 页面选手数据模块正常（重仓共识/抄作业有数据，quality ~3900 量级）；
+3. 钉钉日报正常（无重复推送、无漏推）；
+4. 当日温层 tag 存在（周五）、月初第一个交易日出现上月冷层 tag（**09-01 应自动生成 `db-m2026-08`**，重点确认）。
+
+任一异常 → 先查 Actions 日志，再按 §8 运维手册处理。
+
+### C.【需用户明确确认】④ git 历史重写（filter-repo）
+
+- 现状：`.git` 772MB（size-pack 748MB），历史里有 275 份 db blob（打包前 13.7GB）；不改写则 clone 永远拖着 700MB+ 死重。
+- 操作：`git filter-repo --invert-paths --path jiarenmens/data/crawl_data.db`（可选顺带清理 latest/players/ 历史大目录）→ `git push --force`。
+- 影响：所有 commit hash 重写；本地旧 clone/fork 需重新 clone；旧 PR 引用失效。数据零损失（db 已在 Release 三层）。
+- 效果：`.git` 预计 772MB → <100MB。
+- 前置条件已满足（①归档可匿名下载已验证）。**等用户一句"做④"即可执行。**
+
+### D.【安全】PAT 更换
+
+WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建议 GitHub → Settings → Developer settings → Tokens 里 **revoke 并换新**；日常 CI 全部用仓库自带 GITHUB_TOKEN，本地调试才需要 PAT。
+
+### E.【可选优化】后续观察项
+
+- `summary.json`（117KB 全量参照）前端已不 fetch，观察一个月后可考虑停写，进一步减小每次提交体积；
+- 温层 `--retain-weeks 12` 与 prune 40 采集日的衔接：若出现周档覆盖不到的边角日期（跨月边界），用 `fetch_db.py --range` 合并月档兜底。
+
+---
 
 ### ⚠️ 事故记录（08-31 凌晨，已修复，后人必读）
 
@@ -143,21 +190,19 @@ latest/name_map.json    — 被引用选手 name→id
 latest/changes_summary.json — 持仓变动计数
 latest/summary.json     — 全量聚合(调试参照, 前端不再 fetch)
 latest/players/<id>.json — 选手详情, 前端按需加载
-  (✅ 08-31 起: 只导出"优质∪当日活跃∪被引用"集合, 曾累积 23192 个/92MB 的问题已根治, 详见 §0)
+  (✅ 08-31 起: 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件,
+   曾累积 23192 个/92MB 的问题已根治, 远端实测已降至 5133 个)
 latest/auction.json     — 竞价扫描快照(intraday_monitor 也读)
 latest/players_index.json
 ```
 
-⚠️ **已知问题**：`latest/players/` 只增不删——选手跌出榜单后旧 JSON 永远留在目录里。现已累积 **23192 个文件 / 92MB**，随 git 提交持续膨胀。处理见 §6 步骤⑤。
+### 3.4 Git 提交策略（✅ 08-31 已切换）
 
-### 3.4 Git 提交策略（当前折中）
-
-- 每次 run `git add -f stockboard-app/public/data/ jiarenmens/data/`（-f 覆盖部分 ignore）。
-- **北京时间 <15:10**：`git reset` 掉 `crawl_data.db`，只提交 JSON + 状态文件；**≥15:10**（当天最后一次）才提交 db。
-  - 原因：db 是 85MB 二进制，SQLite 无 delta 意义，每个 commit 都是一份近全量 blob；每天 12 次提交会把仓库撑爆。
-  - 幂等性保证白天不提交也安全：trades/positions 按 (zh_id, crawl_date) 先删后写，当日重采覆盖。
-  - 其余状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会重复轰炸。
+- 每次 run `git add -f stockboard-app/public/data/ jiarenmens/data/`（-f 覆盖部分 ignore），但**随即 `git reset` 掉 `crawl_data.db`——db 永不进 git**（.gitignore 已加，`git rm --cached` 已做）。
+- db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（≥15:10）末尾 `--sync` 回传。
+- 状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会因状态回退而白天重复推送。
 - 提交信息 `📊 数据更新 YYYY-MM-DD [skip ci]`（防止 push 再触发 workflow）；push 失败重试 3 次（pull --rebase）。
+- `jiarenmens/data/archive/`（fetch_db 回测产物）已 ignore，勿 `git add -A` 误提交。
 
 ### 3.5 前端消费链路
 
@@ -192,21 +237,24 @@ latest/players_index.json
 
 > Release 资产单文件限 2GB、总仓限远超需求；匿名可下载（公开仓库）；完全在 GitHub 免费额度内。
 
-### 5.2 取数/存数闭环（改造后）
+### 5.2 取数/存数闭环（✅ 已上线，08-31 全链路验证通过）
 
 ```
-收盘后(≥15:10) crawl run:
-  1. 下载热层 crawl-latest.db.gz → 解压为 data/crawl_data.db   ← 取数(状态回放)
+每个 crawl run(白天 12 次 + 收盘, 一律执行):
+  1. 下载热层 crawl-latest.db.gz → 解压为 data/crawl_data.db   ← 取数(状态回放, 3次重试)
+     失败且本地无 db → run 终止(宁可停, 不可空库断链)
   2. main.py 采集 → 幂等写入当日数据                            ← 存数
-  3. prune_crawl_db.py --apply (保留40采集日) + PRAGMA integrity_check
-  4. 生成 manifest(行数/日期范围/sha256) 打进 commit message
-  5. gzip → 上传 Release db-state / crawl-latest.db.gz          ← 存数(热层)
-     失败 → workflow 立即失败 + 钉钉告警（宁可停，不可断链）
-  6. 周五: 合并当周 → 上传温层; 每月首日: 上月温层 → 冷层
-  7. git 只提交 JSON + 状态文件 (crawl_data.db 永不再进 git)
+  3. export_json.py 导出 → Build → Pages
+  4. git 提交 JSON+状态文件(db 被 reset, 永不进 git)
+
+仅收盘 run(北京时间≥15:10)追加:
+  5. prune_crawl_db.py --apply(保留40采集日)
+  6. release_db.py --sync: 快照(backup API+integrity_check+manifest)
+     → 热层覆盖上传 + 当周温层 + 已完成月冷层 + 温层滚动清理    ← 存数
+     上传失败 → workflow 立即失败(告警可见)
 ```
 
-关键设计：**"先下载再采集、上传失败即终止"**——热层始终是最新状态，任何一天失败链路立刻暴露，不存在"静默丢一天数据"；下载失败也终止（不允许从空库起采，否则会静默丢失"推 pull 时未下载成功的历史"）。db 内 40 采集日滚动 + 温层 12 周 + 冷层永久，三段窗口首尾相接，**任意历史日期都可取出**。
+关键设计：**读路径每次执行、写路径收盘闸门**（08-31 空库导出事故的教训，详见 §0 事故记录）。db 内 40 采集日滚动 + 温层 12 周 + 冷层永久，三段窗口首尾相接，**任意历史日期都可取出**。
 
 ### 5.3 回测取数（满足"经常拉远端数据到本地"）
 

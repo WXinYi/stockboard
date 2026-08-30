@@ -11,6 +11,20 @@
 - **增量更新** — 每天运行一次，数据按日期隔离存储
 - **SQLite 存储** — 数据持久化到本地数据库，支持历史回溯
 
+## 数据持久化（2026-08-31 起）
+
+`crawl_data.db` **不再进 git**，持久化走 GitHub Release 三层存储（热层 40 采集日 / 温层 12 周滚动 / 冷层永久），完整方案与运维手册见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
+
+本地取数（回测等场景）：
+
+```bash
+python3 scripts/fetch_db.py --latest          # 热层(最近40采集日) → data/crawl_data.db
+python3 scripts/fetch_db.py --month 2026-07   # 单月冷层
+python3 scripts/fetch_db.py --list            # 查看可用归档
+```
+
+⚠️ 每次 CI run 开头都会从热层恢复 db——本地手动跑 `export_json.py` 前先确保库已恢复（`fetch_db.py --latest`），空库导出会产出退化数据。
+
 ## 快速开始
 
 ```bash
@@ -42,16 +56,20 @@ stockboard/
 ├── requirements.txt           # 依赖
 ├── data/
 │   ├── checkpoint.json        # 进度记录
-│   ├── crawl_data.db          # SQLite 数据库
+│   ├── crawl_data.db          # SQLite 数据库(运行时从 Release 热层恢复, 永不进 git, 见 docs/DATA_PIPELINE.md)
 │   ├── auction.db             # 竞价/情绪/涨停池（auction_scan 写，Actions 与本地共享）
 │   ├── analysis.db            # 周期引擎判定（本地独享，不提交）
 │   ├── intraday.db            # 盘中监控数据（已停用，本地独享）
+│   ├── archive/               # fetch_db.py 回测产物（gitignore，勿 git add -A 误提交）
 │   └── dashboard.html         # 生成的看板页面
 ├── scripts/
 │   ├── auction_scan.py        # 竞价扫描全流程（评分漏斗 + V5 周期闸门 + 钉钉）
 │   ├── cycle_push.py          # 午盘/尾盘格局钉钉推送（每日三推之二/三）
 │   ├── cycle_brief.py         # 当前超短格局报告 CLI
 │   ├── backfill_emotion.py    # 市场宽度/涨停池历史回补
+│   ├── release_db.py          # ★ crawl_data.db ↔ GitHub Release 三层存储(热/温/冷)
+│   ├── prune_crawl_db.py      # 保留窗口外采集日删除 + VACUUM（封顶 db 体积）
+│   ├── fetch_db.py            # ★ 回测取数 CLI：Release 归档 → 本地(--latest/--week/--month/--range)
 │   ├── intraday_monitor.py    # 盘中实时监控（已停用，代码保留）
 │   ├── dashboard.py           # 看板生成脚本
 │   └── ...
