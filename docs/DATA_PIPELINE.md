@@ -1,7 +1,35 @@
 # StockBoard 数据管道全景文档（取数 / 存数 / 长期存储方案）
 
-> 用途：交接文档 + 日常运维手册。2026-08-30 梳理，含现状、问题量化与五年可持续存储方案。
+> 用途：交接文档 + 日常运维手册 + **实施进度实时登记**（见 §0）。2026-08-30 梳理，08-31 开始实施。
 > 涉及目录：`jiarenmens/`（采集端 Python）、`stockboard-app/`（前端 Vue）、`.github/workflows/`（调度）。
+
+---
+
+## §0 实施进度（随时更新，交接先看这里）
+
+| 事项 | 状态 | 说明 |
+|---|---|---|
+| 文档 | ✅ 完成 | 本文件；另含 08-31 起的实施调试记录 |
+| ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：crawl-2026-07.db.gz 5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计暂不封版（当月由周层覆盖，9 月首个收盘 run 自动封入冷层） |
+| ② crawl.yml 改造 | ✅ 代码已推送 | 收盘 run（≥15:10）流程=下载热层→采集→prune→`release_db.py --sync`（热层覆盖+当周温层+已完成月冷层+温层滚动清理）；git 永不提交 db。**待今日收盘 run 实战验证** |
+| ③ fetch_db.py 回测取数 | 🔶 基本可用 | `--list`/tag 解析已验证；本地下载遇 GitHub S3 主机 SSL 瞬断（大陆直连特性），已加 3 次退避重试；**待办：下载环节加 curl 兜底**（curl 实测能通，urllib TLS 指纹被掐） |
+| ⑤ export_json 清理旧 players | ✅ 代码已推送 | 导出后删除跌榜选手旧 JSON（曾累积 23192 个/92MB）；待下次 run 日志确认 |
+| ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 现状 .git 721MB；前置条件=三层归档已验证（已满足）；会重写全部 commit hash |
+| 观察期 ⑥ | ⏳ 未开始 | 连续 5 个交易日核对 manifest/页面/钉钉（依赖②实战） |
+
+### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
+
+1. **同一 commit 删库导致 checkout 无 db** → init 工作流改为"优先热层恢复，否则从 git 历史最后一个含 db 提交检出"（`git rev-list | cat-file -e` 探测）。
+2. **读操作强制要 token** → `release_db.py` 拆分 `_token()`（写）/`_opt_token()`（读，公开仓匿名 GET）。
+3. **actions/checkout@v4 默认 shallow**（fetch-depth:1）→ rev-list 查不到历史，init 工作流加 `fetch-depth: 0`。
+4. **cd 子目录后 git pathspec 失效**：`cd jiarenmens` 后 `git rev-list -- jiarenmens/data/...` 相对 cwd 解析不到 → fatal，`bash -e` 直接终止步骤。git 命令必须在仓库根目录执行。
+5. 本机 keychain 里的 GitHub token 属于另一账号（无本仓写权限），不可用；改用仓库 GITHUB_TOKEN 跑 init。
+
+### 环境备忘
+
+- 仓库实测为 **public**（`private=false`），Release 资产可匿名下载（已验证）；用户配置标注"私有"以 API 实测为准。
+- WXinYi 的 classic PAT 已提供（用于 API 调试与 gh CLI）。**安全建议**：该 token 已出现在会话记录中，稳定运行后建议在 GitHub → Settings → Developer settings 里 revoke 并换新。
+- 大陆直连 GitHub：API 域名偶发 SSL 瞬断（重试可过），S3 资产主机（objects.githubusercontent.com 302 跳转后）对 Python urllib 的 TLS 指纹掐流较狠，curl 通常能过 → 这就是 fetch_db 要加 curl 兜底的原因。
 
 ---
 
@@ -194,11 +222,11 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 
 ## 六、实施清单（按序执行，做完①②即可观察运行）
 
-- [ ] **① 存量数据上云**：把当前 crawl_data.db（含 07-22 以来全部历史）gzip 后上传 Release `db-state`（热层）+ `db-archive-2026-07/08`（温/冷层初始档）；匿名 URL 验证下载、解压、`integrity_check ok`。
-- [ ] **② 改造 crawl.yml**：加"下载热层→失败终止"、"上传热层→失败终止"、integrity_check+manifest；提交数据步骤删掉 db（git 永不再提交 db）；周五/月初归档步骤。
-- [ ] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range）。
-- [ ] **④ （可选）filter-repo 历史重写** + force push（需用户确认）。
-- [ ] **⑤ 导出清理**：export_json.py 结束时删除 `latest/players/` 中不在本次导出集合的旧文件（止血 23k 文件累积）；`db_watched_players` 等不变。
+- [x] **① 存量数据上云**：当前 crawl_data.db 已上传 Release `db-state`（热层）+ `db-m2026-07`（冷层首档）；匿名下载 + integrity_check 已验证。✅ 2026-08-31
+- [x] **② 改造 crawl.yml**：下载热层（失败且有 git 内 db 则过渡放行）、`--sync` 上传（失败即终止）、integrity_check+manifest；提交数据步骤 `git reset` db（git 永不提交）。✅ 代码已推送
+- [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+可选 token）。✅ 已推送（curl 兜底待加）
+- [ ] **④ （可选）filter-repo 历史重写** + force push（需用户确认；前置条件①已满足）
+- [x] **⑤ 导出清理**：export_json.py 删除跌榜选手旧 JSON。✅ 已推送
 - [ ] **⑥ 观察期**：连续 5 个交易日核对——每日 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
 
 ## 七、影响分析
