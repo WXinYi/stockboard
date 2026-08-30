@@ -219,8 +219,33 @@ function onCrosshairFromCanvas(info) {
 }
 
 
+// 竞价序列(09:15~09:25)并入分时头部: 腾讯分时源从 09:30 起, 用 KPL GetStockBid 补竞价段(东财分时含竞价)。
+// cumVol 为累计量 → 差分出分钟量; 竞价无逐笔金额 → 按 价×量×100 估算保均价线口径; 幂等(已并入则跳过)
+function mergeBid() {
+  const t = trend.value, b = bid.value
+  if (!t.length || !b?.length) return
+  const d0 = new Date(t[0].time * 1000)
+  if (d0.getUTCHours() === 9 && d0.getUTCMinutes() < 30) return   // 已并入过
+  const day = t[0].time - (t[0].time % 86400)   // UTC-naive 当日零点(秒)
+  let prevCum = 0
+  const auction = []
+  for (const p of b) {
+    const ts = String(p.time).padStart(4, '0')
+    const hh = +ts.slice(0, 2), mm = +ts.slice(2, 4)
+    if (!(hh === 9 && mm >= 15 && mm <= 25)) continue
+    const vol = Math.max(0, (p.cumVol || 0) - prevCum)
+    prevCum = p.cumVol || 0
+    auction.push({ time: day + hh * 3600 + mm * 60, price: p.price, vol, amount: p.price * vol * 100 })
+  }
+  if (!auction.length) return
+  trend.value = [...auction, ...t]
+}
+
 async function loadChart() {
-  if (view.value === 'trend') await loadTrend()
+  if (view.value === 'trend') {
+    await loadTrend()
+    mergeBid()   // 分时就绪后并入竞价段
+  }
   else await loadKline(view.value, adjust.value)
   // 数据就绪后: indCache 为 computed(kline 变化即重算), StockChartCanvas 监听 props 自动重绘
 }
@@ -311,7 +336,10 @@ async function loadGene(silent = false) {
   catch (e) { gene.value = null }
 }
 async function loadBid(silent = false) {
-  try { bid.value = await fetchStockBid(code.value, silent) }
+  try {
+    bid.value = await fetchStockBid(code.value, silent)
+    mergeBid()   // bid 后到(如首次加载)时补并入分时
+  }
   catch (e) { bid.value = null }
 }
 // ── 大单监控(15s 轮询) + 龙虎榜个股历史(激活加载一次) ──
@@ -445,7 +473,10 @@ function startTimers() {
 function stopTimers() { for (const k in timers) clearInterval(timers[k]); timers = {} }
 function tick(fn) { if (!isTradingTime()) { stopTimers(); return } fn() }
 async function refreshChartSilent() {
-  if (view.value === 'trend') await loadTrend(true)
+  if (view.value === 'trend') {
+    await loadTrend(true)
+    mergeBid()   // 轮询重建 trend 后重并竞价段
+  }
   else await loadKline(view.value, adjust.value, true)
   // 数据更新后 indCache 重算 + 画布自动重绘
 }

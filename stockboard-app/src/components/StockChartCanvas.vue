@@ -3,7 +3,7 @@
 // 数据全部由宿主 computeIndicators 计算后经 props 传入; 本组件只画 + 发射 crossinfo
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
-  panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks, trendX, trendMinute,
+  panelRects, priceToY, klineWindow, idxToX, timeTicks, priceTicksTrend, priceTicks, trendX, trendMinute, TREND_VMIN,
 } from '../utils/chartDraw.js'
 import { calcMACD, calcKDJ, calcRSI, calcWR, VIEW_MAX_BARS } from '../utils/indicators.js'
 import { fmtHand } from '../utils/pankou.js'
@@ -114,8 +114,10 @@ function drawTrend() {
   plotX = main.x; plotW = main.width
   const x0 = main.x, w0 = main.width   // 分时 x 以内容区为基准, 避免线/量柱/副图越过 y 轴带
 
-  // 1. 网格 + 昨收 + 涨跌停线
+  // 1. 网格 + 竞价区底色 + 昨收 + 涨跌停线
   drawGrid(main)
+  ctx.fillStyle = 'rgba(41,128,185,.05)'   // 集合竞价段(虚拟 [0,30])浅蓝底, 东财同款视觉区隔
+  ctx.fillRect(x0, main.y, w0 * 30 / TREND_VMIN, main.height)
   drawHLine(main, prevClose, yMin, yMax, C.preClose, 'dashed')
   if (axis.up > axis.down) {
     drawHLine(main, axis.up, yMin, yMax, 'rgba(231,76,60,.55)', 'dashed')
@@ -233,7 +235,7 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   const HEADER_H = 16
   const plot = { x: vol.x, y: vol.y + HEADER_H, width: vol.width, height: vol.height - HEADER_H }
   const maxVol = Math.max(...t.map(p => p.vol), 1)
-  const barW = Math.max(1, w / 240 * 0.6)   // 按 240 交易分钟定柱宽, 午休不占位
+  const barW = Math.max(1, w / TREND_VMIN * 0.6)   // 按 270 虚拟分钟(含竞价段)定柱宽, 午休不占位
   for (let i = 0; i < t.length; i++) {
     const p = t[i]
     const x = x0 + trendX(p.time, w)
@@ -693,7 +695,7 @@ function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0, isIntraday = false) {
   // DIF/DEA 峰值可能大于 |hist|(分时伪K数值大) → 缩放取三者最大, 否则线溢出副图进入量图
   const segMax = arr => arr ? Math.max(...arr.slice(baseI, baseI + win.length).map(Math.abs).filter(Number.isFinite), 0) : 0
   const scaleMax = Math.max(segMax(m.hist), segMax(m.dif), segMax(m.dea), 1)
-  const barW = Math.max(1, (isIntraday ? w / 240 : w / win.length) * 0.6)
+  const barW = Math.max(1, (isIntraday ? w / TREND_VMIN : w / win.length) * 0.6)
   const midY = sub.y + sub.height / 2
   const halfH = sub.height / 2 - 2
   const subX = (i, bar) => x0 + (isIntraday ? trendX(bar.time, w) : idxToX(i, w, win.length))
@@ -943,8 +945,8 @@ function emitCrosshair(x) {
     if (!t.length) { send(null); return }
     const w = plotW || canvasRef.value.clientWidth
     const x0 = plotX || 0
-    // 光标 x → 交易分钟 → 最近的分钟点(午休区无数据: 取前后最近点)
-    const m = clamp(Math.round((x - x0) / w * 240), 0, 240)
+    // 光标 x → 虚拟分钟(竞价段 [0,30] + 连续竞价 240) → 最近的分钟点(午休/间隙区无数据: 取前后最近点)
+    const m = clamp(Math.round((x - x0) / w * TREND_VMIN), 0, TREND_VMIN)
     let i = -1, best = Infinity
     for (let k = 0; k < t.length; k++) {
       const d = Math.abs(trendMinute(t[k].time) - m)
