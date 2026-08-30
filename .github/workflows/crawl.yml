@@ -64,12 +64,11 @@ jobs:
             echo "非尾盘时段($H), 跳过"
           fi
 
-      # 收盘后(≥15:10)的 run: 先从 Release 热层恢复 db 再采集, 保证 40 日滚动窗口增量连续。
-      # 白天 run 跳过(当天状态不持久化, 由收盘 run 全量重采覆盖, 见提交数据步骤注释)。
+      # 每次 run 都从 Release 热层恢复 db(白天 run 也需要完整 40 日历史: export_json 的
+      # 持仓变动/卖出预警/高手判定都依赖历史采集日; 空库导出会产出退化数据并污染页面)。
+      # 白天 run 恢复后只读不传; 上传由下方步骤的收盘闸门控制。
       - name: 下载热层库
         run: |
-          H=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$H" -lt 1510 ]; then echo "白天 run: 跳过热层下载"; exit 0; fi
           cd jiarenmens
           if python3 scripts/release_db.py --download-latest; then
             echo "✅ 已恢复热层"

@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -63,6 +64,24 @@ def get_release(tag: str):
         raise
 
 
+def _download(url: str, dest: Path, timeout: int = 120):
+    """urllib 下载, 失败退避重试后再用 curl 兜底。
+
+    大陆直连下 GitHub 资产主机(objects.githubusercontent.com)对 Python urllib 的
+    TLS 握手掐流频繁, curl 通常能通过 —— 故 curl 是实际可用路径, urllib 是无 curl
+    环境(纯 CI)的兜底。
+    """
+    try:
+        req = urllib.request.Request(url, headers=_headers())
+        with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
+            shutil.copyfileobj(r, f)
+        return
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        print(f"⚠️ urllib 下载失败({e}), 改用 curl 兜底...", file=sys.stderr)
+    subprocess.run(["curl", "-sSL", "--retry", "3", "--retry-delay", "3",
+                    "-o", str(dest), url], check=True)
+
+
 def download_gz(tag: str, asset_name: str, dest_db: Path) -> Path:
     rel = get_release(tag)
     if not rel:
@@ -72,9 +91,7 @@ def download_gz(tag: str, asset_name: str, dest_db: Path) -> Path:
         sys.exit(f"❌ {tag} 下无资产 {asset_name}: {[a['name'] for a in rel.get('assets', [])]}")
     dest_db.parent.mkdir(parents=True, exist_ok=True)
     gz = Path(tempfile.mkstemp(suffix=".db.gz")[1])
-    with urllib.request.urlopen(urllib.request.Request(asset["browser_download_url"],
-                                                       headers=_headers()), timeout=120) as r, open(gz, "wb") as f:
-        shutil.copyfileobj(r, f)
+    _download(asset["browser_download_url"], gz)
     with gzip.open(gz, "rb") as s, open(dest_db, "wb") as d:
         shutil.copyfileobj(s, d)
     gz.unlink()

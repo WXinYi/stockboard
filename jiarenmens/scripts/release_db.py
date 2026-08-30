@@ -28,6 +28,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from datetime import date, timedelta
@@ -244,27 +245,39 @@ def cmd_retain_weeks(weeks: int):
             delete_release(tag)
 
 
-def cmd_download_latest(dest: Path):
-    rel = get_release(HOT_TAG)
-    if not rel:
-        return 1
-    asset = next((a for a in rel.get("assets", []) if a["name"] == HOT_ASSET), None)
-    if not asset:
-        return 1
-    gz = Path(tempfile.mkstemp(suffix=".db.gz")[1])
-    req = urllib.request.Request(asset["browser_download_url"],
-                                 headers={"User-Agent": "stockboard-release-db"})
-    with urllib.request.urlopen(req) as r, open(gz, "wb") as f:
-        shutil.copyfileobj(r, f)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(gz, "rb") as s, open(dest, "wb") as d:
-        shutil.copyfileobj(s, d)
-    gz.unlink()
-    ic = sqlite3.connect(dest).execute("PRAGMA integrity_check").fetchone()[0]
-    if ic != "ok":
-        sys.exit(f"❌ 热层恢复后完整性校验失败: {ic}")
-    print(f"[download] ✅ {HOT_TAG}/{HOT_ASSET} → {dest} (integrity ok)")
-    return 0
+def cmd_download_latest(dest: Path = None, retries: int = 3):
+    """拉取热层覆盖 dest。失败返回 1(由调用方决定终止/降级), 网络错误重试。"""
+    dest = dest or DB_PATH
+    last_err = ""
+    for i in range(retries):
+        rel = get_release(HOT_TAG)
+        if not rel:
+            return 1
+        asset = next((a for a in rel.get("assets", []) if a["name"] == HOT_ASSET), None)
+        if not asset:
+            return 1
+        gz = Path(tempfile.mkstemp(suffix=".db.gz")[1])
+        try:
+            req = urllib.request.Request(asset["browser_download_url"],
+                                         headers={"User-Agent": "stockboard-release-db"})
+            with urllib.request.urlopen(req, timeout=120) as r, open(gz, "wb") as f:
+                shutil.copyfileobj(r, f)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with gzip.open(gz, "rb") as s, open(dest, "wb") as d:
+                shutil.copyfileobj(s, d)
+            ic = sqlite3.connect(dest).execute("PRAGMA integrity_check").fetchone()[0]
+            if ic != "ok":
+                sys.exit(f"❌ 热层恢复后完整性校验失败: {ic}")
+            print(f"[download] ✅ {HOT_TAG}/{HOT_ASSET} → {dest} (integrity ok)")
+            return 0
+        except Exception as e:   # 网络抖动重试, 不能让单次失败断链
+            last_err = str(e)
+            print(f"[download] ⚠️ 第{i + 1}次失败: {e}", file=sys.stderr)
+            time.sleep(3 * (i + 1))
+        finally:
+            gz.unlink(missing_ok=True)
+    print(f"[download] ❌ 重试耗尽: {last_err}", file=sys.stderr)
+    return 1
 
 
 def cmd_sync():
