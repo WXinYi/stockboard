@@ -231,25 +231,77 @@ function drawAvgLine(main, t, prevClose, yMin, yMax, x0 = 0, w0 = 0) {
 function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   if (!ctx || !t.length) return
   const w = w0 || canvasRef.value.clientWidth
-  // 顶部 16px 头部条带(东财"成交量"行), 量柱只画条带下方, 互不遮挡
+  // 顶部 16px 头部条带(东财"成交量"行), 图形只画条带下方
   const HEADER_H = 16
   const plot = { x: vol.x, y: vol.y + HEADER_H, width: vol.width, height: vol.height - HEADER_H }
   const maxVol = Math.max(...t.map(p => p.vol), 1)
   const barW = Math.max(1, w / TREND_VMIN * 0.6)   // 按 270 虚拟分钟(含竞价段)定柱宽, 午休不占位
+  const isAuction = p => { const m = trendMinute(p.time); return m >= 0 && m < 30 }
+  // 竞价段: 委托量累计堆叠面积(东财同款) — 红底=买入委托(side0)累计, 绿=卖出委托(side1)累计叠其上
+  const ax = [], buy = [], sell = []
+  let cb = 0, cs = 0, lastCum = 0
+  for (const p of t) {
+    if (!isAuction(p)) continue
+    if (p.side === 1) cs += p.vol || 0
+    else cb += p.vol || 0
+    lastCum = p.cum || lastCum   // cumVol 有回撤修订 → 头部展示用最后一笔累计, 面积用 clamp 差分
+    ax.push(x0 + trendX(p.time, w))
+    buy.push(cb); sell.push(cs)
+  }
+  const yOf = v => plot.y + plot.height - 2 - (v / maxVol) * (plot.height - 4)
+  if (ax.length) {
+    const fillArea = (top, base) => {
+      ctx.beginPath()
+      top.forEach((v, i) => { i ? ctx.lineTo(ax[i], yOf(base[i] + v)) : ctx.moveTo(ax[i], yOf(base[i] + v)) })
+      for (let i = ax.length - 1; i >= 0; i--) ctx.lineTo(ax[i], yOf(base[i]))
+      ctx.closePath()
+      ctx.fill()
+    }
+    ctx.fillStyle = 'rgba(231,76,60,.45)'
+    fillArea(buy, buy.map(() => 0))
+    ctx.fillStyle = 'rgba(39,174,96,.45)'
+    fillArea(sell, buy)
+  }
+  // 连续竞价: 分钟成交量柱(红涨绿跌)
   for (let i = 0; i < t.length; i++) {
     const p = t[i]
+    if (isAuction(p)) continue
     const x = x0 + trendX(p.time, w)
-    if (x < x0) continue          // 午休点跳过
+    if (x < x0) continue          // 盘后等无效点跳过
     const h = (p.vol / maxVol) * (plot.height - 4)
     ctx.fillStyle = typeof prevClose === 'number' && p.price >= prevClose ? C.volUp : C.volDown
     ctx.fillRect(x - barW / 2, plot.y + plot.height - h - 2, barW, h)
   }
-  // 头部统计行: 总量 + 现量(最新一分钟)
-  ctx.font = FONT
-  ctx.fillStyle = C.axisText
+  // 头部(东财): [成交量▾] 总量 委托量(竞价累计) 现量(最新交易分钟); 条带下方左侧标量轴最大值(东财 55450)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
-  ctx.fillText(`量 ${fmtHand(t.reduce((s, p) => s + (p.vol || 0), 0))}  现量:${fmtHand(t[t.length - 1].vol || 0)}`, x0 + 4, vol.y + 2)
+  let hx = volHeaderChip(vol)
+  const total = props.quote?.volume
+  const lastTrade = [...t].reverse().find(p => trendMinute(p.time) >= 30)
+  const parts = []
+  if (Number.isFinite(total)) parts.push([`${fmtHand(total)}`, C.axisText])
+  if (ax.length) parts.push([`委托量:${fmtHand(lastCum || cb + cs)}`, '#27ae60'])
+  if (lastTrade) parts.push([`现量:${fmtHand(lastTrade.vol || 0)}`, C.axisText])
+  ctx.font = FONT_SM
+  for (const [text, color] of parts) {
+    ctx.fillStyle = color
+    ctx.fillText(text, hx, vol.y + 3)
+    hx += ctx.measureText(text + ' ').width
+  }
+  ctx.fillStyle = C.timeText
+  ctx.fillText(fmtHand(maxVol), x0 + 4, plot.y + 2)
+}
+
+// 量能头部左侧"成交量"芯片(东财深色块 → 浅色主题灰底), 返回后续文本起始 x
+function volHeaderChip(vol) {
+  ctx.font = FONT_SM
+  ctx.fillStyle = '#f0f2f5'
+  ctx.fillRect(vol.x + 2, vol.y + 2, 42, 12)
+  ctx.fillStyle = '#666'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillText('成交量', vol.x + 6, vol.y + 3)
+  return vol.x + 48
 }
 
 function drawTimeAxis(rects, ticks, isIntraday, x0 = 0) {
@@ -575,7 +627,7 @@ function drawVolumePane(vol, win, w, baseI = 0) {
     ctx.fillStyle = k.close >= k.open ? C.volUp : C.volDown
     ctx.fillRect(x, plot.y + plot.height - h - 2, barW, h)
   }
-  // 头部统计行(东财): 总量(较前一根↑/↓) + MA1/MA2(量均线 5/10 值, 带方向箭头)
+  // 头部(东财): [成交量▾] 总量(较前一根↑/↓) + MA1/MA2(量均线 5/10 值, 带方向箭头); 条带下方左侧标量轴最大值
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.font = FONT_SM
@@ -583,15 +635,17 @@ function drawVolumePane(vol, win, w, baseI = 0) {
   const vDir = prevK ? (lastK.volume >= prevK.volume ? '↑' : '↓') : ''
   const li = baseI + win.length - 1
   const vArr = vals => (Number.isFinite(vals?.[li]) && Number.isFinite(vals?.[li - 1])) ? (vals[li] >= vals[li - 1] ? '↑' : '↓') : ''
-  const parts = [[`量 ${fmtHand(win.reduce((s, k) => s + (k.volume || 0), 0))}${vDir}`, C.axisText]]
+  const parts = [[`${fmtHand(win.reduce((s, k) => s + (k.volume || 0), 0))}${vDir}`, C.axisText]]
   if (props.indCache?.volma?.[5]) parts.push([`MA1:${fmtHand(props.indCache.volma[5][li])}${vArr(props.indCache.volma[5])}`, C.avg])
   if (props.indCache?.volma?.[10]) parts.push([`MA2:${fmtHand(props.indCache.volma[10][li])}${vArr(props.indCache.volma[10])}`, C.signal])
-  let hx = vol.x + 4
+  let hx = volHeaderChip(vol)
   for (const [text, color] of parts) {
     ctx.fillStyle = color
     ctx.fillText(text, hx, vol.y + 3)
     hx += ctx.measureText(text + ' ').width
   }
+  ctx.fillStyle = C.timeText
+  ctx.fillText(fmtHand(maxVol), plot.x + 4, plot.y + 2)
   // volma 5/10
   const ic = props.indCache
   if (ic?.volma) {
