@@ -1,6 +1,7 @@
 name: Release 数据库初始化/重建
-# 一次性迁移工具: 把库内 crawl_data.db 上传到 Release 三层存储(热层 db-state + 已完成月冷层)。
-# 手动触发(Actions → Run workflow), 也可在数据损坏时重放。日常增量由 crawl.yml 收盘后 --sync 维护。
+# 一次性迁移工具: 把 crawl_data.db 上传到 Release 三层存储(热层 db-state + 已完成月冷层)。
+# 库文件优先从热层恢复, 热层不存在时从 git 历史最后一次 db 提交检出(迁移期专用)。
+# 日常增量由 crawl.yml 收盘后 --sync 维护, 本工作流只在初始化/重建时手动或编辑触发。
 
 on:
   workflow_dispatch:
@@ -15,6 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: 恢复库文件
+        run: |
+          cd jiarenmens
+          if python3 scripts/release_db.py --download-latest; then
+            echo "✅ 已从热层恢复"
+          else
+            echo "热层不存在, 从 git 历史最后一次含 db 的提交检出..."
+            SHA=$(git rev-list HEAD -- jiarenmens/data/crawl_data.db | \
+              while read s; do git cat-file -e "$s:jiarenmens/data/crawl_data.db" 2>/dev/null && echo "$s" && break; done)
+            [ -n "$SHA" ] || { echo "❌ git 历史中找不到 crawl_data.db"; exit 1; }
+            git checkout "$SHA" -- jiarenmens/data/crawl_data.db
+            echo "✅ 已从历史提交 $SHA 恢复"
+          fi
 
       - name: 上传 Release 存储
         env:
