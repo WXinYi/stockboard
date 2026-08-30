@@ -26,12 +26,28 @@ const routes = [
   { path: '/info/:code/:iid', component: InfoDetail },  // 资讯/研报/公告正文详情
 ]
 
-export default createRouter({
+// 离开页面瞬间的滚动位置(守卫阶段尚未滚顶, 读取准确)
+// vue-router 只在浏览器前进/后退(popstate)时保存离开页滚动, push 进详情再返回时
+// savedPosition 为空/0 → 列表回顶; 这里自记一份供 scrollBehavior 恢复
+const scrollMemory = new Map()
+
+const router = createRouter({
   history: createWebHashHistory(),
   routes,
-  // 返回/前进恢复浏览器保存的滚动位置(配合 KeepAlive 的 StockDetailPage); 新导航回顶
+  // 返回/前进优先恢复自记滚动(KeepAlive 页面 DOM 完整, 可直接定位); 其余新导航回顶
   scrollBehavior(to, from, savedPosition) {
+    const remembered = scrollMemory.get(to.fullPath)
+    if (remembered) {
+      scrollMemory.delete(to.fullPath)
+      return remembered
+    }
     if (savedPosition) return savedPosition
     return { top: 0 }
   },
 })
+
+router.beforeEach((to, from) => {
+  if (from.name) scrollMemory.set(from.fullPath, { left: window.scrollX, top: window.scrollY })
+})
+
+export default router
