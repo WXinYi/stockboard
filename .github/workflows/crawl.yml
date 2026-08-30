@@ -96,11 +96,23 @@ jobs:
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python3 scripts/notify_daily.py
 
+      # 保留窗口外采集日删除+VACUUM, 封顶 crawl_data.db 体积(不清理则每天 +2~3MB 无限增长)
+      - name: 清理过期采集数据
+        run: cd jiarenmens && python3 scripts/prune_crawl_db.py --apply
+
       - name: 提交数据
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          git add -f stockboard-app/public/data/ jiarenmens/data/
+          git add -f stockboard-app/public/data/
+          # crawl_data.db 二进制 80MB 级, 每日 12 次高频提交是仓库膨胀主因(每天 pack +20~40MB)。
+          # 只在收盘后(北京时间>=15:10)提交一次; 白天不提交也安全: trades/positions 按 (zh_id,crawl_date)
+          # 先删后写, 当日重采幂等。代价: 若当天最后一次 run 失败, 当天 db 数据缺失(页面 JSON 不受影响)。
+          if [ "$(TZ=Asia/Shanghai date +%H%M)" -ge 1510 ]; then
+            git add -f jiarenmens/data/
+          else
+            echo "收盘前: 仅提交页面 JSON, crawl_data.db 留待收盘后提交"
+          fi
           if git diff --staged --quiet; then
             echo "数据无变化，跳过提交"
           else
