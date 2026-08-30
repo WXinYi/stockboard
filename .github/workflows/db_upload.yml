@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 需从 git 历史检出最后一次 db 提交(浅克隆查不到)
 
       - name: 恢复库文件
         run: |
