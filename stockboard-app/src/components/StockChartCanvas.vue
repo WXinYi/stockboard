@@ -637,34 +637,56 @@ function drawSubPane(sub, win, ic = props.indCache, x0 = 0, w0 = 0, baseI = 0, i
     drawSubMacdHeader(sub, ic.macd, baseI + win.length - 1)
   } else if (s === 'kdj' && ic.kdj) {
     drawSubOsc(plot, win, w, { k: ic.kdj.k, d: ic.kdj.d, j: ic.kdj.j }, x0, baseI, isIntraday)
+    drawSubOscHeader(sub, [['K', ic.kdj.k], ['D', ic.kdj.d], ['J', ic.kdj.j]], baseI + win.length - 1)
   } else if (s === 'rsi' && ic.rsi) {
     drawSubOsc(plot, win, w, { 6: ic.rsi[6], 12: ic.rsi[12], 24: ic.rsi[24] }, x0, baseI, isIntraday)
+    drawSubOscHeader(sub, [['RSI6', ic.rsi[6]], ['12', ic.rsi[12]], ['24', ic.rsi[24]]], baseI + win.length - 1)
   } else if (s === 'wr' && ic.wr) {
     drawSubOsc(plot, win, w, { 10: ic.wr[10], 6: ic.wr[6] }, x0, baseI, isIntraday)
+    drawSubOscHeader(sub, [['WR10', ic.wr[10]], ['6', ic.wr[6]]], baseI + win.length - 1)
   }
 }
 
-// MACD 副图头部(参考东财): 数值取可视窗口最后一根, ↑/↓ 表较前一根方向; 静态参考不随十字线联动。
-// x 从 88px 起: 左侧留给宿主的指标下拉(.sd-subind-select 与本行同一行, 东财布局)
-function drawSubMacdHeader(sub, m, lastIdx) {
+// 副图头部公共渲染: parts=[文本, 颜色], x 从 68 起避开左侧指标下拉(同一行, 东财布局)
+function drawSubHeaderParts(sub, parts) {
   if (!ctx) return
-  const arr = (vals, i) => (Number.isFinite(vals?.[i]) && Number.isFinite(vals?.[i - 1])) ? (vals[i] >= vals[i - 1] ? '↑' : '↓') : ''
-  const f3 = v => !Number.isFinite(v) ? '—' : Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(2)
-  const dif = m.dif?.[lastIdx], dea = m.dea?.[lastIdx], hist = m.hist?.[lastIdx]
   ctx.font = FONT_SM
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
-  const parts = [
-    [`DIF:${f3(dif)}${arr(m.dif, lastIdx)}`, C.avg],
-    [`DEA:${f3(dea)}${arr(m.dea, lastIdx)}`, C.signal],
-    [`M:${f3(hist)}${arr(m.hist, lastIdx)}`, hist >= 0 ? C.up : C.down],
-  ]
   let x = sub.x + 68
   for (const [text, color] of parts) {
     ctx.fillStyle = color
     ctx.fillText(text, x, sub.y + 4)
     x += ctx.measureText(text + ' ').width
   }
+}
+
+// 头部数值方向箭头: 较数组前一根 ↑/↓
+function subHeaderArrow(vals, i) {
+  return (Number.isFinite(vals?.[i]) && Number.isFinite(vals?.[i - 1])) ? (vals[i] >= vals[i - 1] ? '↑' : '↓') : ''
+}
+
+// MACD 副图头部(参考东财): 数值取可视窗口最后一根, ↑/↓ 表较前一根方向; 静态参考不随十字线联动。
+// 与指标线同色系: DIF 黄 / DEA 紫 / M 红绿
+function drawSubMacdHeader(sub, m, lastIdx) {
+  if (!ctx) return
+  const f3 = v => !Number.isFinite(v) ? '—' : Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(2)
+  const dif = m.dif?.[lastIdx], dea = m.dea?.[lastIdx], hist = m.hist?.[lastIdx]
+  drawSubHeaderParts(sub, [
+    [`DIF:${f3(dif)}${subHeaderArrow(m.dif, lastIdx)}`, C.avg],
+    [`DEA:${f3(dea)}${subHeaderArrow(m.dea, lastIdx)}`, C.signal],
+    [`M:${f3(hist)}${subHeaderArrow(m.hist, lastIdx)}`, hist >= 0 ? C.up : C.down],
+  ])
+}
+
+// KDJ/RSI/WR 副图头部(参考东财): 数值取可视窗口最后一根带方向箭头, 与指标线同色(黄/紫/绿)
+function drawSubOscHeader(sub, lines, lastIdx) {
+  if (!ctx) return
+  const f2 = v => Number.isFinite(v) ? v.toFixed(2) : '—'
+  const colors = [C.avg, C.signal, '#27ae60']
+  drawSubHeaderParts(sub, lines.map(([name, vals], i) =>
+    [`${name}:${f2(vals?.[lastIdx])}${subHeaderArrow(vals, lastIdx)}`, colors[i % colors.length]],
+  ))
 }
 
 function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0, isIntraday = false) {
