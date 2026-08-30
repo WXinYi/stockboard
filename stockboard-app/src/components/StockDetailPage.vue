@@ -136,10 +136,11 @@ const waveNote = computed(() => {
 
 function fmt(v, digits = 2) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(digits) : '—' }
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
-// 金额格式化(元 → 亿/万 带单位): 成交额/总市值/流通市值/主力净流入
+// 金额格式化(元 → 万亿/亿/万 带单位): 成交额/总市值/流通市值/主力净流入
 function wan(v) {
   if (typeof v !== 'number' || !isFinite(v)) return '—'
   const a = Math.abs(v)
+  if (a >= 1e12) return (v / 1e12).toFixed(2) + '万亿'   // 万亿级(茅台等)否则"16262亿"挤爆单元格
   if (a >= 1e8) return (v / 1e8).toFixed(2) + '亿'
   if (a >= 1e4) return (v / 1e4).toFixed(1) + '万'
   return v.toLocaleString()
@@ -153,6 +154,34 @@ function fmtVol(v) {
 
 const isUp = computed(() => (typeof quote.value?.changePct === 'number' ? quote.value.changePct >= 0 : false))
 const upColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
+const UP_C = '#e74c3c'
+const DOWN_C = '#27ae60'
+// 顶部报价(东财布局)颜色: 十字线选中 K线时按选中涨跌, 否则按实时
+const headColor = computed(() => {
+  const v = crossInfo.value ? crossInfo.value.chg : quote.value?.changePct
+  return (typeof v === 'number' ? v >= 0 : isUp.value) ? UP_C : DOWN_C
+})
+const chgAbsText = computed(() => {
+  if (crossInfo.value) return (crossInfo.value.chg >= 0 ? '+' : '') + fmt(crossInfo.value.chg)
+  const c = quote.value?.change
+  return (c !== undefined && c !== null) ? (c >= 0 ? '+' : '') + fmt(c) : '—'
+})
+// 今开/最高/最低按相对昨收红涨绿跌(东财口径)
+function vsPrevColor(px) {
+  const pc = quote.value?.prevClose
+  if (typeof px !== 'number' || typeof pc !== 'number') return ''
+  return px >= pc ? UP_C : DOWN_C
+}
+// 分时信息行(图表上方, 东财"均价/最新"行): 均价=Σamount/(Σvol×100), 最新=最后一分钟价
+const trendHead = computed(() => {
+  const t = trend.value, q = quote.value
+  if (view.value !== 'trend' || !t.length || typeof q?.prevClose !== 'number') return null
+  let amt = 0, vol = 0
+  for (const p of t) { amt += p.amount || 0; vol += p.vol || 0 }
+  const last = t[t.length - 1].price
+  const chg = last - q.prevClose
+  return { avg: vol > 0 ? amt / (vol * 100) : q.prevClose, last, chg, pct: chg / q.prevClose * 100 }
+})
 
 function goH5() { router.push('/stock/' + code.value + '/h5') }
 
@@ -471,33 +500,40 @@ onUnmounted(() => {
         <div class="sd-sk-block" style="height: 100%"></div>
       </div>
       <template v-else-if="quote">
-        <div class="sd-price-row">
-          <span class="sd-price" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ fmt(crossInfo ? crossInfo.close : quote.price) }}</span>
-          <span class="sd-chg" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ pct(crossInfo ? crossInfo.chgPct : quote.changePct) }}</span>
-          <span class="sd-chg" :style="{ color: crossInfo ? (crossInfo.chg >= 0 ? '#e74c3c' : '#27ae60') : upColor }">{{ crossInfo ? (crossInfo.chg >= 0 ? '+' : '') + fmt(crossInfo.chg) : (quote.change !== undefined && quote.change !== null ? (quote.change >= 0 ? '+' : '') + fmt(quote.change) : '') }}</span>
-        </div>
-        <div class="sd-grid">
-          <!-- L2 短线核心(正常字号): 开盘四价 + 量能四指标; crossInfo=光标处 K线数据(切日期时联动), null=当日实时 -->
-          <div class="sd-cell"><span class="lbl">今开</span><span class="val">{{ fmt(crossInfo ? crossInfo.open : quote.open) }}</span></div>
-          <div class="sd-cell"><span class="lbl">最高</span><span class="val">{{ fmt(crossInfo ? crossInfo.high : quote.high) }}</span></div>
-          <div class="sd-cell"><span class="lbl">最低</span><span class="val">{{ fmt(crossInfo ? crossInfo.low : quote.low) }}</span></div>
-          <div class="sd-cell"><span class="lbl">昨收</span><span class="val">{{ fmt(crossInfo ? crossInfo.prevClose : quote.prevClose) }}</span></div>
-          <div class="sd-cell"><span class="lbl">量比</span><span class="val">{{ crossInfo ? '—' : fmt(quote.volumeRatio) }}</span></div>
-          <div class="sd-cell"><span class="lbl">换手率</span><span class="val">{{ crossInfo ? '—' : (quote.turnover !== undefined && quote.turnover !== null ? fmt(quote.turnover) + '%' : '—') }}</span></div>
-          <div class="sd-cell"><span class="lbl">成交额</span><span class="val">{{ wan(crossInfo ? crossInfo.amount : quote.amount) }}</span></div>
-          <div class="sd-cell">
-            <span class="lbl">主力净流入</span>
-            <span class="val" :style="{ color: crossInfo || quote.mainFlowYi === null ? '#999' : (quote.mainFlowYi >= 0 ? '#e74c3c' : '#27ae60') }">{{ crossInfo ? '—' : mainFlowText }}</span>
+        <!-- 顶部报价(东财布局): 左列大价格+涨跌幅/涨跌(占两行高), 右侧两行 今开/最高/最低 · 换手/总手/金额;
+             第三行 全宽 总值/流值/市盈 + 更多按钮 -->
+        <div class="sd-qrow">
+          <div class="sd-qleft">
+            <div class="sd-qprice" :style="{ color: headColor }">{{ fmt(crossInfo ? crossInfo.close : quote.price) }}</div>
+            <div class="sd-qchg" :style="{ color: headColor }"><span>{{ pct(crossInfo ? crossInfo.chgPct : quote.changePct) }}</span><span>{{ chgAbsText }}</span></div>
+          </div>
+          <div class="sd-qmain">
+            <div class="sd-qr">
+              <span><i>今开</i><b :style="{ color: vsPrevColor(crossInfo ? crossInfo.open : quote.open) }">{{ fmt(crossInfo ? crossInfo.open : quote.open) }}</b></span>
+              <span><i>最高</i><b :style="{ color: vsPrevColor(crossInfo ? crossInfo.high : quote.high) }">{{ fmt(crossInfo ? crossInfo.high : quote.high) }}</b></span>
+              <span><i>最低</i><b :style="{ color: vsPrevColor(crossInfo ? crossInfo.low : quote.low) }">{{ fmt(crossInfo ? crossInfo.low : quote.low) }}</b></span>
+            </div>
+            <div class="sd-qr">
+              <span><i>换手</i><b>{{ crossInfo ? '—' : (quote.turnover !== undefined && quote.turnover !== null ? fmt(quote.turnover) + '%' : '—') }}</b></span>
+              <span><i>总手</i><b>{{ crossInfo ? '—' : fmtVol(quote.volume) }}</b></span>
+              <span><i>金额</i><b>{{ wan(crossInfo ? crossInfo.amount : quote.amount) }}</b></span>
+            </div>
           </div>
         </div>
-        <!-- L3 背景参考(小字 .minor)折叠: 估值市值 + 涨跌停价/均价 -->
-        <button class="sd-grid-more" @click="gridMore = !gridMore">更多指标 {{ gridMore ? '▴' : '▾' }}</button>
+        <div class="sd-qr sd-qr3">
+          <span><i>总值</i><b>{{ wan(quote.totalCap) }}</b></span>
+          <span><i>流值</i><b>{{ wan(quote.floatCap) }}</b></span>
+          <span><i>市盈</i><b>{{ fmt(quote.pe) }}</b></span>
+          <button class="sd-qmore" @click="gridMore = !gridMore">更多 {{ gridMore ? '▴' : '▾' }}</button>
+        </div>
+        <!-- L3 背景参考(小字 .minor)折叠: 东财头部没有的指标全收这里 -->
         <div v-if="gridMore" class="sd-grid">
+          <div class="sd-cell minor"><span class="lbl">昨收</span><span class="val">{{ fmt(crossInfo ? crossInfo.prevClose : quote.prevClose) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">量比</span><span class="val">{{ crossInfo ? '—' : fmt(quote.volumeRatio) }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">主力净流入</span><span class="val" :style="{ color: crossInfo || quote.mainFlowYi === null ? '#999' : (quote.mainFlowYi >= 0 ? '#e74c3c' : '#27ae60') }">{{ crossInfo ? '—' : mainFlowText }}</span></div>
           <div class="sd-cell minor"><span class="lbl">振幅</span><span class="val">{{ crossInfo ? '—' : (quote.amplitude !== undefined && quote.amplitude !== null ? fmt(quote.amplitude) + '%' : '—') }}</span></div>
           <div class="sd-cell minor"><span class="lbl">PE(TTM)</span><span class="val">{{ fmt(quote.pe) }}</span></div>
           <div class="sd-cell minor"><span class="lbl">PB</span><span class="val">{{ fmt(quote.pb) }}</span></div>
-          <div class="sd-cell minor"><span class="lbl">总市值</span><span class="val">{{ wan(quote.totalCap) }}</span></div>
-          <div class="sd-cell minor"><span class="lbl">流通市值</span><span class="val">{{ wan(quote.floatCap) }}</span></div>
           <div class="sd-cell minor"><span class="lbl">涨停价</span><span class="val">{{ fmt(quote.upPx) }}</span></div>
           <div class="sd-cell minor"><span class="lbl">跌停价</span><span class="val">{{ fmt(quote.downPx) }}</span></div>
           <div class="sd-cell minor"><span class="lbl">均价</span><span class="val">{{ fmt(quote.avgPx) }}</span></div>
@@ -527,6 +563,12 @@ onUnmounted(() => {
         <button v-if="showAdjust" :class="['sd-ibtn', { on: adjust === '' }]" @click="adjust = ''">不复权</button>
       </div>
       <div v-if="wave" class="sd-wave-note">{{ waveNote || '波浪:计算中…' }}</div>
+      <!-- 分时信息行(东财布局): 画布上方 均价(黄)/最新+涨跌(红绿) -->
+      <div v-if="view === 'trend' && trendHead" class="sd-tinfo">
+        <span class="sd-tinfo-avg">均价: {{ trendHead.avg.toFixed(2) }}</span>
+        <span>最新: <b :style="{ color: headColor }">{{ trendHead.last.toFixed(2) }}</b></span>
+        <span :style="{ color: headColor }">{{ (trendHead.chg >= 0 ? '+' : '') + trendHead.chg.toFixed(2) }} {{ (trendHead.pct >= 0 ? '+' : '') + trendHead.pct.toFixed(2) + '%' }}</span>
+      </div>
       <!-- 图表 + 右盘口 flex 行(桌面盘口 180 / 移动 116) -->
       <div class="sd-chart-row">
         <div class="sd-chart-wrap">
@@ -712,15 +754,27 @@ onUnmounted(() => {
 .sd-code { color: #999; font-size: 11px; }
 .sd-h5 { margin-left: auto; border: 1px solid #2980b9; color: #2980b9; background: #fff; font-size: 11px; padding: 3px 9px; border-radius: 7px; cursor: pointer; }
 
-.sd-price-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-.sd-price { font-size: 20px; font-weight: 700; }
-.sd-chg { font-size: 13px; font-weight: 600; }
+/* 顶部报价(东财布局): 左列大价格+涨跌块, 右侧三行指标(标签灰/值深, 今开最高最低按昨收红绿) */
+.sd-qrow { display: flex; gap: 12px; align-items: stretch; margin-bottom: 4px; }
+.sd-qleft { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.sd-qprice { font-size: 27px; font-weight: 700; line-height: 1.1; }
+.sd-qchg { font-size: 13px; font-weight: 600; display: flex; gap: 8px; }
+.sd-qmain { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 3px; }
+.sd-qr { display: flex; gap: 6px; }
+.sd-qr > span { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.sd-qr i { font-style: normal; color: #999; font-size: 10px; flex: none; }
+.sd-qr b { font-weight: 500; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; }
+.sd-qr3 { margin-top: 3px; }   /* 东财第三行全宽: 总值/流值/市盈 + 更多 */
+.sd-qmore { flex: none; border: 1px solid #d5dbe3; background: #fff; color: #555; font-size: 11px; padding: 2px 8px; border-radius: 5px; cursor: pointer; }
+/* 分时信息行(画布上方, 东财): 均价黄 / 最新+涨跌红绿 */
+.sd-tinfo { display: flex; align-items: baseline; gap: 10px; font-size: 12px; padding: 0 12px 4px; }
+.sd-tinfo-avg { color: #f2a900; }
+.sd-tinfo b { font-weight: 600; }
 
 .sd-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 10px; }
 .sd-cell { display: flex; flex-direction: column; gap: 1px; }
 .sd-cell .lbl { font-size: 9px; color: #999; }
 .sd-cell .val { font-size: 11px; color: #333; font-weight: 500; }
-.sd-grid-more { border: 1px solid #eceff3; background: #fff; color: #2980b9; font-size: 11px; padding: 4px 0; border-radius: 6px; cursor: pointer; margin-top: 6px; width: 100%; }
 
 .sd-chart-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 0 14px; flex-wrap: wrap; }
 .sd-tabs { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -748,15 +802,19 @@ onUnmounted(() => {
 .sd-subind-select {
   position: absolute;
   left: 8px;
-  bottom: 30px;
+  /* 副图(3:1:1 底部 1/5)顶部一行: top ≈ 0.8×画布高 − 2×gap; 副图已留 16px 头部条带, 下拉收在条带内不压图形 */
+  top: calc(80% - 12px);
+  bottom: auto;
+  height: 16px;
+  line-height: 1;
+  padding: 0 2px;
   z-index: 9;
-  font-size: 11px;
+  font-size: 10px;
   color: #555;
   background: rgba(255, 255, 255, .92);
   border: 1px solid #e0e3e8;
-  border-radius: 6px;
-  padding: 2px 4px;
-  max-width: 96px;
+  border-radius: 5px;
+  max-width: 80px;
 }
 .sd-loading { padding: 40px 0; text-align: center; color: #999; font-size: 13px; }
 /* 骨架屏: 灰块微光脉动(报价/图表加载时替代"加载中…"文字) */
@@ -837,7 +895,7 @@ onUnmounted(() => {
 /* 桌面端: 白卡两侧 28px 留白与其它页 main-content 水平 padding 对齐 */
 @media (min-width: 768px) {
   .sd-page { margin: 0 28px; padding: 8px 0 20px; }
-  .sd-head, .sd-chart-head, .sd-inds, .sd-wave-note, .sd-info { padding-left: 28px; padding-right: 28px; }
+  .sd-head, .sd-chart-head, .sd-inds, .sd-wave-note, .sd-info, .sd-tinfo { padding-left: 28px; padding-right: 28px; }
   .sd-boards, .sd-more { margin-left: 28px; margin-right: 28px; }
   .sd-info { margin-bottom: 18px; }
   .sd-chart-row { padding: 0 28px; }

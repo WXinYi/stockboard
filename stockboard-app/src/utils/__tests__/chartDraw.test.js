@@ -98,12 +98,11 @@ describe('timeTicks', () => {
 })
 
 describe('priceTicksTrend', () => {
-  it('左右双轴 5 等分, 同 y, 幅度按涨跌停', () => {
+  it('左右双轴 5 等分, 同 y, 幅度按涨跌停 (东财布局: 左价右幅)', () => {
     const { left, right } = priceTicksTrend(11, 9, 10, { y: 0, height: 100 })
     // 昨收 10, 涨停 11 (+10%), 跌停 9 (-10%)
-    expect(left.map(t => t.label)).toEqual(['+10%', '+5%', '0%', '-5%', '-10%'])
-    expect(right[0].label).toBe(11)      // 上界 = 涨停价
-    expect(right[4].label).toBe(9)       // 下界 = 跌停价
+    expect(left.map(t => t.label)).toEqual([11, 10.5, 10, 9.5, 9])
+    expect(right.map(t => t.label)).toEqual(['+10.00%', '+5.00%', '0.00%', '-5.00%', '-10.00%'])
     expect(left.map(t => t.y)).toEqual(right.map(t => t.y))
   })
 })
