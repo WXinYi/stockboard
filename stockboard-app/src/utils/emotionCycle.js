@@ -43,7 +43,8 @@ const mean = arr => {
 }
 
 // 今日梯队行(level=连板数) / 昨日池行(pid, 封顶5) → 三层划分
-const tierOf = h => (h <= 2 ? 'low' : h <= 5 ? 'mid' : 'high')
+// ⚠️ 单一分层口径: leaderBattle.js 矩阵分层闸门与 jiarenmens stage_candidates.py 均按此对齐
+export const tierOf = h => (h <= 2 ? 'low' : h <= 5 ? 'mid' : 'high')
 
 function promotionRate(prevRows, curRows, lo, hi) {
   // 昨日 height∈[lo,hi] 的票 → 今日真实高度 = 昨+1 的比例; 昨日 pid=5(封顶) 视作今日需 ≥6

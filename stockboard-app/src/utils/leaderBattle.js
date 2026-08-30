@@ -1,7 +1,10 @@
 // 龙头博弈 + 今日出击 · 浏览器端纯规则引擎(不用大模型, 全部确定性规则, 可回测)
 // ⚠️ 「今日出击」的阶段闸门/候选规则与 jiarenmens/src/analysis/stage_candidates.py 对齐, 改规则两边同步。
+//    矩阵分层闸门 MATRIX_GATE 同样两边镜像(语义对齐 MarketDetail.vue 的 MATRIX_DESC 九宫格)。
 // 板块之争/高标对决/半路候选为 JS 展示层实现(暂无 Python 对应); 若日后移植到推送, 需成对维护。
 // 评分权重为经验值, 待 auction.db 历史回测校准(M3); 评分=胜率优先排序, 非收益保证。
+
+import { tierOf } from './emotionCycle.js'
 
 const yi = v => (v >= 1e8 ? (v / 1e8).toFixed(2) + '亿' : v >= 1e4 ? (v / 1e4).toFixed(0) + '万' : String(v || 0))
 // unix秒 → 北京时间 'HH:MM' (KPL 时间戳为东八区)
@@ -168,9 +171,29 @@ const STAGE_GATE = {
   分歧: { cap: 60, banner: '分歧期：只抱团龙头低吸，避开中位股(核按钮高发)' },
 }
 
+// 高中位矩阵分层闸门: 同一阶段下, 高位/中位/低位可出击的类型不同(key=高位|中位, 语义对齐 MATRIX_DESC)
+// tier: low=1-2板 mid=3-5板 high=≥6板(与 emotionCycle.tierOf 同口径)
+// 级别: go=可出击 care=最高备选(封顶70) watch=只观察 ban=禁买; 与阶段闸门取更严者
+const MATRIX_GATE = {
+  '强|强': { cap: 100, tier: { high: 'go', mid: 'go', low: 'go' }, note: '上升前期：高中低位全谱系可接力' },
+  '强|平衡': { cap: 100, tier: { high: 'go', mid: 'care', low: 'go' }, note: '上升中后期：抱团龙头+低切低位，中位梯队转备选' },
+  '强|弱': { cap: 70, tier: { high: 'care', mid: 'ban', low: 'go' }, note: '情绪末端：中位核按钮高发禁买，只做龙头(备选)+低位' },
+  '平衡|强': { cap: 100, tier: { high: 'care', mid: 'go', low: 'go' }, note: '中低位活跃：主做中位梯队+低位，高位只跟龙头' },
+  '平衡|平衡': { cap: 70, tier: { high: 'watch', mid: 'care', low: 'go' }, note: '混沌盘面：只做龙头与低位套利' },
+  '平衡|弱': { cap: 45, tier: { high: 'ban', mid: 'ban', low: 'care' }, note: '情绪很差：高中位禁买，仅低位轻仓' },
+  '弱|强': { cap: 70, tier: { high: 'watch', mid: 'go', low: 'go' }, note: '空间受压：中位补涨为主，高位不接力' },
+  '弱|平衡': { cap: 45, tier: { high: 'ban', mid: 'care', low: 'care' }, note: '试探期：低位1进2/首板轻仓试错' },
+  '弱|弱': { cap: 30, tier: { high: 'ban', mid: 'ban', low: 'watch' }, note: '全面退潮：寸草不生，全谱系观察' },
+}
+const TIER_NAME = { low: '低位', mid: '中位', high: '高位' }
+
 function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
   const stage = cycle.stage
   const gate = STAGE_GATE[stage] || { cap: 100, banner: '' }
+  // 矩阵分层闸门: 与阶段闸门取更严者(同类型票在高位弱/中位弱时降级或禁买)
+  const mtx = cycle.matrix && MATRIX_GATE[`${cycle.matrix.high}|${cycle.matrix.mid}`]
+  const cap = Math.min(gate.cap, mtx ? mtx.cap : 100)
+  const banner = mtx ? `${gate.banner} 📐 高位${cycle.matrix.high}×中位${cycle.matrix.mid}：${mtx.note}` : gate.banner
   const mainBoards = (cycle.mainlines || []).slice(0, 2).map(m => m.board)
   const deltaOf = {}
   for (const w of boardWars.wars) deltaOf[w.board] = w.dCount
@@ -243,16 +266,24 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
       if (bd >= 2) { score += 8; strengths.push('板块扩容') }
       else if (bd <= -2) { score -= 10; if (!c.risk) c.risk = '板块被抽血' }
     }
-    c.score = Math.max(0, Math.min(gate.cap, score))
+    c.score = Math.max(0, Math.min(cap, score))
+    const tierAct = mtx ? (mtx.tier[tierOf(c.level)] || 'go') : 'go'
+    if (tierAct === 'care') c.score = Math.min(c.score, 70)
     const buyable = c.mode !== '观察' && !c.mode.startsWith('观察')
-    c.status = gate.cap === 0 || !buyable ? '观察' + (gate.cap === 0 ? '(阶段禁买)' : '') : c.score >= 75 ? '出击' : c.score >= 55 ? '备选' : '观察'
+    c.status = cap === 0 || !buyable ? '观察' + (cap === 0 ? '(阶段禁买)' : '') : c.score >= 75 ? '出击' : c.score >= 55 ? '备选' : '观察'
+    if (buyable && tierAct === 'watch') c.status = '观察(矩阵)'
+    if (buyable && tierAct === 'ban') {
+      c.status = '观察(矩阵禁买)'
+      c.risk = c.risk ? `${c.risk}；矩阵${TIER_NAME[tierOf(c.level)]}禁买` : `矩阵${TIER_NAME[tierOf(c.level)]}禁买`
+    }
     c.strength = strengths.join(' · ')
     c.sealTxt = row.seal ? `封单${yi(row.seal)}` : ''
     c.platesTxt = (row.plates || []).slice(0, 2).join('/')
   }
   const anchor = (cycle.leaders || [])[0]
   return {
-    gate: { stage, cap: gate.cap, banner: gate.banner, playbook: cycle.playbook },
+    gate: { stage, cap, banner, playbook: cycle.playbook,
+      matrix: mtx && cycle.matrix ? { ...cycle.matrix, note: mtx.note } : null },
     anchor: anchor ? `${anchor.name}(${anchor.pid}板)` : '',
     candidates: cands.sort((x, y) => y.score - x.score || y.level - x.level).slice(0, 8),
     disclaimer: '规则评分=胜率优先排序(待历史回测校准)，非收益保证；严格执行止损',
