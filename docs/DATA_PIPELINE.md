@@ -89,7 +89,7 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 
 ---
 
-## 一、全流程总览
+## 一、全流程总览（✅ 08-31 起为现状）
 
 ```
 cron-job.org (交易日 12 次/天, 每次 dispatch)
@@ -98,16 +98,20 @@ cron-job.org (交易日 12 次/天, 每次 dispatch)
 GitHub Actions crawl.yml (job: crawl)
         │
         ├─ ① 午盘格局推送   (13:00–13:20 窗口, cycle_push.py --session midday)
-        ├─ ② 数据采集       main.py --checkpoint-reset
+        ├─ ② 下载热层库     release_db.py --download-latest (每次run必做, 3次重试;
+        │      失败且无本地db → run终止, 防空库断链)
+        ├─ ③ 数据采集       main.py --checkpoint-reset
         │      取数: 东财大赛 rtV1 榜单 + rtV2 选手详情/持仓/调仓
         │      存数: jiarenmens/data/crawl_data.db (SQLite)
-        ├─ ③ 人气榜快照     auction_scan.py --hot-rank → hot_rank.db
-        ├─ ④ 导出 JSON      export_json.py → stockboard-app/public/data/
-        ├─ ⑤ 构建 Vue       npm ci && npm run build
-        ├─ ⑥ 钉钉通知       notify_daily.py (增量, 状态写 last_notify_state.json)
-        ├─ ⑦ 清理过期采集日 prune_crawl_db.py --apply (保留 40 个采集日 + VACUUM)
-        ├─ ⑧ 提交数据       git add → 白天 reset crawl_data.db / ≥15:10 全量提交 → push
-        └─ ⑨ Upload Pages artifact
+        ├─ ④ 人气榜快照     auction_scan.py --hot-rank → hot_rank.db
+        ├─ ⑤ 导出 JSON      export_json.py → stockboard-app/public/data/
+        ├─ ⑥ 构建 Vue       npm ci && npm run build
+        ├─ ⑦ 钉钉通知       notify_daily.py (增量, 状态写 last_notify_state.json)
+        ├─ ⑧ 清理过期采集日 prune_crawl_db.py --apply (保留 40 个采集日 + VACUUM)
+        ├─ ⑨ 上传Release    [仅≥15:10收盘run] release_db.py --sync
+        │      热层覆盖 + 当周温层 + 已完成月冷层 + 温层滚动清理; 失败即run失败
+        ├─ ⑩ 提交数据       git add → reset crawl_data.db(db永不进git) → push JSON+状态
+        └─ ⑪ Upload Pages artifact
         ▼
 deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 ```
@@ -218,7 +222,7 @@ latest/players_index.json
 | 历史中 >1MB blob 总量（打包前） | **13.7GB**（620 个） | 主要是 crawl_data.db 的历史快照 |
 | crawl_data.db 历史 blob 份数 | 275 份 | 08-13 起每天 1~12 份 |
 | 按当前"每天 1 份 22MB gz"外推 | 年 +8GB（打包前）/ pack 每年 +数百MB | **5 年 40GB+，不可持续** |
-| `latest/players/` 累积 | 23192 文件 / 92MB | 只增不删 |
+| `latest/players/` 累积 | ~~23192 文件 / 92MB~~ | ✅ 已根治(§0 ⑤, 5133 并自动淘汰) |
 | db 本体 | 85MB，40 采集日封顶 | ✅ prune 已解决 |
 
 **结论**：db 本体已封顶；真正的黑洞是 **git 历史里的二进制快照**。git 不适合做时序数据仓库——需要把"长期数据"搬出 git。
@@ -284,7 +288,7 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 - [x] **② 改造 crawl.yml**：下载热层（失败且有 git 内 db 则过渡放行）、`--sync` 上传（失败即终止）、integrity_check+manifest；提交数据步骤 `git reset` db（git 永不提交）。✅ 代码已推送
 - [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+curl 兜底）。✅ 端到端验证
 - [ ] **④ （可选）filter-repo 历史重写** + force push（需用户确认；前置条件①已满足）
-- [x] **⑤ 导出收窄**：players/ 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件（23192→5133 实测）。✅ 已推送
+- [x] **⑤ 导出收窄**：players/ 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件。✅ 远端实测 23192→5133
 - [~] **⑥ 观察期**：第 1/5 天——00:56 run 数据完整已核对；今日 15:10 run 验证首次 sync 上传，之后每日核对 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
 
 ## 七、影响分析
@@ -305,20 +309,35 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 ```bash
 # 手动触发一次全流程
 gh workflow run "数据采集 + 部署"   # 或 Actions 页面点 Run workflow
+export GH_TOKEN=ghp_xxx             # 本地 gh 需要仓库所有者账号的 PAT
 
-# 回测取数(方案落地后)
-cd jiarenmens && python3 scripts/fetch_db.py --latest
+# 回测取数(已上线)
+cd jiarenmens && python3 scripts/fetch_db.py --latest        # 热层(最近40采集日)
+python3 scripts/fetch_db.py --list                           # 查看全部可用归档
+python3 scripts/fetch_db.py --range 2026-03 2026-08          # 多月合并(冷层)
+
+# Release 存储手动维护(上传需 GITHUB_TOKEN=PAT)
+GITHUB_TOKEN=ghp_xxx python3 scripts/release_db.py --sync    # 手动补一次三层同步
+GITHUB_TOKEN=ghp_xxx python3 scripts/release_db.py --init    # 重建(灾备; 或 Actions 里跑 db_upload.yml)
 
 # 本地跑一次采集(不动远端)
 cd jiarenmens && python main.py --checkpoint-reset --test
+# ⚠️ 本地库过期/不存在时先恢复: python3 scripts/fetch_db.py --latest
+# ⚠️ 空库跑 export_json.py 会产出退化数据(08-31 事故, 见 §0)
 
 # 查看库状态
 sqlite3 data/crawl_data.db "SELECT COUNT(*), MIN(crawl_date), MAX(crawl_date) FROM trades;"
 python3 scripts/prune_crawl_db.py          # dry-run 看会删什么
 
+# 查看三层存储状态
+curl -s https://api.github.com/repos/WXinYi/stockboard/releases | \
+  python3 -c "import json,sys; [print(r['tag_name'], [a['name'] for a in r['assets']]) for r in json.load(sys.stdin)]"
+
 # 常见故障
-# - 页面选手数据不更新 → 看 crawl.yml「导出 JSON/提交数据」步骤日志
+# - 页面选手数据不更新 → 看 crawl.yml「下载热层库/导出 JSON/提交数据」步骤日志
+# - 页面数据退化(quality 数量异常小) → 疑似空库导出, 确认"下载热层库"步骤是否成功
+# - Release 上传失败 → 看对应 run 日志; 修复后手动 --sync 或重跑 db_upload.yml
 # - 钉钉重复推送 → 检查 last_notify_state.json 是否被漏提交/回退
 # - 采集大量失败 → 东财 rtV2 限流或改版, 跑 python scripts/diagnose.py
-# - crawl_data.db 损坏 → 从 Release db-state 重新下载热层覆盖
+# - crawl_data.db 损坏 → python3 scripts/fetch_db.py --latest 从热层覆盖恢复
 ```
