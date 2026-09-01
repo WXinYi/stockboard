@@ -177,8 +177,54 @@ def make_manifest(db: Path) -> dict:
     return m
 
 
+def _local_fingerprint(src: Path, keep: set) -> list:
+    """归档内容指纹: 每个采集日的 trades/positions 行数。
+
+    已完成月/周的内容不会再变(除非回填)——指纹一致即跳过上传,
+    避免每晚重传全部历史月份(5年后≈60个月×20MB/晚的纯浪费)。
+    """
+    c = sqlite3.connect(src)
+    q = ",".join("?" * len(keep))
+    rows = []
+    for table in ("trades", "positions"):
+        for d, n in c.execute(
+            f"SELECT crawl_date, COUNT(*) FROM {table} WHERE crawl_date IN ({q}) "
+            f"GROUP BY crawl_date ORDER BY crawl_date", tuple(sorted(keep))):
+            rows.append(f"{table}:{d}={n}")
+    c.close()
+    return rows
+
+
+def _remote_fingerprint(tag: str, manifest_asset: str):
+    """取远端 manifest 里的指纹; 不存在返回 None。"""
+    rel = get_release(tag)
+    if not rel:
+        return None
+    asset = next((a for a in rel.get("assets", []) if a["name"] == manifest_asset), None)
+    if not asset:
+        return None
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                asset["browser_download_url"],
+                headers={"User-Agent": "stockboard-release-db"}), timeout=60) as r:
+            return json.loads(r.read()).get("fingerprint")
+    except Exception as e:
+        print(f"[fingerprint] ⚠️ 读取远端指纹失败({e}), 按需重传", file=sys.stderr)
+        return None
+
+
 def _upload_snapshot(tag: str, asset: str, dates: set = None):
-    """快照 → (可选按采集日过滤) → gz + manifest → 上传。"""
+    """快照 → (可选按采集日过滤) → gz + manifest → 上传。
+
+    dates 给定时先比对内容指纹, 与远端一致则跳过(冷层每晚 sync 的关键省流逻辑)。
+    """
+    keep = dates if dates is not None else set(db_dates(DB_PATH))
+    manifest_asset = asset.replace(".db.gz", ".manifest.json")
+    fp = _local_fingerprint(DB_PATH, keep)
+    if dates is not None and _remote_fingerprint(tag, manifest_asset) == fp:
+        print(f"[skip] {tag}: 内容指纹一致({len(fp)}个采集日), 跳过上传")
+        return
+
     tmp_db = snapshot_db(DB_PATH)
     try:
         if dates is not None:
@@ -186,10 +232,11 @@ def _upload_snapshot(tag: str, asset: str, dates: set = None):
         gz = Path(str(tmp_db) + ".gz")
         make_gz(tmp_db, gz)
         mf = make_manifest(tmp_db)
+        mf["fingerprint"] = fp
         mf_path = Path(str(tmp_db) + ".manifest.json")
         mf_path.write_text(json.dumps(mf, ensure_ascii=False, indent=2))
         upload_asset(tag, asset, gz)
-        upload_asset(tag, asset.replace(".db.gz", ".manifest.json"), mf_path)
+        upload_asset(tag, manifest_asset, mf_path)
         print(f"[manifest] {tag}: {mf['trades']} trades, {mf['positions']} positions, {mf['date_range']}")
     finally:
         tmp_db.unlink(missing_ok=True)
