@@ -50,21 +50,15 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 
 ### E.【可选优化】后续观察项
 
-- **09-02（或下次复盘）确认**：`db-w2026-W36` 周档只含 09-01 而缺 08-31——08-31 为休市日还是采集空转待确认（index.json 有 08-31 但 trades/positions 为 0 行；若为采集问题需查 rtV2 当日返回）。
+- ~~W36 周档缺 08-31~~ → ✅ 08-31 已回填并刷入 W36/M08（见事故记录 ②-b）
 - `summary.json`（117KB 全量参照）前端已不 fetch，观察一个月后可考虑停写，进一步减小每次提交体积；
 - 温层 `--retain-weeks 12` 与 prune 40 采集日的衔接：若出现周档覆盖不到的边角日期（跨月边界），用 `fetch_db.py --range` 合并月档兜底。
 
 ---
 
-### 📌 需用户操作：cron-job.org 增配收盘专班（一次性，2 分钟）
+### 📌 cron-job.org 收盘专班 — ✅ 已配置（09-01，jobId 8364216）
 
-现有 cron 末班 14:51 北京时间，早于 15:00 收盘——sync 只能靠 14:45 兜底闸门拿到"准收盘"快照。要拿到**真收盘后**的数据（含 15:00 收盘竞价与最终持仓），请在 cron-job.org 增配一个专班：
-
-1. 登录 cron-job.org → 复制现有的 crawl 任务；
-2. 执行时间改为**工作日 15:15（Asia/Shanghai）**；
-3. 请求体中 `event_type` 从 `crawl` 改为 **`crawl-eod`**，URL/token 不变。
-
-该专班触发的 run 会无条件执行 Release sync（不走时间闸门），且不影响午盘/尾盘推送（时间窗守卫各自独立）。**未配置时也不影响系统运行**——14:45 兜底闸门保证每天仍有落盘。
+`StockBoard 收盘sync 15:15`：工作日 15:15（Asia/Shanghai）发 `repository_dispatch: crawl-eod`，触发的 run 无条件执行 Release sync（真收盘数据，含尾盘竞价）。API 用法沉淀在 `~/.claude/reference/cron-job-org-api.md`。兜底：14:45 闸门保证专班失效时末班车也能落盘。
 
 ---
 
