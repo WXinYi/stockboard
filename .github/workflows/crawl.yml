@@ -3,7 +3,10 @@ name: 数据采集 + 部署
 
 on:
   repository_dispatch:
-    types: [crawl]
+    # crawl     = 盘中常规班次(cron-job.org 交易日 12 次, 末班 14:51)
+    # crawl-eod = 收盘班次(专用 cron 15:15 触发), 必做 Release sync;
+    #             未配置该 cron 时由下方 ≥14:45 时间闸门兜底(末班车也能落盘)
+    types: [crawl, crawl-eod]
   workflow_dispatch:  # 也允许手动触发
   push:
     branches: [main]
@@ -114,15 +117,22 @@ jobs:
       - name: 清理过期采集数据
         run: cd jiarenmens && python3 scripts/prune_crawl_db.py --apply
 
-      # 收盘后: 快照→热层覆盖 + 当周→温层 + 已完成月→冷层 + 温层滚动清理。
-      # 上传失败立即终止并告警——宁可停, 不可断链(明天恢复时热层还是今天的完整状态)。
+      # 收盘 run: 快照→热层覆盖 + 当周→温层 + 已完成月→冷层 + 温层滚动清理。
+      # 触发条件(满足其一): ①专用收盘班次 crawl-eod(cron 15:15, 盘后真收盘数据);
+      # ②时间闸门 ≥14:45 兜底——cron 末班 14:51 触发的 run 也能落盘。
+      # 上传失败立即终止并告警——宁可停, 不可断链。
+      # ⚠️ 闸门必须早于 cron 末班(14:51): 08-31 曾因闸门 15:10 高于末班车,
+      # 当天 db 数据未持久化而丢失(页面 JSON 不受影响, 但 40 日窗口缺一天)。
       - name: 上传 Release 存储(热/温/冷层)
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          H=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$H" -lt 1510 ]; then echo "白天 run: 跳过上传"; exit 0; fi
+          if [ "${{ github.event.action }}" = "crawl-eod" ]; then
+            echo "收盘专班(crawl-eod): 必做 sync"
+          elif [ "$(TZ=Asia/Shanghai date +%H%M)" -lt 1445 ]; then
+            echo "收盘前 run: 跳过上传"; exit 0
+          fi
           cd jiarenmens && python3 scripts/release_db.py --sync
 
       - name: 提交数据

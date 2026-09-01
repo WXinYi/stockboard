@@ -11,7 +11,7 @@
 |---|---|---|
 | 文档 | ✅ 完成 | 本文件；含实施调试记录 |
 | ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计当月不封版（9 月首个收盘 run 自动封入冷层） |
-| ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 08-31 00:56 北京时间 run 全步骤成功：下载热层→采集→prune→导出→提交→部署；quality 3901→3895 数据完整。上传 sync 步骤同样跑通（本次因凌晨未过 15:10 闸门正确跳过，热层保持 init 版本；**首次真实 sync=今日收盘 15:10 run**） |
+| ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 09-01 15:52 run 完成首次真实 sync：热层(09-01, trades 207046) + 温层 db-w2026-W36 + 冷层 db-m2026-08(159315 trades) 全部就位，manifest integrity ok。⚠️ 同时发现并修复调度缺口（闸门 15:10 > cron 末班 14:51，08-31 db 丢一天，见事故记录②）：新增 `crawl-eod` 收盘专班 + 14:45 兜底闸门 |
 | ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
 | ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
 | ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
@@ -21,27 +21,18 @@
 
 ## 待办清单（按优先级，含验收标准；随进度更新）
 
-### A.【今晚必须】首次 sync 上传验证 — 08-31 收盘 run（≥15:10 北京时间）
+### A.【✅ 已完成】首次 sync 上传验证 — 09-01 15:52 run（09-01 复核通过）
 
-改造后收盘 run 第一次真正执行 `--sync`（凌晨的 run 因未过闸门正确跳过，热层还是 08-30 的 init 版本）。
+- Release 三层全部就位：热层 `db-state` crawl-latest.db.gz 22.5MB（trades 207046，range 含 09-01，integrity ok）；温层 `db-w2026-W36`；冷层 `db-m2026-08`（159315 trades，08-01~08-30）——**月初自动封版按设计触发**。
+- 复核中发现**调度缺口**（见事故记录②）：闸门 15:10 高于 cron 末班 14:51，08-31 的 db 数据从未持久化而丢失一天。已修复：`crawl-eod` 收盘专班事件 + 14:45 兜底闸门。
 
-验证步骤（收盘 run 结束后）：
-```bash
-# 1. Release 资产时间戳应变为今日(08-31), 且出现温层 db-w2026-W35
-curl -s https://api.github.com/repos/WXinYi/stockboard/releases | grep -E 'tag_name|updated_at'
-# 2. 热层 manifest: date_range 应含 2026-08-31, trades 行数 ≈ 20.3万+
-# 3. 页面 core.json date 应为 08-31 且 quality ~3900
-# 4. Actions 该 run 全步骤 success(重点"上传 Release 存储"步骤)
-```
-不通过时的处置：看该步骤日志定位（可能=热层资产删除/上传 API 限流），必要时手动 `gh workflow run db_upload.yml` 重建。
-
-### B.【连续 5 个交易日】观察期每日检查（至 09-05）
+### B.【连续 5 个交易日】观察期每日检查（09-02 ~ 09-08）
 
 每天收盘 run 后核对四项：
 1. `crawl-latest.manifest.json` 行数较昨日单调不减、date_range 尾部=当日；
 2. 页面选手数据模块正常（重仓共识/抄作业有数据，quality ~3900 量级）；
 3. 钉钉日报正常（无重复推送、无漏推）；
-4. 当日温层 tag 存在（周五）、月初第一个交易日出现上月冷层 tag（**09-01 应自动生成 `db-m2026-08`**，重点确认）。
+4. 周五出现当周温层 tag；**配好 cron-eod 后每日 15:15 的收盘专班 run 应含"上传 Release 存储"步骤 success**。
 
 任一异常 → 先查 Actions 日志，再按 §8 运维手册处理。
 
@@ -59,8 +50,21 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 
 ### E.【可选优化】后续观察项
 
+- **09-02（或下次复盘）确认**：`db-w2026-W36` 周档只含 09-01 而缺 08-31——08-31 为休市日还是采集空转待确认（index.json 有 08-31 但 trades/positions 为 0 行；若为采集问题需查 rtV2 当日返回）。
 - `summary.json`（117KB 全量参照）前端已不 fetch，观察一个月后可考虑停写，进一步减小每次提交体积；
 - 温层 `--retain-weeks 12` 与 prune 40 采集日的衔接：若出现周档覆盖不到的边角日期（跨月边界），用 `fetch_db.py --range` 合并月档兜底。
+
+---
+
+### 📌 需用户操作：cron-job.org 增配收盘专班（一次性，2 分钟）
+
+现有 cron 末班 14:51 北京时间，早于 15:00 收盘——sync 只能靠 14:45 兜底闸门拿到"准收盘"快照。要拿到**真收盘后**的数据（含 15:00 收盘竞价与最终持仓），请在 cron-job.org 增配一个专班：
+
+1. 登录 cron-job.org → 复制现有的 crawl 任务；
+2. 执行时间改为**工作日 15:15（Asia/Shanghai）**；
+3. 请求体中 `event_type` 从 `crawl` 改为 **`crawl-eod`**，URL/token 不变。
+
+该专班触发的 run 会无条件执行 Release sync（不走时间闸门），且不影响午盘/尾盘推送（时间窗守卫各自独立）。**未配置时也不影响系统运行**——14:45 兜底闸门保证每天仍有落盘。
 
 ---
 
@@ -69,8 +73,16 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 **空库导出污染页面**：迁移切换当晚，一次白天逻辑的 run 在 db 已移出 git、热层下载又被"白天跳过"闸门挡住的情况下，用**空库**跑了 export_json，产出退化数据（index 2148 人/quality 886/无持仓变动）提交并部署。
 
 - **根因**：白天跳过下载的设计假设"白天 run 不需要历史库"，但 export_json 的持仓变动/卖出预警/高手判定全部依赖 40 日历史，空库导出即数据污染。
-- **修复**（commit `🐛 白天run也必须恢复热层`）：**每次 run 一律恢复热层**（下载失败且无本地 db 才终止）；只有"上传"保留 15:10 收盘闸门。`--download-latest` 加 3 次退避重试。
+- **修复**（commit `🐛 白天run也必须恢复热层`）：**每次 run 一律恢复热层**（下载失败且无本地 db 才终止）；只有"上传"保留收盘闸门(当时≥15:10, 后降为14:45)。`--download-latest` 加 3 次退避重试。
 - **教训**：改存储架构时，"读路径"（每次 run 都要）和"写路径"（收盘一次）必须分开考虑闸门。
+
+**② 收盘 sync 闸门高于 cron 末班，08-31 db 数据丢失一天（09-01 复核时发现，已修复）**
+
+- **现象**：09-01 复核首日 sync 时发现热层 trades 无 2026-08-31 行（08-30 直接跳 09-01），温层 W36 只含 09-01。
+- **根因**：sync 闸门设为 ≥15:10，但 cron-job.org 末班 dispatch 是 14:51（08-29 前的课表含晚间班次，08-31 起被裁剪）——**收盘 sync 从未被 cron 自动触发过**。08-31 的采集数据只存在于当天 runner 临时磁盘，run 结束即蒸发。恰逢迁移切换当晚，巧合掩盖了问题；09-01 的 sync 只是碰巧被 15:52 的一次 push 触发。
+- **修复**：①新增 `crawl-eod` 事件类型（专用收盘 cron 15:15 触发，无条件 sync）；②兜底闸门降为 ≥14:45（末班车也能落盘）。两条路独立生效。
+- **代价**：08-31 的 positions/trades 快照无法回补（源接口只反映当前），40 日窗口内该日缺失；页面 JSON 当日导出正常，无业务影响。
+- **教训**：时间闸门必须对照**实际触发源的时刻表**校验；"理论上会有一班车"不等于"课表里有这一班"。
 
 ### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
 
@@ -108,7 +120,7 @@ GitHub Actions crawl.yml (job: crawl)
         ├─ ⑥ 构建 Vue       npm ci && npm run build
         ├─ ⑦ 钉钉通知       notify_daily.py (增量, 状态写 last_notify_state.json)
         ├─ ⑧ 清理过期采集日 prune_crawl_db.py --apply (保留 40 个采集日 + VACUUM)
-        ├─ ⑨ 上传Release    [仅≥15:10收盘run] release_db.py --sync
+        ├─ ⑨ 上传Release    [crawl-eod专班 或 ≥14:45收盘run] release_db.py --sync
         │      热层覆盖 + 当周温层 + 已完成月冷层 + 温层滚动清理; 失败即run失败
         ├─ ⑩ 提交数据       git add → reset crawl_data.db(db永不进git) → push JSON+状态
         └─ ⑪ Upload Pages artifact
@@ -203,7 +215,7 @@ latest/players_index.json
 ### 3.4 Git 提交策略（✅ 08-31 已切换）
 
 - 每次 run `git add -f stockboard-app/public/data/ jiarenmens/data/`（-f 覆盖部分 ignore），但**随即 `git reset` 掉 `crawl_data.db`——db 永不进 git**（.gitignore 已加，`git rm --cached` 已做）。
-- db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（≥15:10）末尾 `--sync` 回传。
+- db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（`crawl-eod` 专班或 ≥14:45 兜底）末尾 `--sync` 回传。
 - 状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会因状态回退而白天重复推送。
 - 提交信息 `📊 数据更新 YYYY-MM-DD [skip ci]`（防止 push 再触发 workflow）；push 失败重试 3 次（pull --rebase）。
 - `jiarenmens/data/archive/`（fetch_db 回测产物）已 ignore，勿 `git add -A` 误提交。
@@ -251,7 +263,7 @@ latest/players_index.json
   3. export_json.py 导出 → Build → Pages
   4. git 提交 JSON+状态文件(db 被 reset, 永不进 git)
 
-仅收盘 run(北京时间≥15:10)追加:
+仅收盘 run(crawl-eod 专班无条件; 常规班次北京时间≥14:45 兜底)追加:
   5. prune_crawl_db.py --apply(保留40采集日)
   6. release_db.py --sync: 快照(backup API+integrity_check+manifest)
      → 热层覆盖上传 + 当周温层 + 已完成月冷层 + 温层滚动清理    ← 存数
@@ -289,7 +301,7 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 - [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+curl 兜底）。✅ 端到端验证
 - [ ] **④ （可选）filter-repo 历史重写** + force push（需用户确认；前置条件①已满足）
 - [x] **⑤ 导出收窄**：players/ 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件。✅ 远端实测 23192→5133
-- [~] **⑥ 观察期**：第 1/5 天——00:56 run 数据完整已核对；今日 15:10 run 验证首次 sync 上传，之后每日核对 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
+- [~] **⑥ 观察期**：第 1/5 天(09-01)——首日 sync 三层就位已核对；09-02 起每日核对 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
 
 ## 七、影响分析
 
