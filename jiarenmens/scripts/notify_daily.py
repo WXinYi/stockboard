@@ -2,13 +2,16 @@
 """超短跟单日报（由 crawl.yml 的「钉钉通知」步骤调用，crawl 每天触发 12 次）
 
 一条合并消息覆盖全部 13 名关注选手：
-  🧭 环境线(周期引擎) → 🔥 当日共识(≥2人同向) → 13 人逐人卡片(买/卖/持仓/跟随) → ➤ 跟单纪律
+  🧭 环境线(周期引擎) → 🔥 当日共识(≥2人同向) → 逐人卡片(每笔调仓一行, 行首买入/卖出,
+  行尾「较成交」浮动幅度) → ➤ 跟单纪律
 
-增量机制：trades 带 _id，推送后记入 last_notify_state.json；同日无新增操作且已推送过
-则跳过（防 12 次 crawl dispatch 重复轰炸）。首条消息列出当日全部操作。
+增量机制：每笔调仓带稳定键 _k（export_json 内容哈希；勿用 db 自增 _id——每次重采都
+重新分配，曾致每班 run 全部误判新增→重复推送+全标🆕），推送后记入 last_notify_state.json。
+🆕 语义 = 与上一条推送的差异：当日首条消息为基线（整批不标，仅记入 state），之后每条
+消息只标相对上一条新增的单笔；同日无新增且已推送过则跳过（防 crawl 12 次触发重复轰炸）。
 
 「金额」说明：东财接口无股数/总资产字段，用「成交价@仓位」表达操作规模。
-现价/涨幅来自腾讯实时行情（新浪降级）。
+现价来自腾讯实时行情（新浪降级），「较成交」=(现价-成交价)/成交价。
 
 环境变量: DINGTALK_URL / DINGTALK_SECRET
 用法（在 jiarenmens/ 目录下）:
@@ -158,35 +161,37 @@ def _stock_link(code: str, name: str) -> str:
     return f"[{name}]({BASE_URL}/#/stock/{code}?name={quote(name)})"
 
 
-def _side_line(label: str, trades: list, quotes: dict, seen_set: set, first_run: bool,
-               new_counter: list) -> str:
-    """一行买卖明细: 买: [票](链接) 仓位 @成交价｜现价(+x%)🆕、..."""
-    if not trades:
-        return f"{label}: 无"
-    parts = []
-    for t in trades:
-        is_new = (not first_run) and t.get("_id") not in seen_set
-        if t.get("_id"):
-            seen_set.add(t["_id"])
-            new_counter[0] += 1 if is_new else 0
-        flag = "🆕 " if is_new else ""
-        seg = _stock_link(t.get("sc", ""), t.get("sn", "")) + f" {t.get('rr', '') or ''}"
-        price = t.get("pr")
+def _trade_line(t: dict, quotes: dict, seen_set: set, same_day: bool, new_counter: list) -> str:
+    """单笔调仓一行: - 买入 [票](链接) 仓位 @成交价，现价 x.xx 较成交 +x.x% 🆕
+
+    🆕 仅在 same_day(当日已有过推送) 且该笔 _k 未推送过时标记;
+    当日首条消息是基线, 整批不标。
+    _k = export_json 生成的内容哈希(稳定), 勿用 db _id(每次重采都变号)。
+    """
+    key = t.get("_k") or t.get("_id")
+    is_new = same_day and key not in seen_set
+    if key:
+        seen_set.add(key)
+        new_counter[0] += 1 if is_new else 0
+    dr = t.get("dr") or ""
+    label = "买入" if dr == "买入" else ("卖出" if dr == "卖出" else (dr or "操作"))
+    seg = label + " " + _stock_link(t.get("sc", ""), t.get("sn", "")) + f" {t.get('rr', '') or ''}"
+    price = t.get("pr")
+    if price:
+        seg += f" @{price:.2f}"
+    q = quotes.get(t.get("sc", ""))
+    if q and q.get("price") is not None:
+        seg += f"，现价 {q['price']:.2f}"
         if price:
-            seg += f" @{price:.2f}"
-        q = quotes.get(t.get("sc", ""))
-        if q and q.get("price") is not None:
-            seg += f"（现价 {q['price']:.2f}"
-            if q.get("pct") is not None:
-                seg += f" {q['pct']:+.2f}%"
-            seg += "）"
-        parts.append(flag + seg)
-    return f"{label}: " + "、".join(parts)
+            # 较成交价的浮动幅度(买入后盈亏; 卖出后为负=卖在高点)
+            seg += f" 较成交 {(q['price'] - price) / price * 100:+.1f}%"
+    return f"- {seg}" + (" 🆕" if is_new else "")
 
 
-def build_follow_report(date_str: str, seen: dict, first_run: bool):
+def build_follow_report(date_str: str, seen: dict, same_day: bool):
     """合并版跟单日报。返回 (text, new_count, updated_seen)
-    组合已隐藏/删除的选手自动跳过(visibility 状态由 watched_flash 每早探测更新)"""
+    组合已隐藏/删除的选手自动跳过(visibility 状态由 watched_flash 每早探测更新)
+    same_day=当日已推送过 → 新增单笔标 🆕; 当日首条为基线不标"""
     vis_state = visibility.load()
     hidden = [wid for wid in WATCHED if visibility.is_hidden(wid, vis_state)]
     active = [wid for wid in WATCHED if wid not in hidden]
@@ -251,10 +256,8 @@ def build_follow_report(date_str: str, seen: dict, first_run: bool):
             lines.append("⚠️ 数据缺失")
             lines.append("")
             continue
-        buys = [t for t in trades if t.get("dr") == "买入"]
-        sells = [t for t in trades if t.get("dr") == "卖出"]
-        lines.append(_side_line("买", buys, quotes, updated[wid], first_run, new_counter))
-        lines.append(_side_line("卖", sells, quotes, updated[wid], first_run, new_counter))
+        for t in sorted(trades, key=lambda x: x.get("_id") or 0):
+            lines.append(_trade_line(t, quotes, updated[wid], same_day, new_counter))
         lines.append("")
 
     if hidden:
@@ -287,9 +290,11 @@ def main():
 
     state = load_state()
     seen = {k: set(v) for k, v in state.get("seen", {}).items()}
+    # 当日首条推送为基线: 不标 🆕(只记录), 之后每条消息相对上一条推送标新增
     first_run = not STATE_FILE.exists()
+    same_day = (not first_run) and state.get("sent_date") == date_str
 
-    text, new_count, updated = build_follow_report(date_str, seen, first_run)
+    text, new_count, updated = build_follow_report(date_str, seen, same_day)
 
     if args.dry_run:
         print(text)

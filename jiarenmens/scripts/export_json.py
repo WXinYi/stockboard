@@ -13,7 +13,7 @@
 用法:
     python scripts/export_json.py [--date 2026-07-24] [--out ../stockboard-app/public/data]
 """
-import sqlite3, json, os, argparse
+import sqlite3, json, os, argparse, hashlib
 from pathlib import Path
 from datetime import date, datetime, timezone, timedelta
 from collections import defaultdict
@@ -513,7 +513,14 @@ def export(db_path, crawl_date, out_dir):
             "tc": safe_int(t.get("trades_count"), 1),
             "rr": t.get("position_ratio", ""),
             "pr": safe_float(t.get("price")),
-            "_id": t["id"],  # 用于二级排序（不渲染）
+            "_id": t["id"],  # 仅日内排序(db id=API原始顺序, 跨run会变, 勿用作增量键)
+            # 稳定增量键: 内容哈希, 重采/换id后不变, 供 notify_daily 判"新增调仓"。
+            # (db id 每次重采都重新分配, 曾致钉钉每班 run 全部误判新增→重复推送+全标🆕)
+            "_k": hashlib.md5("|".join([
+                t.get("trade_date", ""), t.get("stock_code", ""), t.get("direction", ""),
+                str(safe_float(t.get("price"))), t.get("position_ratio", "") or "",
+                str(safe_int(t.get("trades_count"), 1)),
+            ]).encode()).hexdigest()[:12],
         })
 
     # 调仓按日期倒序，同日内按 API 原始顺序（先买后卖，_id 升序）
