@@ -13,7 +13,7 @@
 用法:
     python scripts/export_json.py [--date 2026-07-24] [--out ../stockboard-app/public/data]
 """
-import sqlite3, json, os, argparse, hashlib
+import sqlite3, json, os, argparse, hashlib, sys
 from pathlib import Path
 from datetime import date, datetime, timezone, timedelta
 from collections import defaultdict
@@ -593,11 +593,16 @@ def export(db_path, crawl_date, out_dir):
     # 体积优化：数字保留 2 位小数（net_value 保留 3 位）、labels 只存数量（前端仅用 .length）
     # 导出范围收窄：players 表只增不减(累计 23192 人, 多为早已跌榜的冻结数据), 全量导出曾致
     # players/ 目录 92MB 随 git 无限累积。目录/详情只保留"当前有意义"的选手:
-    #   优质(quality) ∪ 当日有持仓/调仓(活跃) ∪ name_map 被引用 —— 跌出该集合的自然淘汰。
+    #   优质(quality) ∪ 当日有持仓/调仓(活跃) ∪ name_map 被引用 ∪ 关注名单 —— 跌出该集合的自然淘汰。
+    # 关注名单必须强制包含: 清仓空仓日不在活跃集合, 缺 JSON 会让钉钉卡片显示"数据缺失"。
+    sys.path.insert(0, str(ROOT))
+    from main import WATCHED_PLAYERS  # noqa: E402
+    watched_ids = {wid for wid, _ in WATCHED_PLAYERS}
     active_ids = ({p.get("zh_id") for p in positions_raw}
                   | {t.get("zh_id") for t in trades_raw}
                   | set(traded_player_ids)
-                  | set(name_map.values()))
+                  | set(name_map.values())
+                  | watched_ids)
     export_ids = quality_ids | {i for i in active_ids if i}
     export_players = [p for p in players_flat if p["id"] in export_ids]
     players_list = [
