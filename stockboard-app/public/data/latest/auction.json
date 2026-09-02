@@ -1,244 +1,196 @@
 {
- "date": "2026-09-01",
+ "date": "2026-09-02",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "环境正常"
+   "红盘占比 15% < 40% (参考)"
   ],
   "data": {
-   "strong": 38,
-   "lbgd": 7,
+   "strong": 30,
+   "lbgd": 5,
    "capacity_ratio": null,
-   "red_ratio": 0.4100153072381369,
+   "red_ratio": 0.15262227460223923,
    "bid_count": [
-    156,
-    166,
+    178,
+    229,
     50,
-    24,
-    4
+    53,
+    1
    ],
-   "bid_total": "170亿",
-   "bid_total_prev": "257亿"
+   "bid_total": "193亿",
+   "bid_total_prev": "170亿"
   }
  },
  "boards": [
   {
-   "code": "801676",
-   "name": "地产链",
-   "burst": 4.8,
-   "amount": 394947824.0,
-   "main_net": -67363810.0,
+   "code": "801057",
+   "name": "石油石化",
+   "burst": 20.1,
+   "amount": 260594254.0,
+   "main_net": 16119685.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801093",
+   "name": "天然气",
+   "burst": 11.8,
+   "amount": 173158572.0,
+   "main_net": -3464977.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801369",
+   "name": "病毒防治",
+   "burst": 7.5,
+   "amount": 84682444.0,
+   "main_net": -9301839.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801045",
+   "name": "医药",
+   "burst": 5.0,
+   "amount": 176105789.0,
+   "main_net": -1347161.0,
    "src": "爆量L2",
    "strength": 0.0
   },
   {
-   "code": "801085",
-   "name": "人工智能",
+   "code": "801027",
+   "name": "银行",
+   "burst": 4.8,
+   "amount": 220119241.0,
+   "main_net": -3320877.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801001",
+   "name": "芯片",
    "burst": 4.5,
-   "amount": 643201975.0,
-   "main_net": 9607096.0,
+   "amount": 176078069.0,
+   "main_net": 7814220.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801095",
-   "name": "游戏",
+   "code": "801004",
+   "name": "锂电池",
    "burst": 4.5,
-   "amount": 321307206.0,
-   "main_net": 65052458.0,
-   "src": "爆量+强度",
-   "strength": 526.0
-  },
-  {
-   "code": "801059",
-   "name": "字节概念",
-   "burst": 4.0,
-   "amount": 75827152.0,
-   "main_net": 1272898.0,
+   "amount": 63314402.0,
+   "main_net": 9478583.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801439",
-   "name": "网红经济",
-   "burst": 4.0,
-   "amount": 280796267.0,
-   "main_net": 36373659.0,
+   "code": "801178",
+   "name": "储能",
+   "burst": 4.5,
+   "amount": 212789397.0,
+   "main_net": 30141633.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "803023",
-   "name": "AI应用",
+   "code": "801053",
+   "name": "零售",
+   "burst": 4.5,
+   "amount": 202773487.0,
+   "main_net": -42343080.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801062",
+   "name": "军工",
    "burst": 4.0,
-   "amount": 218854650.0,
-   "main_net": 29045202.0,
-   "src": "爆量+强度",
-   "strength": 2310.0
+   "amount": 169317591.0,
+   "main_net": -1807332.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801445",
-   "name": "元器件",
+   "code": "801080",
+   "name": "煤炭",
    "burst": 0.0,
-   "amount": 597927979.0,
-   "main_net": 51787757.0,
+   "amount": 402961354.0,
+   "main_net": 30695174.0,
    "src": "强度",
-   "strength": 524.0
-  },
-  {
-   "code": "801807",
-   "name": "算力",
-   "burst": 0.0,
-   "amount": 5773619964.0,
-   "main_net": 44636949.0,
-   "src": "强度",
-   "strength": 502.0
-  },
-  {
-   "code": "801273",
-   "name": "股权转让",
-   "burst": 0.0,
-   "amount": 4677247216.0,
-   "main_net": 998477.0,
-   "src": "强度",
-   "strength": 500.0
-  },
-  {
-   "code": "801787",
-   "name": "实控人变更",
-   "burst": 0.0,
-   "amount": 563215813.0,
-   "main_net": 14202656.0,
-   "src": "强度",
-   "strength": 203.0
-  },
-  {
-   "code": "801462",
-   "name": "RCS",
-   "burst": 0.0,
-   "amount": 57391078.0,
-   "main_net": 85177.0,
-   "src": "强度",
-   "strength": 22.0
-  },
-  {
-   "code": "801461",
-   "name": "C2M",
-   "burst": 0.0,
-   "amount": 66190089.0,
-   "main_net": 161472.0,
-   "src": "强度",
-   "strength": 20.0
-  },
-  {
-   "code": "801451",
-   "name": "wifi6/7",
-   "burst": 0.0,
-   "amount": 227187614.0,
-   "main_net": 384678.0,
-   "src": "强度",
-   "strength": 19.0
-  },
-  {
-   "code": "801088",
-   "name": "有色金属",
-   "burst": 0.0,
-   "amount": 1195051680.0,
-   "main_net": 57436284.0,
-   "src": "强度",
-   "strength": 16.0
-  },
-  {
-   "code": "801377",
-   "name": "金刚石概念",
-   "burst": 0.0,
-   "amount": 53000373.0,
-   "main_net": 142989.0,
-   "src": "强度",
-   "strength": 14.0
-  },
-  {
-   "code": "801412",
-   "name": "新零售",
-   "burst": 0.0,
-   "amount": 701915523.0,
-   "main_net": 1369528.0,
-   "src": "强度",
-   "strength": 13.0
+   "strength": 585.0
   }
  ],
  "candidates": [],
- "watch": [],
+ "watch": [
+  {
+   "code": "600938",
+   "name": "中国海油",
+   "score": 12,
+   "tier": "watch",
+   "max": 21,
+   "factors": {
+    "bid_price": 35.41,
+    "bid_pct": 2.61,
+    "bid_net": 7014714.0,
+    "turnover": 0.03,
+    "vol_ratio": 3.89,
+    "circ_mv": 105875900000.0,
+    "unfilled_buy": null,
+    "bid_vol_last": 1962.0,
+    "bid_buy_ratio": 0.81,
+    "bid_vol_total": 6871.0,
+    "shape_fade": false,
+    "ma60_above": 1,
+    "ret20": 0.12198986058301631,
+    "macd_ok": 1,
+    "kdj_ok": 1
+   },
+   "sub": {
+    "S1资金": 1,
+    "S2形态": 3,
+    "S3共振": 3,
+    "S4身位": 0,
+    "S5量比": 2,
+    "S6基因": 1,
+    "S8撮合": 2,
+    "S9委买": 0
+   },
+   "gene": {
+    "pass": true,
+    "reason": "基因正常(封板67%/破板33%)",
+    "data": {
+     "limit_count": 3,
+     "premium_5pct": 1,
+     "next_red_pct": 100.0,
+     "seal_pct": 66.6667,
+     "break_pct": 33.3333,
+     "consecutive_pct": 50.0
+    }
+   },
+   "boards": [
+    "石油石化",
+    "一带一路"
+   ],
+   "tag": "",
+   "missing": [],
+   "resonance": 23,
+   "s7": 0.5,
+   "s7_note": "低位12%",
+   "fused_score": 12.5
+  }
+ ],
  "v5": [
   {
-   "code": "000560",
-   "name": "我爱我家",
-   "bid_pct": 5.17,
-   "turnover": 3.96,
-   "circ_mv": 5880123762.0,
-   "prev_pct": 9.84848484848484,
-   "height": 0,
-   "was_limit": true,
-   "fade": true,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5",
-   "boards": [
-    "房地产",
-    "地产链"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "600551",
-   "name": "时代出版",
-   "bid_pct": 5.82,
-   "turnover": 2.2,
-   "circ_mv": 2243954477.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_mv",
-   "boards": [
-    "AI应用",
-    "AI视频"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "002418",
-   "name": "康盛股份",
-   "bid_pct": 2.23,
-   "turnover": 1.56,
-   "circ_mv": 4844502200.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_mv",
-   "boards": [
-    "液冷",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "300364",
-   "name": "中文在线",
-   "bid_pct": 5.72,
-   "turnover": 1.04,
-   "circ_mv": 16968086273.0,
-   "prev_pct": 20.017597888253412,
-   "height": 1,
+   "code": "300413",
+   "name": "芒果超媒",
+   "bid_pct": 5.5,
+   "turnover": 2.13,
+   "circ_mv": 12826268017.0,
+   "prev_pct": 20.02355712603061,
+   "height": 2,
    "was_limit": false,
    "fade": true,
    "half_pos": true,
@@ -252,11 +204,11 @@
    "in_main": false
   },
   {
-   "code": "002909",
-   "name": "集泰股份",
-   "bid_pct": 4.32,
-   "turnover": 0.97,
-   "circ_mv": 1434167104.0,
+   "code": "605188",
+   "name": "国光连锁",
+   "bid_pct": 4.21,
+   "turnover": 2.0,
+   "circ_mv": 1479180154.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -265,18 +217,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_mv",
    "boards": [
-    "液冷",
-    "算力"
+    "零售",
+    "食品饮料"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "601595",
-   "name": "上海电影",
-   "bid_pct": 5.02,
-   "turnover": 0.78,
-   "circ_mv": 2655954898.0,
+   "code": "600785",
+   "name": "新华百货",
+   "bid_pct": 2.61,
+   "turnover": 1.34,
+   "circ_mv": 2374947671.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -285,18 +237,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_mv",
    "boards": [
-    "AI视频",
-    "AI应用"
+    "零售",
+    "种植业"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "605287",
-   "name": "德才股份",
-   "bid_pct": 3.42,
-   "turnover": 0.55,
-   "circ_mv": 3454029739.0,
+   "code": "002632",
+   "name": "道明光学",
+   "bid_pct": 4.68,
+   "turnover": 1.06,
+   "circ_mv": 2446933475.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -305,158 +257,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_mv",
    "boards": [
-    "AI视频",
-    "AI应用"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "603058",
-   "name": "永吉股份",
-   "bid_pct": 4.17,
-   "turnover": 0.52,
-   "circ_mv": 2485811360.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_mv",
-   "boards": [
-    "AI视频",
-    "AI应用"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "002328",
-   "name": "新朋股份",
-   "bid_pct": 2.35,
-   "turnover": 0.52,
-   "circ_mv": 4388534592.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_mv",
-   "boards": [
-    "液冷",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "002295",
-   "name": "精艺股份",
-   "bid_pct": 5.28,
-   "turnover": 0.5,
-   "circ_mv": 1780461006.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_mv",
-   "boards": [
-    "金属铜",
-    "有色金属"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "603269",
-   "name": "海鸥股份",
-   "bid_pct": 5.98,
-   "turnover": 0.42,
-   "circ_mv": 8377582042.0,
-   "prev_pct": 10.009017132551845,
-   "height": 3,
-   "was_limit": true,
-   "fade": true,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5",
-   "boards": [
-    "液冷",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "000801",
-   "name": "四川九洲",
-   "bid_pct": 3.42,
-   "turnover": 0.28,
-   "circ_mv": 6703984693.0,
-   "prev_pct": 6.706281833616301,
-   "height": 0,
-   "was_limit": false,
-   "fade": true,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5",
-   "boards": [
-    "商业航天",
-    "大飞机"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "300378",
-   "name": "鼎捷数智",
-   "bid_pct": 2.0,
-   "turnover": 0.28,
-   "circ_mv": 8507174038.0,
-   "prev_pct": 2.9105473965286954,
-   "height": 0,
-   "was_limit": true,
-   "fade": true,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5",
-   "boards": [
-    "AI智能体",
-    "AI应用"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "301536",
-   "name": "星宸科技",
-   "bid_pct": 3.8,
-   "turnover": 0.25,
-   "circ_mv": 25551880263.0,
-   "prev_pct": 12.894917582417587,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5",
-   "boards": [
-    "端侧芯片",
+    "消费电子",
     "端侧AI"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300876",
-   "name": "蒙泰高新",
-   "bid_pct": 4.32,
-   "turnover": 0.24,
-   "circ_mv": 1358948893.0,
+   "code": "000019",
+   "name": "深粮控股",
+   "bid_pct": 2.02,
+   "turnover": 0.96,
+   "circ_mv": 2187274367.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -465,18 +277,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_mv",
    "boards": [
-    "服装家纺",
-    "送转填权"
+    "农业",
+    "预制菜"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "001326",
-   "name": "联域股份",
-   "bid_pct": 4.69,
-   "turnover": 0.23,
-   "circ_mv": 1611941337.0,
+   "code": "600403",
+   "name": "大有能源",
+   "bid_pct": 5.33,
+   "turnover": 0.89,
+   "circ_mv": 2928149149.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -485,19 +297,39 @@
    "pos_tag": null,
    "group_tag": "v5_rej_mv",
    "boards": [
-    "LED",
-    "贬值受益"
+    "煤炭",
+    "新疆"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "003043",
-   "name": "华亚智能",
-   "bid_pct": 4.62,
-   "turnover": 0.22,
-   "circ_mv": 6264506661.0,
-   "prev_pct": 0.6042296072507503,
+   "code": "600903",
+   "name": "贵州燃气",
+   "bid_pct": 4.35,
+   "turnover": 0.61,
+   "circ_mv": 2716161688.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "天然气",
+    "西部大开发"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "300164",
+   "name": "通源石油",
+   "bid_pct": 5.08,
+   "turnover": 0.52,
+   "circ_mv": 5830337400.0,
+   "prev_pct": -0.839552238805974,
    "height": 0,
    "was_limit": false,
    "fade": true,
@@ -505,19 +337,59 @@
    "pos_tag": null,
    "group_tag": "v5",
    "boards": [
-    "半导体设备",
-    "芯片"
+    "石油石化",
+    "西部大开发"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "000737",
-   "name": "北方铜业",
-   "bid_pct": 3.16,
-   "turnover": 0.21,
-   "circ_mv": 14629618166.0,
-   "prev_pct": -1.171112556929077,
+   "code": "600508",
+   "name": "上海能源",
+   "bid_pct": 5.01,
+   "turnover": 0.52,
+   "circ_mv": 4813138857.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "煤炭",
+    "电力"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "688137",
+   "name": "近岸蛋白",
+   "bid_pct": 2.73,
+   "turnover": 0.5,
+   "circ_mv": 1660491325.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "疫苗概念",
+    "CRO"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "688185",
+   "name": "康希诺",
+   "bid_pct": 2.9,
+   "turnover": 0.48,
+   "circ_mv": 6222411078.0,
+   "prev_pct": 0.517172788754805,
    "height": 0,
    "was_limit": false,
    "fade": false,
@@ -525,39 +397,159 @@
    "pos_tag": "main",
    "group_tag": "v5",
    "boards": [
-    "PCB铜箔",
-    "通信"
+    "疫苗概念",
+    "CRO"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "000506",
-   "name": "招金黄金",
-   "bid_pct": 2.02,
-   "turnover": 0.21,
-   "circ_mv": 14825198111.0,
-   "prev_pct": -5.27298180121325,
+   "code": "603318",
+   "name": "水发燃气",
+   "bid_pct": 3.24,
+   "turnover": 0.46,
+   "circ_mv": 2678461228.0,
+   "prev_pct": null,
    "height": 0,
    "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "电子气体",
+    "天然气"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "301158",
+   "name": "德石股份",
+   "bid_pct": 2.29,
+   "turnover": 0.44,
+   "circ_mv": 1621213874.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "石油石化",
+    "专用设备"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000852",
+   "name": "石化机械",
+   "bid_pct": 5.63,
+   "turnover": 0.42,
+   "circ_mv": 2653459487.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "石油石化",
+    "基础建设"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000059",
+   "name": "华锦股份",
+   "bid_pct": 3.16,
+   "turnover": 0.4,
+   "circ_mv": 5251704530.0,
+   "prev_pct": 3.9792387543252428,
+   "height": 0,
+   "was_limit": true,
    "fade": false,
    "half_pos": false,
    "pos_tag": "sub",
    "group_tag": "v5",
    "boards": [
-    "黄金",
-    "股权转让"
+    "尿素",
+    "农业"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "301526",
-   "name": "国际复材",
-   "bid_pct": 2.65,
-   "turnover": 0.18,
-   "circ_mv": 44687782810.0,
-   "prev_pct": 2.6490066225165476,
+   "code": "600967",
+   "name": "内蒙一机",
+   "bid_pct": 2.54,
+   "turnover": 0.4,
+   "circ_mv": 9520284875.0,
+   "prev_pct": 10.018050541516232,
+   "height": 1,
+   "was_limit": false,
+   "fade": true,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5",
+   "boards": [
+    "军工",
+    "农业"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "002470",
+   "name": "金正大",
+   "bid_pct": 4.74,
+   "turnover": 0.39,
+   "circ_mv": 5597037741.0,
+   "prev_pct": 9.952606635071092,
+   "height": 1,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5",
+   "boards": [
+    "化肥",
+    "农业"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000968",
+   "name": "蓝焰控股",
+   "bid_pct": 2.44,
+   "turnover": 0.38,
+   "circ_mv": 3406496325.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "天然气",
+    "煤炭"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "603619",
+   "name": "中曼石油",
+   "bid_pct": 3.7,
+   "turnover": 0.35,
+   "circ_mv": 9254000743.0,
+   "prev_pct": -1.8775510204081636,
    "height": 0,
    "was_limit": false,
    "fade": false,
@@ -565,18 +557,198 @@
    "pos_tag": null,
    "group_tag": "v5",
    "boards": [
-    "电子布",
-    "通信"
+    "石油石化",
+    "天然气"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300986",
-   "name": "志特新材",
-   "bid_pct": 2.5,
-   "turnover": 0.15,
-   "circ_mv": 4184545314.0,
+   "code": "000564",
+   "name": "供销大集",
+   "bid_pct": 2.41,
+   "turnover": 0.34,
+   "circ_mv": 17255227151.0,
+   "prev_pct": 9.93377483443707,
+   "height": 1,
+   "was_limit": false,
+   "fade": true,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5",
+   "boards": [
+    "零售",
+    "农业"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000554",
+   "name": "泰山石油",
+   "bid_pct": 3.57,
+   "turnover": 0.32,
+   "circ_mv": 2504354435.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "石油石化",
+    "加氢站"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "920158",
+   "name": "长江能科",
+   "bid_pct": 4.73,
+   "turnover": 0.3,
+   "circ_mv": 461334182.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "天然气",
+    "氢能源"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "601015",
+   "name": "陕西黑猫",
+   "bid_pct": 3.09,
+   "turnover": 0.27,
+   "circ_mv": 3173661660.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "煤炭",
+    "焦炭"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000759",
+   "name": "中百集团",
+   "bid_pct": 2.04,
+   "turnover": 0.27,
+   "circ_mv": 2717425559.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "零售",
+    "预制菜"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "920014",
+   "name": "特瑞斯",
+   "bid_pct": 4.82,
+   "turnover": 0.26,
+   "circ_mv": 421969504.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "天然气",
+    "北交专用设备"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "300157",
+   "name": "新锦动力",
+   "bid_pct": 2.88,
+   "turnover": 0.24,
+   "circ_mv": 2627665704.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "石油石化",
+    "数字经济"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "601011",
+   "name": "宝泰隆",
+   "bid_pct": 5.79,
+   "turnover": 0.23,
+   "circ_mv": 4330625845.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "煤炭",
+    "石墨化"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000692",
+   "name": "惠天热电",
+   "bid_pct": 2.99,
+   "turnover": 0.23,
+   "circ_mv": 1671202921.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "热力",
+    "煤炭"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "000608",
+   "name": "阳光股份",
+   "bid_pct": 2.9,
+   "turnover": 0.23,
+   "circ_mv": 3884154829.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -586,37 +758,57 @@
    "group_tag": "v5_rej_mv",
    "boards": [
     "人工智能",
-    "金属铝"
+    "地产链"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "002975",
-   "name": "博杰股份",
-   "bid_pct": 2.0,
-   "turnover": 0.15,
-   "circ_mv": 12117346148.0,
-   "prev_pct": 4.879471228615873,
+   "code": "600871",
+   "name": "石化油服",
+   "bid_pct": 3.06,
+   "turnover": 0.2,
+   "circ_mv": 8444754929.0,
+   "prev_pct": 0.0,
    "height": 0,
    "was_limit": false,
-   "fade": true,
-   "half_pos": true,
+   "fade": false,
+   "half_pos": false,
    "pos_tag": null,
    "group_tag": "v5",
    "boards": [
-    "磷化铟",
-    "端侧AI"
+    "石油石化",
+    "一带一路"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "301392",
-   "name": "汇成真空",
-   "bid_pct": 5.45,
-   "turnover": 0.12,
-   "circ_mv": 8131848940.0,
+   "code": "002554",
+   "name": "惠博普",
+   "bid_pct": 4.01,
+   "turnover": 0.16,
+   "circ_mv": 3085236659.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_mv",
+   "boards": [
+    "石油石化",
+    "碳中和"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "600408",
+   "name": "安泰集团",
+   "bid_pct": 5.66,
+   "turnover": 0.14,
+   "circ_mv": 2315016090.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -625,18 +817,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "玻璃基板",
-    "新型工业化"
+    "煤炭",
+    "焦炭"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300071",
-   "name": "福石控股",
-   "bid_pct": 2.14,
-   "turnover": 0.11,
-   "circ_mv": 3374831782.0,
+   "code": "920344",
+   "name": "三元基因",
+   "bid_pct": 2.49,
+   "turnover": 0.13,
+   "circ_mv": 1107010278.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -645,18 +837,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "AI营销",
-    "AI应用"
+    "基因疗法",
+    "医药"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "002425",
-   "name": "凯撒文化",
-   "bid_pct": 4.59,
+   "code": "603353",
+   "name": "和顺石油",
+   "bid_pct": 3.36,
    "turnover": 0.1,
-   "circ_mv": 2532781206.0,
+   "circ_mv": 1895365200.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -665,18 +857,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "游戏",
-    "网红经济"
+    "芯片",
+    "石油石化"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300550",
-   "name": "和仁科技",
-   "bid_pct": 3.09,
+   "code": "600758",
+   "name": "辽宁能源",
+   "bid_pct": 2.32,
    "turnover": 0.1,
-   "circ_mv": 2213679923.0,
+   "circ_mv": 3183993980.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -685,18 +877,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "AI医疗",
-    "AI应用"
+    "煤炭",
+    "股权转让"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "601168",
-   "name": "西部矿业",
-   "bid_pct": 3.58,
-   "turnover": 0.09,
-   "circ_mv": 65585467452.0,
+   "code": "601808",
+   "name": "中海油服",
+   "bid_pct": 2.25,
+   "turnover": 0.1,
+   "circ_mv": 7254993240.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -705,18 +897,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "有色金属",
-    "金属锌"
+    "石油石化",
+    "一带一路"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "000751",
-   "name": "锌业股份",
-   "bid_pct": 3.09,
-   "turnover": 0.09,
-   "circ_mv": 5741831660.0,
+   "code": "605169",
+   "name": "洪通燃气",
+   "bid_pct": 2.21,
+   "turnover": 0.1,
+   "circ_mv": 1060622558.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -725,18 +917,38 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "金属铟",
-    "金属锌"
+    "天然气",
+    "新疆"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300870",
-   "name": "欧陆通",
-   "bid_pct": 4.95,
+   "code": "600339",
+   "name": "中油工程",
+   "bid_pct": 2.03,
+   "turnover": 0.1,
+   "circ_mv": 5448154124.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "石油石化",
+    "一带一路"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "603393",
+   "name": "新天然气",
+   "bid_pct": 2.01,
    "turnover": 0.08,
-   "circ_mv": 16457787377.0,
+   "circ_mv": 6432242316.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -745,38 +957,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "电源",
-    "算力"
+    "天然气",
+    "西部大开发"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300395",
-   "name": "菲利华",
-   "bid_pct": 4.05,
-   "turnover": 0.08,
-   "circ_mv": 44197784199.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "电子布",
-    "玻璃"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "000960",
-   "name": "锡业股份",
-   "bid_pct": 2.79,
+   "code": "601101",
+   "name": "昊华能源",
+   "bid_pct": 2.19,
    "turnover": 0.07,
-   "circ_mv": 35043448817.0,
+   "circ_mv": 7883494979.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -785,18 +977,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "金属铟",
-    "金属锡"
+    "煤炭",
+    "动力煤"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "688167",
-   "name": "炬光科技",
-   "bid_pct": 3.45,
-   "turnover": 0.06,
-   "circ_mv": 33735335400.0,
+   "code": "600188",
+   "name": "兖矿能源",
+   "bid_pct": 3.34,
+   "turnover": 0.05,
+   "circ_mv": 36359859870.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -805,278 +997,18 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "光纤概念",
-    "通信"
+    "煤炭",
+    "动力煤"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "300174",
-   "name": "元力股份",
-   "bid_pct": 2.74,
-   "turnover": 0.06,
-   "circ_mv": 5467455962.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "电阻电容",
-    "元器件"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "000829",
-   "name": "天音控股",
-   "bid_pct": 2.46,
-   "turnover": 0.06,
-   "circ_mv": 6114445038.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "消费电子",
-    "端侧AI"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "605186",
-   "name": "健麾信息",
-   "bid_pct": 2.04,
-   "turnover": 0.06,
-   "circ_mv": 1857041306.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "AI医疗",
-    "AI应用"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "603132",
-   "name": "金徽股份",
-   "bid_pct": 2.94,
-   "turnover": 0.04,
-   "circ_mv": 4307472000.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "有色金属",
-    "金属铅"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "605168",
-   "name": "三人行",
-   "bid_pct": 2.47,
-   "turnover": 0.04,
-   "circ_mv": 4795946362.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "AI营销",
-    "AI应用"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "301307",
-   "name": "美利信",
-   "bid_pct": 2.16,
-   "turnover": 0.04,
-   "circ_mv": 6511540324.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "液冷",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "000923",
-   "name": "河钢资源",
-   "bid_pct": 2.33,
-   "turnover": 0.03,
-   "circ_mv": 6770253156.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "金属铜",
-    "有色金属"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "688479",
-   "name": "友车科技",
-   "bid_pct": 2.1,
-   "turnover": 0.03,
-   "circ_mv": 3027487356.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "AI智能体",
-    "AI应用"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "688596",
-   "name": "正帆科技",
-   "bid_pct": 5.49,
-   "turnover": 0,
-   "circ_mv": 19166793755.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "电子气体",
-    "芯片"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "603893",
-   "name": "瑞芯微",
-   "bid_pct": 5.35,
-   "turnover": 0,
-   "circ_mv": 42360571925.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "端侧芯片",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "003018",
-   "name": "金富科技",
-   "bid_pct": 5.31,
-   "turnover": 0,
-   "circ_mv": 4834875527.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "液冷",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "603339",
-   "name": "四方科技",
-   "bid_pct": 4.67,
-   "turnover": 0,
-   "circ_mv": 2709377809.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "数据中心",
-    "算力"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "600176",
-   "name": "中国巨石",
-   "bid_pct": 3.98,
-   "turnover": 0,
-   "circ_mv": 93885934389.0,
-   "prev_pct": null,
-   "height": 0,
-   "was_limit": false,
-   "fade": false,
-   "half_pos": true,
-   "pos_tag": null,
-   "group_tag": "v5_rej_turn",
-   "boards": [
-    "电子布",
-    "玻纤"
-   ],
-   "cycle_stage": null,
-   "in_main": false
-  },
-  {
-   "code": "600352",
-   "name": "浙江龙盛",
-   "bid_pct": 3.06,
-   "turnover": 0,
-   "circ_mv": 32011555743.0,
+   "code": "600777",
+   "name": "新潮能源",
+   "bid_pct": 2.45,
+   "turnover": 0.05,
+   "circ_mv": 9381845684.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -1086,17 +1018,17 @@
    "group_tag": "v5_rej_turn",
    "boards": [
     "化工",
-    "分散染料"
+    "石油石化"
    ],
    "cycle_stage": null,
    "in_main": false
   },
   {
-   "code": "603989",
-   "name": "艾华集团",
-   "bid_pct": 2.7,
-   "turnover": 0,
-   "circ_mv": 4402660055.0,
+   "code": "300084",
+   "name": "海默科技",
+   "bid_pct": 2.13,
+   "turnover": 0.05,
+   "circ_mv": 3427000230.0,
    "prev_pct": null,
    "height": 0,
    "was_limit": false,
@@ -1105,8 +1037,168 @@
    "pos_tag": null,
    "group_tag": "v5_rej_turn",
    "boards": [
-    "电阻电容",
-    "算力"
+    "石油石化",
+    "天然气"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "600256",
+   "name": "广汇能源",
+   "bid_pct": 2.07,
+   "turnover": 0.04,
+   "circ_mv": 28376575342.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "甲醇",
+    "化工"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "600938",
+   "name": "中国海油",
+   "bid_pct": 2.61,
+   "turnover": 0.03,
+   "circ_mv": 105875900000.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "石油石化",
+    "一带一路"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "601666",
+   "name": "平煤股份",
+   "bid_pct": 2.38,
+   "turnover": 0.02,
+   "circ_mv": 12180540927.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "煤炭",
+    "冶金煤"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "603221",
+   "name": "爱丽家居",
+   "bid_pct": 4.75,
+   "turnover": 0,
+   "circ_mv": 2248265600.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "并购重组",
+    "地产链"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "600203",
+   "name": "福日电子",
+   "bid_pct": 4.28,
+   "turnover": 0,
+   "circ_mv": 5017533076.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "AI手机",
+    "端侧AI"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "688356",
+   "name": "键凯科技",
+   "bid_pct": 3.04,
+   "turnover": 0,
+   "circ_mv": 3359131620.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "疫苗概念",
+    "创新药"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "600722",
+   "name": "金牛化工",
+   "bid_pct": 2.82,
+   "turnover": 0,
+   "circ_mv": 5553702593.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "甲醇",
+    "股权转让"
+   ],
+   "cycle_stage": null,
+   "in_main": false
+  },
+  {
+   "code": "600989",
+   "name": "宝丰能源",
+   "bid_pct": 2.79,
+   "turnover": 0,
+   "circ_mv": 54283547394.0,
+   "prev_pct": null,
+   "height": 0,
+   "was_limit": false,
+   "fade": false,
+   "half_pos": true,
+   "pos_tag": null,
+   "group_tag": "v5_rej_turn",
+   "boards": [
+    "煤化工",
+    "甲醇"
    ],
    "cycle_stage": null,
    "in_main": false
@@ -1127,259 +1219,259 @@
  "empty_reason": null,
  "rejected": [
   {
-   "code": "600641",
-   "name": "先导基电",
-   "reason": "竞价涨幅0.06% 不在抢筹区间[1%,7%]"
+   "code": "000301",
+   "name": "东方盛虹",
+   "reason": "竞价涨幅0.83% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "000031",
-   "name": "大悦城",
-   "reason": "竞价涨幅0.45% 不在抢筹区间[1%,7%]"
+   "code": "601233",
+   "name": "桐昆股份",
+   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "002949",
-   "name": "华阳国际",
-   "reason": "竞价涨幅-1.25% 不在抢筹区间[1%,7%]"
+   "code": "002493",
+   "name": "荣盛石化",
+   "reason": "评分3/21 低于备选线10"
   },
   {
-   "code": "300917",
-   "name": "特发服务",
-   "reason": "竞价涨幅-5.51% 不在抢筹区间[1%,7%]"
+   "code": "601969",
+   "name": "海南矿业",
+   "reason": "竞价涨幅0.31% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "600657",
-   "name": "信达地产",
-   "reason": "竞价涨幅-0.37% 不在抢筹区间[1%,7%]"
+   "code": "603353",
+   "name": "和顺石油",
+   "reason": "评分3/21 低于备选线10"
   },
   {
-   "code": "300155",
-   "name": "安居宝",
-   "reason": "竞价涨幅-3.46% 不在抢筹区间[1%,7%]"
+   "code": "300164",
+   "name": "通源石油",
+   "reason": "竞价高开低走 出货形态"
   },
   {
-   "code": "600791",
-   "name": "京能置业",
-   "reason": "竞价涨幅-3.52% 不在抢筹区间[1%,7%]"
+   "code": "000703",
+   "name": "恒逸石化",
+   "reason": "评分6/21 低于备选线10"
   },
   {
-   "code": "600748",
-   "name": "上实发展",
-   "reason": "竞价涨幅-0.52% 不在抢筹区间[1%,7%]"
+   "code": "002040",
+   "name": "南京港",
+   "reason": "竞价涨幅0.56% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "002918",
-   "name": "蒙娜丽莎",
-   "reason": "竞价涨幅-0.96% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002285",
-   "name": "世联行",
-   "reason": "竞价涨幅-2.49% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002968",
-   "name": "新大正",
-   "reason": "竞价涨幅-1.24% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "603709",
-   "name": "中源家居",
-   "reason": "竞价涨幅0.88% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "601155",
-   "name": "新城控股",
-   "reason": "竞价涨幅0.35% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "600449",
-   "name": "宁夏建材",
-   "reason": "竞价涨幅0.64% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "000014",
-   "name": "沙河股份",
-   "reason": "竞价涨幅-1.11% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "000020",
-   "name": "深华发Ａ",
+   "code": "600346",
+   "name": "恒力石化",
    "reason": "评分7/21 低于备选线10"
   },
   {
-   "code": "002188",
-   "name": "中天服务",
-   "reason": "竞价涨幅-1.76% 不在抢筹区间[1%,7%]"
+   "code": "601975",
+   "name": "招商南油",
+   "reason": "评分4/21 低于备选线10"
   },
   {
-   "code": "000736",
-   "name": "中交发展",
-   "reason": "竞价涨幅-2.95% 不在抢筹区间[1%,7%]"
+   "code": "601857",
+   "name": "中国石油",
+   "reason": "评分8/21 低于备选线10"
   },
   {
-   "code": "603801",
-   "name": "志邦家居",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
+   "code": "600028",
+   "name": "中国石化",
+   "reason": "竞价涨幅0.72% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "600162",
-   "name": "香江控股",
-   "reason": "竞价涨幅-1.41% 不在抢筹区间[1%,7%]"
+   "code": "600968",
+   "name": "海油发展",
+   "reason": "评分8/21 低于备选线10"
   },
   {
-   "code": "603506",
-   "name": "南都物业",
-   "reason": "竞价涨幅-0.61% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "301356",
-   "name": "天振股份",
-   "reason": "竞价涨幅0.38% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "601886",
-   "name": "江河集团",
-   "reason": "竞价高开低走 出货形态"
-  },
-  {
-   "code": "600159",
-   "name": "大龙地产",
-   "reason": "竞价涨幅-1.85% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "603221",
-   "name": "爱丽家居",
-   "reason": "竞价高开低走 出货形态"
-  },
-  {
-   "code": "000560",
-   "name": "我爱我家",
-   "reason": "竞价高开低走 出货形态"
-  },
-  {
-   "code": "001221",
-   "name": "悍高集团",
-   "reason": "评分6/21 低于备选线10"
-  },
-  {
-   "code": "603216",
-   "name": "梦天家居",
-   "reason": "量比26 > 15 对倒嫌疑"
-  },
-  {
-   "code": "300674",
-   "name": "宇信科技",
-   "reason": "竞价涨幅0.29% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "600654",
-   "name": "中安科",
-   "reason": "竞价涨幅-0.60% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300986",
-   "name": "志特新材",
+   "code": "600583",
+   "name": "海油工程",
    "reason": "评分9/21 低于备选线10"
   },
   {
-   "code": "000887",
-   "name": "中鼎股份",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
+   "code": "000554",
+   "name": "泰山石油",
+   "reason": "评分8/21 低于备选线10"
   },
   {
-   "code": "300002",
-   "name": "神州泰岳",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300253",
-   "name": "卫宁健康",
-   "reason": "竞价涨幅0.14% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "301165",
-   "name": "锐捷网络",
-   "reason": "竞价涨幅-0.38% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "688775",
-   "name": "影石创新",
-   "reason": "竞价涨幅0.12% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "300496",
-   "name": "中科创达",
-   "reason": "竞价涨幅0.02% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "688256",
-   "name": "寒武纪",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002432",
-   "name": "九安医疗",
-   "reason": "竞价涨幅0.00% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "688220",
-   "name": "翱捷科技",
-   "reason": "评分5/21 低于备选线10"
-  },
-  {
-   "code": "000608",
-   "name": "阳光股份",
-   "reason": "评分5/21 低于备选线10"
-  },
-  {
-   "code": "002230",
-   "name": "科大讯飞",
-   "reason": "竞价涨幅0.77% 不在抢筹区间[1%,7%]"
-  },
-  {
-   "code": "002624",
-   "name": "完美世界",
-   "reason": "评分6/21 低于备选线10"
-  },
-  {
-   "code": "002517",
-   "name": "恺英网络",
+   "code": "600688",
+   "name": "上海石化",
    "reason": "评分9/21 低于备选线10"
   },
   {
-   "code": "300079",
-   "name": "数码视讯",
-   "reason": "首板封板率0% < 30%"
+   "code": "000819",
+   "name": "岳阳兴长",
+   "reason": "首板破板率50% > 40%"
   },
   {
-   "code": "300494",
-   "name": "盛天网络",
-   "reason": "竞价涨幅0.36% 不在抢筹区间[1%,7%]"
+   "code": "300839",
+   "name": "博汇股份",
+   "reason": "评分10/21 低于备选线10"
   },
   {
-   "code": "300413",
-   "name": "芒果超媒",
-   "reason": "竞价涨幅20.02% 不在抢筹区间[1%,7%]"
+   "code": "920088",
+   "name": "科力股份",
+   "reason": "竞价涨幅14.95% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "300588",
-   "name": "熙菱信息",
+   "code": "603619",
+   "name": "中曼石油",
+   "reason": "评分9/21 低于备选线10"
+  },
+  {
+   "code": "002490",
+   "name": "山东墨龙",
+   "reason": "竞价涨幅10.05% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "601808",
+   "name": "中海油服",
+   "reason": "评分9/21 低于备选线10"
+  },
+  {
+   "code": "600339",
+   "name": "中油工程",
+   "reason": "评分7/21 低于备选线10"
+  },
+  {
+   "code": "300084",
+   "name": "海默科技",
+   "reason": "评分4/21 低于备选线10"
+  },
+  {
+   "code": "002554",
+   "name": "惠博普",
+   "reason": "量比16 > 15 对倒嫌疑"
+  },
+  {
+   "code": "002828",
+   "name": "贝肯能源",
+   "reason": "竞价涨幅0.48% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "301158",
+   "name": "德石股份",
    "reason": "量比18 > 15 对倒嫌疑"
   },
   {
-   "code": "002558",
-   "name": "巨人网络",
-   "reason": "竞价涨幅0.04% 不在抢筹区间[1%,7%]"
+   "code": "603209",
+   "name": "兴通股份",
+   "reason": "竞价涨幅0.84% 不在抢筹区间[1%,7%]"
   },
   {
-   "code": "603444",
-   "name": "吉比特",
-   "reason": "竞价涨幅0.13% 不在抢筹区间[1%,7%]"
+   "code": "600871",
+   "name": "石化油服",
+   "reason": "量比26 > 15 对倒嫌疑"
+  },
+  {
+   "code": "300157",
+   "name": "新锦动力",
+   "reason": "量比38 > 15 对倒嫌疑"
+  },
+  {
+   "code": "000852",
+   "name": "石化机械",
+   "reason": "量比184 > 15 对倒嫌疑"
+  },
+  {
+   "code": "920014",
+   "name": "特瑞斯",
+   "reason": "评分4/21 低于备选线10"
+  },
+  {
+   "code": "600903",
+   "name": "贵州燃气",
+   "reason": "评分3/21 低于备选线10"
+  },
+  {
+   "code": "000731",
+   "name": "四川美丰",
+   "reason": "竞价涨幅0.28% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "600026",
+   "name": "中远海能",
+   "reason": "评分3/21 低于备选线10"
+  },
+  {
+   "code": "920010",
+   "name": "凯添燃气",
+   "reason": "竞价涨幅8.79% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "603318",
+   "name": "水发燃气",
+   "reason": "评分7/21 低于备选线10"
+  },
+  {
+   "code": "000593",
+   "name": "德龙汇能",
+   "reason": "竞价涨幅-0.13% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "600803",
+   "name": "新奥股份",
+   "reason": "竞价涨幅0.37% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "600256",
+   "name": "广汇能源",
+   "reason": "首板破板率50% > 40%"
+  },
+  {
+   "code": "605090",
+   "name": "九丰能源",
+   "reason": "评分5/21 低于备选线10"
+  },
+  {
+   "code": "300483",
+   "name": "首华燃气",
+   "reason": "竞价涨幅0.89% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "605169",
+   "name": "洪通燃气",
+   "reason": "竞价高开低走 出货形态"
+  },
+  {
+   "code": "603393",
+   "name": "新天然气",
+   "reason": "首板破板率50% > 40%"
+  },
+  {
+   "code": "000968",
+   "name": "蓝焰控股",
+   "reason": "评分10/21 低于备选线10"
+  },
+  {
+   "code": "600777",
+   "name": "新潮能源",
+   "reason": "评分8/21 低于备选线10"
+  },
+  {
+   "code": "920158",
+   "name": "长江能科",
+   "reason": "量比30 > 15 对倒嫌疑"
+  },
+  {
+   "code": "300109",
+   "name": "新开源",
+   "reason": "竞价涨幅0.07% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "002092",
+   "name": "中泰化学",
+   "reason": "竞价涨幅0.82% 不在抢筹区间[1%,7%]"
+  },
+  {
+   "code": "002484",
+   "name": "江海股份",
+   "reason": "竞价涨幅-2.27% 不在抢筹区间[1%,7%]"
   }
  ],
  "stats": {
-  "pool": 369,
+  "pool": 427,
   "genes": 60,
-  "boards": 16
+  "boards": 11
  }
 }
