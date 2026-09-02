@@ -87,6 +87,13 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 - 局限：快照时点为 14:57（差收盘 3 分钟）；update_time/position_value 等无源字段置空/0；players 表未回填历史收益（回测读各日 index.json）
 - 防复发：`release_db.py` 已加**内容指纹跳过**——已完成月/周内容不变则跳过上传（冷层不再每晚全量重传，5 年后每晚真实上传恒定 ~25MB）；回填改变指纹时对应归档自动重传
 
+**③ state 键类型混存致 save_state 崩溃：state 不落盘 → 每班重复推送 + 全无 🆕（09-02 发现，已修复）**
+
+- **现象**：09-02 每班 run（15 分钟一班）都推送钉钉（当天 8+ 次），且所有调仓都不带 🆕；`last_notify_state.json` 的 git 提交停在 09-01。
+- **根因**：三级连锁。①旧代码写的 seen 键是 int（db 自增 `_id`）；② `_k` 修复上线后新键是 str，`_trade_line` 把 str 加进含 int 的集合，`save_state` 的 `sorted(v)` 抛 `TypeError: '<' not supported between 'str' and 'int'`；③钉钉消息在 save_state **之前**发出，且 workflow 该步骤 `continue-on-error: true` → 异常被静默吞掉。state 永远没写盘 → `sent_date` 永远停在昨天 → `same_day` 永远 False → 跳过条件永不满足（每班都推）+ 永远按"当日首条基线"处理（永不标 🆕）。
+- **修复**：键一律 `str()`——加载时 `{str(x) for x in v}` 归一旧 int 键，写入时 `str(t.get("_k") or t.get("_id"))`。
+- **教训**：①"推送成功但状态没落盘"是最危险的静默失败（下次还重复推），`continue-on-error` 步骤必须在日志里能看出它失败了——本例靠 state 文件的 git 提交时间线反推；②给持久化结构的键换类型时，必须考虑与旧数据的**混合读取**，不是只保证新写入正确。
+
 ### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
 
 1. **同一 commit 删库导致 checkout 无 db** → init 工作流改为"优先热层恢复，否则从 git 历史最后一个含 db 提交检出"（`git rev-list | cat-file -e` 探测）。
