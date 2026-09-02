@@ -11,11 +11,11 @@
 |---|---|---|
 | 文档 | ✅ 完成 | 本文件；含实施调试记录 |
 | ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计当月不封版（9 月首个收盘 run 自动封入冷层） |
-| ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 09-01 15:52 run 完成首次真实 sync：热层(09-01, trades 207046) + 温层 db-w2026-W36 + 冷层 db-m2026-08(159315 trades) 全部就位，manifest integrity ok。⚠️ 同时发现并修复调度缺口（闸门 15:10 > cron 末班 14:51，08-31 db 丢一天，见事故记录②）：新增 `crawl-eod` 收盘专班 + 14:45 兜底闸门 |
+| ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 09-01 15:52 run 完成首次真实 sync：热层(09-01, trades 207046) + 温层 db-w2026-W36 + 冷层 db-m2026-08(159315 trades) 全部就位，manifest integrity ok。⚠️ 同时发现并修复调度缺口（闸门 15:10 > cron 末班 14:51，08-31 db 丢一天，见事故记录②）：新增 `crawl-eod` 收盘专班 + 14:45 兜底闸门。**09-02 15:15 专班首跑 repository_dispatch success**——首次由专用 cron 自动触发收盘 sync，链路闭合 |
 | ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
 | ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
 | ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
-| 观察期 ⑥ | ⏳ 进行中(第1/5天) | 已核对: 00:56 与 01:07 两次 run 数据完整、导出收窄生效；余项见下方待办 B |
+| 观察期 ⑥ | ⏳ 进行中(第1/5天: 09-02 ✅) | 09-02 自检通过：三 manifest 符合预期(热层尾部 09-02、W36 含回填 08-31、M08 封版完整)、推送 2 次(修复后基线+尾盘班，事故③已修复见下)、crawl-eod 专班首跑 success；余项见下方待办 B |
 
 ---
 
@@ -35,6 +35,8 @@
 4. 周五出现当周温层 tag；**配好 cron-eod 后每日 15:15 的收盘专班 run 应含"上传 Release 存储"步骤 success**。
 
 任一异常 → 先查 Actions 日志，再按 §8 运维手册处理。
+
+- ✅ **09-02（第1天）**：三 manifest 符合预期；钉钉推送仅 2 次（14:55 修复上线基线 + 15:20 尾盘班），远端 state 键全为 str（`_k` 生效）；crawl-eod 15:15 首跑 success。上午曾发生事故③（state 不落盘→每班重复推送且全无 🆕），14:45 修复上线后恢复正常。
 
 ### C.【需用户明确确认】④ git 历史重写（filter-repo）
 
@@ -91,7 +93,7 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 
 - **现象**：09-02 每班 run（15 分钟一班）都推送钉钉（当天 8+ 次），且所有调仓都不带 🆕；`last_notify_state.json` 的 git 提交停在 09-01。
 - **根因**：三级连锁。①旧代码写的 seen 键是 int（db 自增 `_id`）；② `_k` 修复上线后新键是 str，`_trade_line` 把 str 加进含 int 的集合，`save_state` 的 `sorted(v)` 抛 `TypeError: '<' not supported between 'str' and 'int'`；③钉钉消息在 save_state **之前**发出，且 workflow 该步骤 `continue-on-error: true` → 异常被静默吞掉。state 永远没写盘 → `sent_date` 永远停在昨天 → `same_day` 永远 False → 跳过条件永不满足（每班都推）+ 永远按"当日首条基线"处理（永不标 🆕）。
-- **修复**：键一律 `str()`——加载时 `{str(x) for x in v}` 归一旧 int 键，写入时 `str(t.get("_k") or t.get("_id"))`。
+- **修复**：键一律 `str()`——加载时 `{str(x) for x in v}` 归一旧 int 键，写入时 `str(t.get("_k") or t.get("_id"))`。**09-02 自检确认生产生效**：修复上线后全天仅推送 2 次，远端 state 键全为 str。
 - **教训**：①"推送成功但状态没落盘"是最危险的静默失败（下次还重复推），`continue-on-error` 步骤必须在日志里能看出它失败了——本例靠 state 文件的 git 提交时间线反推；②给持久化结构的键换类型时，必须考虑与旧数据的**混合读取**，不是只保证新写入正确。
 
 ### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
