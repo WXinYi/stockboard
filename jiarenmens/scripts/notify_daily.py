@@ -167,9 +167,11 @@ def _trade_line(t: dict, quotes: dict, seen_set: set, same_day: bool, new_counte
     🆕 仅在 same_day(当日已有过推送) 且该笔 _k 未推送过时标记;
     当日首条消息是基线, 整批不标。
     _k = export_json 生成的内容哈希(稳定), 勿用 db _id(每次重采都变号)。
+    键一律 str(): 旧 state 残留 int 键, int/str 混存会使 save_state 的 sorted() 抛 TypeError。
     """
-    key = t.get("_k") or t.get("_id")
-    is_new = same_day and key not in seen_set
+    raw = t.get("_k") or t.get("_id")
+    key = str(raw) if raw is not None else None
+    is_new = same_day and key is not None and key not in seen_set
     if key:
         seen_set.add(key)
         new_counter[0] += 1 if is_new else 0
@@ -289,7 +291,8 @@ def main():
         date_str = s["date"]
 
     state = load_state()
-    seen = {k: set(v) for k, v in state.get("seen", {}).items()}
+    # str() 归一: 兼容旧 state 残留的 int(_id) 键, 避免 int/str 混合集合 sorted() 崩溃
+    seen = {k: {str(x) for x in v} for k, v in state.get("seen", {}).items()}
     # 当日首条推送为基线: 不标 🆕(只记录), 之后每条消息相对上一条推送标新增
     first_run = not STATE_FILE.exists()
     same_day = (not first_run) and state.get("sent_date") == date_str
