@@ -16,6 +16,7 @@ v2 改进:
 
 用法(在 jiarenmens/ 目录下):
     python3 scripts/verify_dragon.py [--start 2026-07-15] [--end 2026-08-13]
+    python3 scripts/verify_dragon.py --watched   # 验证 main.py WATCHED_PLAYERS 全部关注选手
 """
 import argparse
 import json
@@ -181,8 +182,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-07-15")
     ap.add_argument("--end", default="2026-08-13")
+    ap.add_argument("--watched", action="store_true",
+                    help="验证 main.py WATCHED_PLAYERS 全部关注选手(默认仅 DRAGON 4 人)")
     ap.add_argument("--skip-fetch", action="store_true", help="跳过拉取涨停池, 直接用库内数据")
     args = ap.parse_args()
+
+    if args.watched:
+        global DRAGON
+        from main import WATCHED_PLAYERS  # 关注名单单一数据源(main.py), 勿在别处另建名单
+        DRAGON = {zh: (name, DRAGON.get(zh, (None, "关注选手"))[1])
+                  for zh, name in WATCHED_PLAYERS}
 
     print("=== 步骤1: 涨停池历史 ===")
     if args.skip_fetch:
