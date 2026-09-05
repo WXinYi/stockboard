@@ -104,6 +104,12 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
             f"龙头谱系[{role}] {note}".strip(), st)
 
     if stage == "退潮":
+        # 火种观察: 今日逆市连板≥2板(禁买期只看, 新周期候选载体; 与 JS 端退潮火种对齐)
+        eod_rows = [r for r in load_pool(days=2) if r["date"] == date_str]
+        for r in sorted(eod_rows, key=lambda x: -x["height"])[:4]:
+            if r["height"] >= 2:
+                add(r["code"], r["name"], r["height"],
+                    f"逆市连板(火种观察) {r['height']}板", "观察(火种)")
         return _apply_matrix(pool, cycle_res)[:max_n]
 
     # 2) 阶段扩展候选
@@ -127,6 +133,14 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
                 b = bids[code]
                 add(code, r["name"], 2, f"1进2: 昨日首板, 今竞价 {b['change_pct']:+.1f}%",
                     "可做(首板套利)")
+        if stage == "启动":
+            # 首板试错: 今日主线首板 + 竞价强(JS 端 leaderBattle.computeStrike 用 早封+主力净买 过滤, 口径互补)
+            for r in cur_rows:
+                in_main = any(m["board"] in str(r["plates"] or "") for m in cycle_res["mainlines"])
+                if in_main and r["height"] == 1 and bid_strong(r["code"]):
+                    b = bids[r["code"]]
+                    add(r["code"], r["name"], 1,
+                        f"首板试错: 主线首板, 今竞价 {b['change_pct']:+.1f}%", "可做(首板试错)")
         if stage == "冰点":
             # 逆市连板: 今日池内高度≥2 (冰点日还能连板的是新周期火种)
             for r in cur_rows:

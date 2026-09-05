@@ -760,8 +760,8 @@ def build_v5_message(v5_list: List[Dict], regime: Optional[Dict] = None,
 
 
 def _stock_link(name: str, code: str) -> str:
-    """钉钉 markdown 链接 → 前端股票 H5 详情页(手机场景, ?name 显示股票名)"""
-    url = f"https://WXinYi.github.io/stockboard/#/stock/{code}/h5?name={quote(name)}"
+    """钉钉 markdown 链接 → 原生股票详情页(/stock/:code, 与 app 内部及 notify_daily/watched_flash 一致)"""
+    url = f"https://WXinYi.github.io/stockboard/#/stock/{code}?name={quote(name)}"
     return f"[{name}]({url})"
 
 

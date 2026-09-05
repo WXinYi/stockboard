@@ -11,8 +11,10 @@ import {
   fetchLimitPool, fetchRiseFall, fetchUnsealedPool,
   getLatestTradingDay, getLatestReportDate, isTradingTime,
 } from '../composables/useKplApi.js'
-import { loadCycleData, STAGES, STAGE_COLORS } from '../utils/emotionCycle.js'
+import { loadCycleData, STAGES, STAGE_COLORS, STAGE_RULES } from '../utils/emotionCycle.js'
 import { loadBattleData } from '../utils/leaderBattle.js'
+import { fetchMyPositions } from '../data/loader.js'
+import { jsonp, secid } from '../utils/eastmoney.js'
 
 defineOptions({ name: 'MarketDetail' })
 
@@ -24,6 +26,7 @@ const SECTION_TITLES = {
   auction: '竞价抢筹', wind: '最强风口', ladder: '涨停天梯', reasons: '涨停原因',
   newhighs: '百日新高', global: '外围市场', institution: '机构增仓',
   mood: '市场情绪', live: '盘面动态', lhb: '龙虎榜', cycle: '情绪周期',
+  discipline: '我的纪律卡',
 }
 const title = computed(() => SECTION_TITLES[section.value] || '盘面详情')
 
@@ -57,11 +60,6 @@ const CY_TABS = [
   { key: 'leader', label: '👑 龙头' },
   { key: 'cycle2', label: '📐 周期' },
 ]
-const showAllStrike = ref(false)
-const strikeShown = computed(() => {
-  const all = battle.value?.strike?.candidates || []
-  return showAllStrike.value ? all : all.slice(0, 3)
-})
 const MATRIX_DESC = {
   '强|强': '上升前期 · 最适合做接力，龙头战法最暴力',
   '强|平衡': '上升中后期 · 资金抱团龙头/妖股，开始转低切',
@@ -80,6 +78,194 @@ const matrixCells = computed(() => {
     return { k: key, high, mid, on: !!h && !!m && h === high && m === mid, d: MATRIX_DESC[key] }
   }))
 })
+
+// ── 纪律卡: 定性→仓位上限(拷问立法版) / 冰点四菜单 / 持仓触价 / 每日三行卡 ──
+const mine = computed(() => data.value?.mine || null)
+const discMood = computed(() => data.value?.mood || [])
+const discRf = computed(() => data.value?.rf || null)
+const discCycle = computed(() => data.value?.cycle || null)
+const discLive = computed(() => data.value?.live || {})
+const discPremium = computed(() => data.value?.premium || null)
+
+const discRule = computed(() => STAGE_RULES[discCycle.value?.stage] || { cap: '—', act: '周期计算中…', hot: '' })
+
+// 冰点四菜单: A跌停萎缩 B昨日涨停溢价>0 C高度板梯队(≥3且未降) D情绪指标≥50
+const discMenu = computed(() => {
+  const m0 = discMood.value[0], m1 = discMood.value[1]
+  const cy = discCycle.value
+  const a = !!(m0 && m1 && m0.df < m1.df)
+  const b = !!(discPremium.value && discPremium.value.avg > 0)
+  const c = !!(cy?.metrics && cy.metrics.height >= 3 && cy.metrics.height >= (cy.metrics.heightPrev ?? 0))
+  const d = !!(m0 && m0.strong >= 50)
+  return {
+    a: { ok: a, txt: m0 && m1 ? `跌停 ${m0.df} 家(昨 ${m1.df})` : '—' },
+    b: { ok: b, txt: discPremium.value ? `平均 ${discPremium.value.avg > 0 ? '+' : ''}${discPremium.value.avg.toFixed(2)}%(近似·${discPremium.value.n}只)` : '—' },
+    c: { ok: c, txt: cy?.metrics ? `高度 ${cy.metrics.height}B(昨 ${cy.metrics.heightPrev ?? '?'})` : '—' },
+    d: { ok: d, txt: m0 ? `情绪 ${m0.strong}` : '—' },
+    trial: a && b,   // 试错许可 → 允许 1 成试主线首板
+    recover: c && d, // 仓位恢复 → 上限回 5-6 成
+  }
+})
+
+// 持仓行: 实时价覆盖管线收盘价, 客户端重算触价(秒级)
+const discPositions = computed(() => {
+  const list = mine.value?.positions || []
+  return list.map(p => {
+    const live = discLive.value[p.code]
+    const price = live?.price ?? p.price ?? null
+    const pct = live?.pct ?? p.pct ?? null
+    const rb = p.exit_rebound, brk = p.exit_break
+    let touch = null
+    if (price != null) {
+      if (rb && price >= rb[0] && price <= rb[1]) touch = 'rebound'
+      else if (brk && price <= brk) touch = 'break'
+    }
+    const profit = price && p.cost ? Math.round((price / p.cost - 1) * 10000) / 100 : (p.profit_pct ?? null)
+    return { ...p, livePrice: price, livePct: pct, liveProfit: profit, touch: touch ?? p.touch, gone: p.auto_status === 'exited?' }
+  })
+})
+const discTouchCount = computed(() => discPositions.value.filter(p => p.touch).length)
+const discOps = computed(() => mine.value?.ops_review || null)
+
+// 每日判决: 聚合当日逐笔执法 → 一句判决 + 新增操作标记(对比上次访问)
+const DISC_VISIT_KEY = 'sb-discipline-visit'
+const discLastVisit = ref('')
+const discDaily = computed(() => {
+  const o = mine.value?.ops_review
+  if (!o) return null
+  const n = o.items?.length || 0
+  const stage = o.stage || discCycle.value?.stage || ''
+  const ruleCnt = {}
+  for (const it of (o.items || [])) {
+    if (it.verdict === 'bad') for (const r of (it.rules || [])) ruleCnt[r] = (ruleCnt[r] || 0) + 1
+  }
+  const badSummary = Object.entries(ruleCnt).map(([r, c]) => `${r}×${c}`).join('、')
+  let grade, text
+  if (!n) {
+    grade = 'ok'
+    text = ['退潮', '冰点'].includes(stage) ? '退潮期零操作——空仓就是满分答卷' : '今日无操作，保持观察'
+  } else if ((o.bad || 0) > 0) {
+    grade = 'bad'
+    text = `${o.bad} 笔违规（${badSummary}）——罚则：明日执行「${STAGE_RULES[stage]?.cap || '≤2成'}」，违规项写进三行卡复盘`
+  } else if ((o.warn || 0) > 0) {
+    grade = 'warn'
+    text = `${o.warn} 笔警示（追高/止损偏晚），无硬违规——明日把入场分位压到 70% 以下`
+  } else {
+    grade = 'ok'
+    text = `${n} 笔全部合规——卖出端纪律保持，买入端等绿灯`
+  }
+  let newN = 0, maxTs = ''
+  for (const it of (o.items || [])) {
+    const ts = `${o.date} ${it.time}`
+    if (discLastVisit.value && ts > discLastVisit.value) newN++
+    if (ts > maxTs) maxTs = ts
+  }
+  return { grade, text, n, newN, maxTs, bad: o.bad || 0, warn: o.warn || 0, ok: o.ok || 0 }
+})
+function discMarkVisit() {
+  const maxTs = discDaily.value?.maxTs
+  if (!maxTs) return
+  try {
+    const cur = localStorage.getItem(DISC_VISIT_KEY) || ''
+    if (maxTs > cur) localStorage.setItem(DISC_VISIT_KEY, maxTs)
+  } catch { /* 隐私模式丢弃 */ }
+}
+
+// 养家层: 风险收益比仪表("基于对市场情绪的揣摩, 判断风险收益比的比较") + 龙头解
+const discRbr = computed(() => {
+  const bp = mine.value?.battle_plan
+  if (!bp?.stage) return null
+  const base = { 退潮: 1, 冰点: 2, 分歧: 2, 高潮: 2, 启动: 4, 发酵: 4 }[bp.stage] ?? 2
+  let stars = base
+  if (bp.licenses?.trial) stars = Math.max(stars, 3)
+  if (bp.licenses?.recover) stars = 5
+  const txt = stars <= 1 ? '风险收益比极差——错过也是盈利'
+    : stars === 2 ? '风险收益比不划算——小仓试错或观望'
+      : stars === 3 ? '出现可试错结构——限 1 成，错了就走'
+        : stars === 4 ? '值得做多的区间——仓位跟赢面走'
+          : '赢面最大的阶段——仓位与赢面成正比'
+  return { stars, txt }
+})
+const yjLeader = computed(() => {
+  const l = discCycle.value?.leaders?.[0]
+  const st = mine.value?.battle_plan?.stage || discCycle.value?.stage
+  if (!l) return null
+  const m = {
+    高潮: `${l.name} ${l.pid}板一致加速——超级高手在卖出龙头，持有不加`,
+    退潮: `${l.name}(${l.pid}板) 势走股走——龙头反抽是逃命波，不是买点`,
+    冰点: `${l.name} 若能逆市连板，就是新周期的火种`,
+    分歧: `${l.name} 的分歧承接是市场最后的防线`,
+    启动: `${l.name} 是新周期龙头候选——分歧转一致时上车`,
+    发酵: `${l.name} 加速段拿住——强者恒强，直到一致见顶`,
+  }
+  return { txt: m[st] || `${l.name} ${l.pid}板 空间锚` }
+})
+const yjQuote = computed(() => STAGE_RULES[(mine.value?.battle_plan?.stage) || (discCycle.value?.stage)]?.yj || '')
+
+
+
+// 盘前五数
+const discFive = computed(() => {
+  const m0 = discMood.value[0], m1 = discMood.value[1]
+  const cy = discCycle.value?.metrics, rf = discRf.value
+  return [
+    { k: '涨停', v: cy ? `${cy.zt} 只` : '—', sub: cy?.ztMa5 ? `均值 ${Math.round(cy.ztMa5)}` : '', good: cy && cy.ztMa5 ? cy.zt >= cy.ztMa5 : null },
+    { k: '连板高度', v: cy ? `${cy.height}B` : '—', sub: cy ? `昨 ${cy.heightPrev ?? '?'}` : '', good: cy && cy.heightPrev != null ? cy.height >= cy.heightPrev : null },
+    { k: '跌停', v: m0 ? `${m0.df} 家` : '—', sub: m1 ? `昨 ${m1.df}` : '', good: m0 && m1 ? m0.df <= m1.df : null },
+    { k: '炸板率', v: rf?.today ? `${rf.today.brokeRate.toFixed(1)}%` : '—', sub: cy?.brokeMa5 ? `均值 ${cy.brokeMa5.toFixed(1)}%` : '', good: rf?.today && cy?.brokeMa5 ? rf.today.brokeRate <= cy.brokeMa5 : null },
+    { k: '情绪分', v: m0 ? `${m0.strong}` : '—', sub: m1 ? `昨 ${m1.strong}` : '', good: m0 && m1 ? m0.strong >= m1.strong : null },
+  ]
+})
+
+// 东财 ulist 批量行情(JSONP 绕 CORS): 持仓实时价 + 昨日涨停溢价
+async function fetchEmBatch(codes) {
+  const rows = []
+  for (let i = 0; i < codes.length; i += 40) {
+    const secids = codes.slice(i, i + 40).map(secid).join(',')
+    const url = `https://push2delay.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f3,f12,f14&fltt=2&invt=2`
+    try {
+      const j = await jsonp(url, 'cb')
+      const diff = j?.data?.diff
+      const arr = Array.isArray(diff) ? diff : Object.values(diff || {})
+      for (const d of arr) {
+        const price = parseFloat(d.f2), pct = parseFloat(d.f3)
+        rows.push({ code: String(d.f12 ?? ''), price: isNaN(price) ? null : price, pct: isNaN(pct) ? null : pct, name: d.f14 || '' })
+      }
+    } catch (e) { /* 单批失败忽略 */ }
+  }
+  return rows
+}
+async function fetchEmBatchPct(codes) {
+  const rows = await fetchEmBatch(codes)
+  return rows.map(r => r.pct).filter(p => p != null && !isNaN(p))
+}
+
+// 每日三行卡(localStorage, 留 14 天)
+const DISC_KEY = 'sb-discipline-log'
+const showDiscHist = ref(false)
+const discLog = ref([])
+const discForm = ref({ verdict: '', cap: '', plan: '', checks: { read: false, verdict: false, orders: false, review: false } })
+const todayKey = () => new Date().toLocaleDateString('sv-SE')
+const discSuggest = computed(() => {
+  const cy = discCycle.value, m0 = discMood.value[0]
+  if (!cy?.stage || !cy.metrics) return ''
+  const nums = [`涨停${cy.metrics.zt}只${cy.metrics.ztMa5 ? '=' + Math.round(cy.metrics.zt / cy.metrics.ztMa5 * 100) + '%均值' : ''}`, `炸板${cy.metrics.brokeRate ?? '?'}%`]
+  if (m0) nums.push(`情绪${m0.strong}`)
+  return `${cy.stage}（${nums.join('·')}）→ 上限${discRule.value.cap}`
+})
+function discLoad() {
+  try { discLog.value = JSON.parse(localStorage.getItem(DISC_KEY) || '[]') } catch { discLog.value = [] }
+  const t = discLog.value.find(x => x.date === todayKey())
+  discForm.value = t
+    ? { verdict: t.verdict || '', cap: t.cap || '', plan: t.plan || '', checks: { read: false, verdict: false, orders: false, review: false, ...t.checks } }
+    : { verdict: discSuggest.value, cap: discRule.value.cap === '—' ? '' : discRule.value.cap, plan: '原样执行', checks: { read: false, verdict: false, orders: false, review: false } }
+}
+function discSave() {
+  const entry = { date: todayKey(), ...discForm.value, suggest: discSuggest.value, ts: Date.now() }
+  discLog.value = [entry, ...discLog.value.filter(x => x.date !== todayKey())].slice(0, 14)
+  try { localStorage.setItem(DISC_KEY, JSON.stringify(discLog.value)) } catch { /* 隐私模式丢弃 */ }
+}
+
 
 async function load(silent = false) {
   const s = section.value
@@ -107,7 +293,37 @@ async function load(silent = false) {
     }
     else if (s === 'cycle') {
       const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
-      res = { cycle: cd.cycle, battle: await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd) }
+      const [battle, mine] = await Promise.all([
+        loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd).catch(() => null),
+        fetchMyPositions().catch(() => null),
+      ])
+      res = { cycle: cd.cycle, battle, mine }
+    }
+    else if (s === 'discipline') {
+      const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
+      const [mine, mood, rf] = await Promise.all([
+        fetchMyPositions().catch(() => null),
+        fetchMarketMood(silent).catch(() => null),
+        fetchRiseFall(silent).catch(() => null),
+      ])
+      const battle = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd).catch(() => null)
+      // B.昨日涨停溢价(近似): 昨日涨停池代码 → 东财 ulist 批量行情平均涨幅
+      let premium = null
+      try {
+        const codes = [...new Set((cd.prevFull || []).map(r => r.code))]
+        const pcts = await fetchEmBatchPct(codes)
+        if (pcts.length) premium = {
+          avg: pcts.reduce((a, b) => a + b, 0) / pcts.length,
+          upRatio: pcts.filter(p => p > 0).length / pcts.length, n: pcts.length,
+        }
+      } catch (e) { /* 溢价缺数据 → B 项显示 — */ }
+      // 持仓实时价(批量)
+      let live = {}
+      try {
+        const rows = await fetchEmBatch((mine?.positions || []).map(p => p.code))
+        for (const r of rows) if (r.code) live[r.code] = r
+      } catch (e) { /* 行情失败 → 用管线收盘价 */ }
+      res = { cycle: cd.cycle, ladder: cd.ladderRows, mine, mood, rf, premium, live, battle }
     }
     else if (s === 'live') res = {
       highlights: await fetchMarketHighlights(silent),
@@ -117,6 +333,11 @@ async function load(silent = false) {
     if (res) data.value = res
     else if (!silent) error.value = true
     if (s === 'cycle' && res) cycleFetchedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+    if (s === 'discipline' && !silent) {
+      discLoad()
+      try { discLastVisit.value = localStorage.getItem(DISC_VISIT_KEY) || '' } catch { discLastVisit.value = '' }
+      setTimeout(discMarkVisit, 10000)  // NEW 标记展示 10s 后更新访问水位
+    }
   } catch (e) {
     if (!silent) error.value = true
   } finally {
@@ -584,45 +805,12 @@ const lhbSorted = computed(() => {
           </div>
           <ul class="cy-reasons"><li v-for="r in cycle.reasons" :key="r">{{ r }}</li></ul>
           <div class="cy-playbook">📌 {{ cycle.playbook }}</div>
+          <div v-if="discRbr" class="cy-rbr">⚖️ 风险收益比 <span class="rbr-stars">{{ '★'.repeat(discRbr.stars) }}{{ '☆'.repeat(5 - discRbr.stars) }}</span><span class="rbr-txt">{{ discRbr.txt }}</span></div>
+          <div v-if="yjQuote" class="cy-yj">💬 {{ yjQuote }}</div>
         </div>
         <div class="cy-scale">
           <div v-for="s in cycleStages" :key="s" class="cy-seg" :class="{ on: s === cycle.stage }"
                :style="s === cycle.stage ? { background: cyColor, borderColor: cyColor } : {}">{{ s }}</div>
-        </div>
-
-        <!-- 决策区②: 今日出击(默认top3, 可展开) -->
-        <div v-if="battle && !battle.empty" class="md-group lb-strike">
-          <div class="md-group-head">
-            <span class="md-group-tag">🎯 今日出击</span>
-            <span class="md-group-count" :class="{ 'lb-banned': battle.strike.gate.cap === 0 }">
-              {{ battle.strike.gate.stage }}闸门 · 上限 {{ battle.strike.gate.cap || '禁买' }}
-            </span>
-          </div>
-          <div class="lb-banner" :style="battle.strike.gate.cap === 0 ? {} : { borderColor: cyColor }">
-            <div>{{ battle.strike.gate.banner.split('📐')[0].trim() }}</div>
-            <div v-if="battle.strike.gate.matrix" class="lb-mtx">📐 高位{{ battle.strike.gate.matrix.high }}×中位{{ battle.strike.gate.matrix.mid }}：{{ battle.strike.gate.matrix.note }}</div>
-          </div>
-          <div v-for="c in strikeShown" :key="c.code" class="lb-cand" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
-            <div class="lb-cand-top">
-              <b>{{ c.name }}</b>
-              <span v-if="c.level" class="lb-lv">{{ c.level }}板</span>
-              <span class="lb-score" :class="{ hi: c.score >= 75 }">{{ c.score }}</span>
-              <span class="lb-status">{{ c.status }}</span>
-            </div>
-            <div class="lb-cand-mid">
-              <span class="lb-mode">{{ c.mode }}</span>
-              <span class="lb-plates">{{ c.platesTxt }}</span>
-              <span class="lb-seal">{{ c.sealTxt }}</span>
-            </div>
-            <div class="lb-cand-logic">{{ c.logic }}</div>
-            <div v-if="c.strength" class="lb-cand-str">💪 {{ c.strength }}</div>
-            <div v-if="c.risk" class="lb-cand-risk">⚠️ {{ c.risk }}</div>
-          </div>
-          <div v-if="!battle.strike.candidates.length" class="lb-empty">当前阶段无符合条件的候选（纪律优先）</div>
-          <div v-if="battle.strike.candidates.length > 3" class="lb-toggle" @click="showAllStrike = !showAllStrike">
-            {{ showAllStrike ? '收起 ▲' : `展开全部 ${battle.strike.candidates.length} 只 ▼` }}
-          </div>
-          <div class="lb-note">{{ battle.strike.disclaimer }}</div>
         </div>
 
         <!-- 分析Tab: 博弈 / 龙头 / 周期 -->
@@ -692,6 +880,7 @@ const lhbSorted = computed(() => {
             <div class="md-group-head">
               <span class="md-group-tag">👑 龙头谱系</span>
             </div>
+            <div v-if="yjLeader" class="dv-yj" style="margin: 0 0 8px">👑 {{ yjLeader.txt }}</div>
             <div v-for="l in cycle.leaders" :key="l.code + l.role" class="cy-line" @click="goStock(l)">
               <b class="lb-link">{{ l.name }}</b> {{ l.pid }}板 <span class="cy-role">[{{ l.role }}]</span>
               <span class="cy-names">{{ l.note }}</span>
@@ -747,6 +936,181 @@ const lhbSorted = computed(() => {
         </div>
 
         <div class="md-summary">⚡ 打开页面时经 KPL 实时数据计算 · {{ cycleFetchedAt || '计算中' }} · 交易时段 30s 自动刷新</div>
+      </div>
+    </template>
+
+    <!-- 我的纪律卡: 定性/五数/冰点许可/持仓处理/每日三行 -->
+    <template v-else-if="section === 'discipline'">
+      <div v-if="mine?.weekly_focus" class="md-group disc-focus">🎯 {{ mine.weekly_focus }}</div>
+
+      <div v-if="mine?.battle_plan?.stage" class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag" style="color:#e67e22">🎯 今日作战指引</span>
+          <span class="md-group-count">管线 {{ mine.as_of.slice(5, 16) }} · 每班更新</span>
+        </div>
+        <div class="bp-top">
+          <div class="dv-top">
+            <b class="dv-stage" style="font-size:20px">{{ mine.battle_plan.stage }}</b>
+            <span class="dv-cap">{{ mine.battle_plan.cap }}</span>
+          </div>
+          <p class="bp-line">{{ mine.battle_plan.order_line }}</p>
+          <p class="bp-act">{{ mine.battle_plan.act }}</p>
+        </div>
+        <div class="bp-lamps">
+          <span v-for="m in [['A', mine.battle_plan.licenses.a], ['B', mine.battle_plan.licenses.b], ['C', mine.battle_plan.licenses.c], ['D', mine.battle_plan.licenses.d]]" :key="m[0]" class="dv-lamp" :class="{ on: m[1].ok }">{{ m[0] }} {{ m[1].txt }}</span>
+          <span class="dv-lamp" :class="{ on: mine.battle_plan.licenses.trial }">🕯️ 试错许可</span>
+          <span class="dv-lamp" :class="{ on: mine.battle_plan.licenses.recover }">🔥 仓位恢复</span>
+        </div>
+        <div class="bp-orders">
+          <div class="bp-orders-head">📋 持仓挂单清单（9:15 前挂好不撤）</div>
+          <div v-for="o in mine.battle_plan.orders" :key="o.code" class="bp-order" @click="goStock(o)">
+            <b>{{ o.name }}</b><span>{{ o.action }}</span>
+          </div>
+        </div>
+        <div v-if="mine.battle_plan.watchlist?.length || !mine.battle_plan.licenses.trial" class="bp-watch">
+          <div class="bp-orders-head">🔭 若要买，只允许这些主线（首板/龙头低吸）</div>
+          <div class="bp-watch-row">
+            <span v-for="w in mine.battle_plan.watchlist" :key="w.board" class="dp-board vb-watch">[{{ w.board }}] {{ w.zt }}只·最高{{ w.max_lv }}B</span>
+            <span v-if="!mine.battle_plan.licenses.trial" class="dp-board vb-dead">试错许可未亮 → 只观察不出手</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag" :style="{ color: STAGE_COLORS[discCycle?.stage] || '#8a97a8' }">🧭 今日定性</span>
+          <span class="md-group-count">盘面实时 · 交易时段 30s 刷新</span>
+        </div>
+        <div class="disc-verdict" :style="{ '--sc': STAGE_COLORS[discCycle?.stage] || '#8a97a8' }">
+          <div class="dv-top">
+            <b class="dv-stage">{{ discCycle?.stage || '计算中' }}</b>
+            <span class="dv-cap">{{ discRule.cap }}</span>
+            <span v-if="discRule.hot" class="dv-hot">{{ discRule.hot }}</span>
+          </div>
+          <p class="dv-act">{{ discRule.act }}</p>
+          <p v-for="(r, i) in discCycle?.reasons || []" :key="i" class="dv-reason">· {{ r }}</p>
+          <div class="dv-lamps">
+            <span class="dv-lamp" :class="{ on: discMenu.trial }">🕯️ 试错许可 A+B（1成试主线首板）</span>
+            <span class="dv-lamp" :class="{ on: discMenu.recover }">🔥 仓位恢复 C+D（5-6成）</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag">📖 盘前五数</span>
+          <span class="md-group-count">{{ discCycle?.date || dayLabel }} · 红强绿弱</span>
+        </div>
+        <div class="disc-five">
+          <div v-for="f in discFive" :key="f.k" class="df-item">
+            <span class="df-k">{{ f.k }}</span>
+            <b class="df-v" :style="{ color: f.good === true ? '#e74c3c' : f.good === false ? '#27ae60' : '#333' }">{{ f.v }}</b>
+            <span class="df-sub">{{ f.sub }}</span>
+          </div>
+        </div>
+        <div class="disc-menu">
+          <div v-for="m in [['A', discMenu.a, '跌停萎缩'], ['B', discMenu.b, '昨日涨停溢价'], ['C', discMenu.c, '高度板梯队'], ['D', discMenu.d, '情绪指标≥50']]" :key="m[0]" class="dm-item" :class="{ ok: m[1].ok }">
+            <i>{{ m[0] }}</i> {{ m[2] }} <b>{{ m[1].txt }}</b>
+          </div>
+        </div>
+        <div class="md-summary">两灯规则：A+B 同日亮 → 允许 1 成试错当日最强主线首板；C+D 同日亮 → 仓位上限恢复 5-6 成</div>
+      </div>
+
+      <div class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag">✂️ 持仓处理({{ discPositions.length }})</span>
+          <span v-if="mine?.as_of" class="md-group-count">价表 {{ mine.as_of.slice(5, 16) }}</span>
+          <span v-if="discTouchCount" class="md-group-count" style="color:#e67e22;font-weight:700">⚠️ {{ discTouchCount }} 只触价</span>
+        </div>
+        <div v-if="!mine" class="disc-empty">my_positions.json 未生成 — 先在 jiarenmens 跑 export_json.py</div>
+        <div v-for="p in discPositions" :key="p.code" class="disc-pos" :class="{ 'is-touch': p.touch, 'is-gone': p.gone }">
+          <div class="dp-main">
+            <b class="dp-name" @click="goStock(p)">{{ p.name }}</b>
+            <span class="dp-weight">{{ p.weight }}</span>
+            <span class="dp-price">现 {{ p.livePrice ?? p.price ?? '—' }}<i v-if="p.livePct != null" :style="{ color: p.livePct >= 0 ? '#e74c3c' : '#27ae60' }"> {{ p.livePct >= 0 ? '+' : '' }}{{ p.livePct }}%</i></span>
+            <span class="dp-anchor" title="心中无顶底：成本仅作记录，操作只看信号">锚 {{ p.liveProfit != null ? (p.liveProfit > 0 ? '+' : '') + p.liveProfit + '%' : '—' }}</span>
+            <span v-if="p.primary_board && p.primary_board.matched" class="dp-shi" :class="p.primary_board.zt > p.primary_board.zt_prev ? 'up' : (p.primary_board.zt < p.primary_board.zt_prev ? 'down' : '')">势{{ p.primary_board.zt > p.primary_board.zt_prev ? '增' : (p.primary_board.zt < p.primary_board.zt_prev ? '减' : '平') }}</span>
+            <span v-if="p.hot?.rank" class="dp-hot">🔥#{{ p.hot.rank }}<i v-if="p.hot.delta" :class="p.hot.delta > 0 ? 'up' : 'down'">{{ p.hot.delta > 0 ? '↑' + p.hot.delta : '↓' + (-p.hot.delta) }}</i></span>
+            <span v-if="p.touch" class="dp-touch">{{ p.touch === 'rebound' ? '触价·反抽执行' : '触价·无条件走' }}</span>
+            <span v-else-if="p.gone" class="dp-badge">rtV2 未见持仓</span>
+            <span v-else-if="p.auto_status === 'selling'" class="dp-badge warn">今日有净卖出</span>
+            <span v-else-if="p.status === 'keep'" class="dp-badge keep">留仓</span>
+          </div>
+          <div class="dp-levels">
+            <span v-if="p.exit_rebound" class="dp-lv">反抽 {{ p.exit_rebound[0] }}-{{ p.exit_rebound[1] }}</span>
+            <span v-if="p.exit_break != null" class="dp-lv">破位 {{ p.exit_break }}</span>
+            <span v-if="p.primary_board && p.primary_board.matched" class="dp-board" :class="'vb-' + ({ 主线: 'main', 次主线: 'sub', 观察: 'watch' }[p.primary_board.verdict] || 'dead')">
+              [{{ p.primary_board.name }}] 今日{{ p.primary_board.zt }}只(昨{{ p.primary_board.zt_prev }})·最高{{ p.primary_board.max_lv }}B·{{ p.primary_board.verdict }}
+            </span>
+            <span v-else-if="!p.boards?.length" class="dp-board vb-dead">无板块梯队（独立妖股）</span>
+            <span v-else-if="p.primary_board" class="dp-board vb-dead">[{{ p.primary_board.name }}] 板块无涨停记录·非主线</span>
+          </div>
+          <div class="dp-note">{{ p.note }}</div>
+        </div>
+        <div v-if="mine" class="disc-asof">板块口径 {{ mine.board_asof || '—' }} · 溢价近似口径 · 盘后实时价=收盘价{{ mine.trades_asof ? ` · 调仓核对至 ${mine.trades_asof.slice(4, 6)}-${mine.trades_asof.slice(6, 8)}` : '' }}</div>
+      </div>
+
+      <div class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag">🕵️ 操作点评({{ discOps?.date?.slice(4, 6) }}-{{ discOps?.date?.slice(6, 8) }})</span>
+          <span class="md-group-count">❌ {{ discOps?.bad || 0 }} · ⚠️ {{ discOps?.warn || 0 }} · ✅ {{ discOps?.ok || 0 }} · {{ discOps?.stage || '—' }}期</span>
+        </div>
+        <div class="md-summary">按已立之法逐笔执法 · 管线每班(约30分钟)自动更新 · 卖出端看执行质量，买入端看是否踩线</div>
+        <div v-if="discDaily" class="do-verdict" :class="'g-' + discDaily.grade">
+          <b>{{ discDaily.grade === 'bad' ? '不合格' : discDaily.grade === 'warn' ? '警示' : '合格' }}</b>
+          <span>{{ discDaily.text }}</span>
+          <span v-if="discDaily.newN" class="do-new">NEW ×{{ discDaily.newN }}</span>
+        </div>
+        <div v-for="(o, i) in discOps?.items || []" :key="i" class="do-item" :class="'v-' + o.verdict">
+          <span class="do-time">{{ o.time }}</span>
+          <span class="do-bs" :class="o.bs === 'B' ? 'b' : 's'">{{ o.bs === 'B' ? '买' : '卖' }}</span>
+          <b class="do-name" @click="goStock(o)">{{ o.name }}</b>
+          <span class="do-qty">{{ o.qty }}@{{ o.price }}</span>
+          <span class="do-badge">{{ o.verdict === 'bad' ? '❌' : o.verdict === 'warn' ? '⚠️' : '✅' }}</span>
+          <span class="do-msg">{{ o.msg }}</span>
+        </div>
+        <div v-if="!discOps?.items?.length" class="disc-empty">最新交易日无操作记录</div>
+      </div>
+
+      <div class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag">⚖️ 铁律</span>
+          <span class="md-group-count">按阶段强调</span>
+        </div>
+        <div class="disc-rules">
+          <div class="dr-item" :class="{ hot: discRule.hot === '只卖不买' }">🚫 退潮/分歧断崖：只卖不买，执行清仓价位单</div>
+          <div class="dr-item" :class="{ hot: discCycle?.stage === '高潮' }">🎯 高潮：持仓兑现为主，只做最强主流</div>
+          <div class="dr-item">📉 当日收跌股禁买；单票 -3% 当日止损不过夜</div>
+          <div class="dr-item">⏱️ 卖出后 30 分钟禁回买（当日黑名单）。回买需双签：①书面新逻辑写进三行卡 ②规则绿灯（试错许可/板块发酵证据）——缺一不可，导师周评复核</div>
+          <div class="dr-item">🧱 只许对了加仓，不许错了摊平</div>
+          <div class="dr-item">📐 价位单只上移不取消：高开越上沿先卖一半+分时均线清剩余；低开破位无条件走；平开 11:00 前未反抽也走</div>
+          <div class="dr-item">📋 盘前 9:15 挂限价单：价位单挂好不撤，决策留在早晨、执行交给交易所（Q11 立法）</div>
+        </div>
+      </div>
+
+      <div class="md-group">
+        <div class="md-group-head">
+          <span class="md-group-tag">📝 每日三行卡</span>
+          <span class="md-group-count">{{ todayKey() }} · 存本机</span>
+        </div>
+        <div class="disc-diary">
+          <div class="dd-checks">
+            <label v-for="c in [['read', '盘前五数'], ['verdict', '定性+上限'], ['orders', '价位单挂好'], ['review', '收盘复盘']]" :key="c[0]" class="dd-check">
+              <input type="checkbox" v-model="discForm.checks[c[0]]" @change="discSave"><span>{{ c[1] }}</span>
+            </label>
+          </div>
+          <label class="dd-row"><span>① 定性+依据</span><input v-model="discForm.verdict" :placeholder="discSuggest || '如: 退潮延续（涨停41=均值57%·炸板55%）'" @change="discSave"></label>
+          <label class="dd-row"><span>② 仓位上限</span><input v-model="discForm.cap" :placeholder="discRule.cap" @change="discSave"></label>
+          <label class="dd-row"><span>③ 价位单</span><input v-model="discForm.plan" placeholder="原样执行 / 修改哪条+理由" @change="discSave"></label>
+          <div v-if="discLog.length > 1" class="dd-hist">
+            <button class="dd-toggle" @click="showDiscHist = !showDiscHist">{{ showDiscHist ? '收起历史' : `历史 ${discLog.length - 1} 天` }}</button>
+            <div v-if="showDiscHist" class="dd-hist-list">
+              <div v-for="h in discLog.filter(x => x.date !== todayKey())" :key="h.date" class="dd-h">
+                <b>{{ h.date.slice(5) }}</b> {{ h.verdict || '—' }} ｜ {{ h.cap || '—' }} ｜ {{ h.plan || '—' }}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -940,6 +1304,119 @@ const lhbSorted = computed(() => {
 .md-badge-key { font-size: 9px; color: #fff; background: #c0392b; padding: 0 4px; border-radius: 8px; margin-left: 4px; }
 .md-sum-sub { font-size: 11px; color: #999; font-weight: 400; margin-left: 6px; }
 
+/* ── 我的纪律卡 ── */
+.disc-focus { padding: 10px 14px; font-weight: 700; color: #5b6daa; background: #f0f3fa; border-radius: 10px; }
+.disc-verdict { border-left: 4px solid var(--sc, #8a97a8); padding: 4px 0 4px 12px; }
+.dv-top { display: flex; align-items: baseline; gap: 10px; }
+.dv-stage { font-size: 26px; font-weight: 800; color: var(--sc, #8a97a8); }
+.dv-cap { font-size: 16px; font-weight: 800; color: #fff; background: #5b6daa; border-radius: 6px; padding: 2px 10px; }
+.dv-hot { font-size: 13px; color: #e67e22; font-weight: 700; }
+.dv-act { margin: 6px 0 2px; font-size: 14px; color: #333; font-weight: 600; }
+.dv-reason { margin: 2px 0; font-size: 12px; color: #8a97a8; }
+.dv-lamps { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.dv-lamp { font-size: 12px; color: #8a97a8; background: #f0f1f4; border-radius: 14px; padding: 4px 10px; }
+.dv-lamp.on { color: #fff; background: #e67e22; font-weight: 700; }
+.disc-five { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.df-item { text-align: center; background: #f7f8fa; border-radius: 8px; padding: 8px 2px; }
+.df-k { display: block; font-size: 11px; color: #999; }
+.df-v { display: block; font-size: 15px; margin: 2px 0; }
+.df-sub { display: block; font-size: 10px; color: #b0b6bd; }
+.disc-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.dm-item { font-size: 12px; color: #666; background: #f7f8fa; border-radius: 8px; padding: 6px 8px; }
+.dm-item i { font-style: normal; font-weight: 800; color: #b0b6bd; margin-right: 4px; }
+.dm-item b { font-weight: 600; color: #333; }
+.dm-item.ok { background: #fdf3e7; }
+.dm-item.ok i { color: #e67e22; }
+.disc-pos { border-top: 1px solid #f0f1f4; padding: 9px 2px; }
+.disc-pos:first-of-type { border-top: none; }
+.disc-pos.is-touch { background: #fdf6ec; border-radius: 8px; padding: 9px 8px; }
+.disc-pos.is-gone { opacity: .5; }
+.dp-main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dp-name { font-size: 15px; color: #333; cursor: pointer; }
+.dp-weight { font-size: 12px; color: #5b6daa; font-weight: 700; }
+.dp-price, .dp-profit { font-size: 13px; color: #333; }
+.dp-cost { font-style: normal; font-size: 11px; color: #b0b6bd; margin-left: 4px; }
+.dp-touch { font-size: 12px; font-weight: 800; color: #fff; background: #e67e22; border-radius: 6px; padding: 2px 8px; }
+.dp-badge { font-size: 11px; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 2px 8px; }
+.dp-badge.warn { color: #e67e22; background: #fdf3e7; }
+.dp-badge.keep { color: #fff; background: #27ae60; }
+.dp-levels { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
+.dp-lv { font-size: 12px; color: #5b6daa; background: #f0f3fa; border-radius: 6px; padding: 2px 8px; }
+.dp-board { font-size: 11px; border-radius: 6px; padding: 2px 8px; }
+.vb-main { color: #fff; background: #e74c3c; font-weight: 700; }
+.vb-sub { color: #fff; background: #f39c12; }
+.vb-watch { color: #e67e22; background: #fdf3e7; }
+.vb-dead { color: #8a97a8; background: #f0f1f4; }
+.dp-note { font-size: 12px; color: #8a97a8; margin-top: 4px; }
+.disc-asof, .disc-empty { font-size: 11px; color: #b0b6bd; margin-top: 8px; }
+.disc-empty { color: #e67e22; }
+.disc-rules { display: flex; flex-direction: column; gap: 6px; }
+.dr-item { font-size: 13px; color: #666; background: #f7f8fa; border-radius: 8px; padding: 8px 10px; }
+.dr-item.hot { color: #fff; background: #e67e22; font-weight: 700; }
+.dd-checks { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.dd-check { font-size: 13px; color: #333; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.dd-check input { accent-color: #5b6daa; }
+.dd-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; color: #666; }
+.dd-row span { flex: 0 0 76px; }
+.dd-row input { flex: 1; min-width: 0; border: 1px solid #e3e7ec; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.dd-toggle { border: none; background: #f0f3fa; color: #5b6daa; font-size: 12px; border-radius: 8px; padding: 5px 10px; }
+.dd-hist-list { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.dd-h { font-size: 12px; color: #666; background: #f7f8fa; border-radius: 6px; padding: 5px 8px; }
+.dd-h b { color: #5b6daa; margin-right: 6px; }
+
+/* ── 操作点评 ── */
+.do-item { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; border-top: 1px solid #f0f1f4; font-size: 12px; }
+.do-item:first-of-type { border-top: none; }
+.do-item.v-bad { background: #fdf0ef; border-radius: 6px; }
+.do-item.v-warn { background: #fdf6ec; border-radius: 6px; }
+.do-time { color: #b0b6bd; font-size: 11px; flex: none; }
+.do-bs { flex: none; font-weight: 800; }
+.do-bs.b { color: #e74c3c; }
+.do-bs.s { color: #27ae60; }
+.do-name { color: #333; cursor: pointer; flex: none; }
+.do-qty { color: #666; flex: none; }
+.do-badge { flex: none; }
+.do-msg { color: #666; min-width: 0; }
+.dp-anchor { font-size: 11px; color: #b0b6bd; }
+.dp-shi { font-size: 11px; font-weight: 700; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 1px 7px; }
+.dp-shi.up { color: #e74c3c; background: #fdecea; }
+.dp-shi.down { color: #27ae60; background: #eef9f1; }
+.dp-hot { font-size: 11px; color: #e67e22; font-weight: 700; }
+.dp-hot i { font-style: normal; font-size: 10px; margin-left: 2px; }
+.dp-hot i.up { color: #e74c3c; }
+.dp-hot i.down { color: #27ae60; }
+.bp-rbr { margin: 6px 0 2px; font-size: 13px; color: #333; }
+.rbr-stars { color: #e67e22; font-weight: 800; letter-spacing: 2px; margin: 0 6px; }
+.rbr-txt { font-size: 12px; color: #8a97a8; }
+.yj-cand { border-top: 1px solid #f0f1f4; padding: 8px 2px; }
+.yj-cand:first-of-type { border-top: none; }
+.yc-main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.yc-level { font-size: 12px; font-weight: 700; color: #5b6daa; }
+.yc-score { font-size: 12px; color: #e67e22; font-weight: 700; }
+.yc-mode { font-size: 11px; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 1px 7px; }
+.yc-status { font-size: 11px; font-weight: 700; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 1px 7px; }
+.yc-status.go { color: #fff; background: #e74c3c; }
+.yc-tip { font-size: 12px; color: #5b6daa; margin-top: 4px; }
+.dv-yj { margin-top: 8px; font-size: 12px; color: #8a6d3b; background: #faf6ec; border-radius: 8px; padding: 6px 10px; }
+.do-verdict { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-radius: 8px; padding: 9px 10px; margin: 8px 0 4px; font-size: 13px; }
+.do-verdict b { font-size: 15px; }
+.do-verdict.g-bad { background: #fdf0ef; color: #c0392b; }
+.do-verdict.g-bad b { color: #c0392b; }
+.do-verdict.g-warn { background: #fdf6ec; color: #e67e22; }
+.do-verdict.g-ok { background: #eef9f1; color: #27ae60; }
+.do-new { font-size: 11px; font-weight: 800; color: #fff; background: #e67e22; border-radius: 6px; padding: 1px 7px; }
+
+/* ── 今日作战指引 ── */
+.bp-top { border-left: 4px solid #e67e22; padding-left: 12px; }
+.bp-line { margin: 6px 0 2px; font-size: 14px; font-weight: 700; color: #333; }
+.bp-act { margin: 2px 0; font-size: 12px; color: #8a97a8; }
+.bp-lamps { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.bp-orders-head { font-size: 12px; font-weight: 700; color: #5b6daa; margin: 8px 0 4px; }
+.bp-order { display: flex; gap: 8px; align-items: baseline; font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #f0f1f4; cursor: pointer; }
+.bp-order b { flex: none; color: #333; min-width: 62px; }
+.bp-order span { color: #666; }
+.bp-watch-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
 @media (max-width: 480px) {
   .md-page { padding-left: 10px; padding-right: 10px; }
 }
@@ -1007,7 +1484,10 @@ const lhbSorted = computed(() => {
 .lb-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: #667; }
 .st-go .lb-status { background: #ff5a5a; color: #fff; }
 .st-alt .lb-status { background: #f5a623; color: #fff; }
-.lb-cand-mid { display: flex; gap: 8px; font-size: 11px; color: #778; margin: 3px 0; }
+.lb-cand-mid { display: flex; gap: 8px; font-size: 11px; color: #778; margin: 3px 0; align-items: center; flex-wrap: wrap; }
+.lb-role { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: #fdf3e7; color: #b06020; flex: none; }
+.lb-role.feng { background: #f0f0f2; color: #999; }
+.lb-role.huo { background: #fdeaea; color: #c04848; }
 .lb-mode { color: #2bc4a8; font-weight: 700; }
 .lb-cand-logic { font-size: 12px; color: #556; }
 .lb-cand-str { font-size: 11px; color: #4cd964; margin-top: 2px; }
