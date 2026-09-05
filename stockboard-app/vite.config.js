@@ -31,7 +31,7 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icons.svg'],
       manifest: {
         name: 'StockBoard - 股票数据看板',
