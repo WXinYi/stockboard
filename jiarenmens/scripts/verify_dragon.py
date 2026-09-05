@@ -3,7 +3,8 @@
 
 v1 局限: 涨停池只覆盖 08-07~08-13 一周(可对照样本小, 4/4 只有 4 笔)。
 v2 改进:
-  1. 涨停池历史拉长到选手调仓窗口全覆盖(07-15~08-13), 落库 auction.db 供复用
+  1. 涨停池历史拉长到选手调仓窗口全覆盖(07-15~08-13)  → 2026-09-05 起改只读:
+     库内优先, 窗口缺口临时补拉仅内存用, 不落库(落库归 backfill_emotion.py --pool 全字段)
   2. 新增「买入后第二日收益」: 涨停日买入后, 次日开盘/收盘相对买入日的涨跌
      - 次日开盘收益 = open_{D+1}/close_D - 1  (打板次日的高开兑现)
      - 次日收盘收益 = close_{D+1}/close_D - 1  (打板次日的持有结果)
@@ -58,45 +59,46 @@ def trading_days(start: date, end: date):
     return days
 
 
-def fetch_limit_pool_history(spider: KPLSpider, start: str, end: str) -> dict:
-    """拉取 [start, end] 所有交易日涨停池(全板位), 落库 auction.db
-    返回 {(date, code): {"name", "pid", "reason"}}"""
+def load_pool_from_db() -> dict:
+    """库内涨停池 → {(date, code): {"name", "pid", "reason"}}(只读)"""
     pool = {}
     with sqlite3.connect(AUCTION_DB) as conn:
-        for d in trading_days(date.fromisoformat(start), date.fromisoformat(end)):
-            got = False
-            for pid in PIDS:
-                try:
-                    data = spider.zt_pool(d, pid_type=pid, st=500)
-                    rows = [r for g in data.get("info", []) if isinstance(g, list) for r in g]
-                    for r in rows:
-                        if len(r) < 14:
-                            continue
-                        code = str(r[0])
-                        pool[(d, code)] = {"name": str(r[1]), "pid": pid, "reason": str(r[5])}
-                        got = True
-                except Exception as e:
-                    print(f"  ⚠️ {d} PidType={pid} 失败: {e}")
-                    time.sleep(0.5)
-            if got:
-                print(f"  ✓ {d}: {sum(1 for (dd, _) in pool if dd == d)} 只涨停(覆盖 PidType 1-5)")
-            time.sleep(0.15)  # 避免打太狠
-    # 落库(幂等 INSERT OR REPLACE), 供复用
-    _persist_limit_pool(pool)
+        for (d, code, name, pid, reason) in conn.execute(
+            "SELECT date, code, name, pid_type, reason FROM limit_pool"
+        ):
+            pool[(d, code)] = {"name": name, "pid": pid, "reason": reason}
     return pool
 
 
-def _persist_limit_pool(pool: dict):
-    """将涨停池历史写入 auction.db limit_pool 表"""
-    with sqlite3.connect(AUCTION_DB) as conn:
-        c = conn.cursor()
-        for (d, code), info in pool.items():
-            c.execute("""INSERT OR REPLACE INTO limit_pool
-                (date, code, name, pid_type, reason) VALUES (?,?,?,?,?)""",
-                (d, code, info["name"], info["pid"], info["reason"]))
-        conn.commit()
-    n = len(pool)
-    print(f"  💾 涨停池落库完成: {n} 条 (auction.db limit_pool)")
+def fetch_missing_pool(spider: KPLSpider, start: str, end: str, pool: dict) -> int:
+    """窗口内库里没有的交易日临时拉取——仅内存使用, 不落库。
+
+    落库职责归 backfill_emotion.py --pool(全字段): 回测脚本写库曾把 CI 写的
+    全字段行(zt_time/封单/主力净额)降级成 5 字段(2026-09-05 事故)。
+    """
+    covered = {d for (d, _) in pool}
+    fetched = 0
+    for d in trading_days(date.fromisoformat(start), date.fromisoformat(end)):
+        if d in covered:
+            continue
+        got = False
+        for pid in PIDS:
+            try:
+                data = spider.zt_pool(d, pid_type=pid, st=500)
+                rows = [r for g in data.get("info", []) if isinstance(g, list) for r in g]
+                for r in rows:
+                    if len(r) < 14:
+                        continue
+                    pool[(d, str(r[0]))] = {"name": str(r[1]), "pid": pid, "reason": str(r[5])}
+                    got = True
+            except Exception as e:
+                print(f"  ⚠️ {d} PidType={pid} 失败: {e}")
+                time.sleep(0.5)
+        if got:
+            print(f"  ✓ {d}: 临时补拉(内存, 不落库)")
+            fetched += 1
+        time.sleep(0.15)  # 避免打太狠
+    return fetched
 
 
 # =============================================================================
@@ -184,7 +186,7 @@ def main():
     ap.add_argument("--end", default="2026-08-13")
     ap.add_argument("--watched", action="store_true",
                     help="验证 main.py WATCHED_PLAYERS 全部关注选手(默认仅 DRAGON 4 人)")
-    ap.add_argument("--skip-fetch", action="store_true", help="跳过拉取涨停池, 直接用库内数据")
+    ap.add_argument("--skip-fetch", action="store_true", help="只用库内涨停池, 不临时补拉缺口")
     args = ap.parse_args()
 
     if args.watched:
@@ -193,18 +195,13 @@ def main():
         DRAGON = {zh: (name, DRAGON.get(zh, (None, "关注选手"))[1])
                   for zh, name in WATCHED_PLAYERS}
 
-    print("=== 步骤1: 涨停池历史 ===")
-    if args.skip_fetch:
-        pool = {}
-        with sqlite3.connect(AUCTION_DB) as conn:
-            for (d, code, name, pid, reason) in conn.execute(
-                "SELECT date, code, name, pid_type, reason FROM limit_pool"
-            ).fetchall():
-                pool[(d, code)] = {"name": name, "pid": pid, "reason": reason}
-        print(f"  直接读库: {len(pool)} 条")
-    else:
+    print("=== 步骤1: 涨停池(库内优先, 缺口临时补拉不落库) ===")
+    pool = load_pool_from_db()
+    print(f"  库内 {len(pool)} 条")
+    if not args.skip_fetch:
         spider = KPLSpider()
-        pool = fetch_limit_pool_history(spider, args.start, args.end)
+        n_days = fetch_missing_pool(spider, args.start, args.end, pool)
+        print(f"  临时补拉 {n_days} 个交易日(仅内存; 历史补齐用 backfill_emotion.py --pool)")
 
     pool_dates = sorted({d for (d, _) in pool})
     print(f"  涨停池覆盖交易日: {pool_dates[0] if pool_dates else None} ~ {pool_dates[-1] if pool_dates else None} ({len(pool_dates)} 天)")
