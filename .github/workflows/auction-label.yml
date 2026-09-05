@@ -16,6 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # His 域名对 GitHub 出口 IP 被风控(2026-08-29 起 limit_pool/market_breadth 断供),
+      # His 调用改走 SCF 中转(见 src/config.py KPL_HIS_PROXY); 本地不设此变量保持直连
+      KPL_HIS_PROXY: https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com
 
     steps:
       - uses: actions/checkout@v4

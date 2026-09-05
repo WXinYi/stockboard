@@ -20,6 +20,7 @@ import requests
 from src.config import (
     DATA_DIR, KPL_UA, KPL_TOKEN, KPL_USERID,
     KPL_HOST_RT, KPL_HOST_HIS, KPL_HOST_APP, KPL_HOST_LHB, KPL_TIMEOUT,
+    KPL_HIS_PROXY,
 )
 
 API = "/w1/api/index.php"
@@ -34,8 +35,14 @@ class KPLSpider:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": KPL_UA})
 
+    def _url(self, host: str) -> str:
+        """His 域名被风控时(设了 KPL_HIS_PROXY)走 SCF 中转, 其余直连"""
+        if host == KPL_HOST_HIS and KPL_HIS_PROXY:
+            return KPL_HIS_PROXY + "/kpl-his"
+        return host + API
+
     def _get(self, params: Dict[str, Any], host: str = KPL_HOST_RT, retries: int = 2) -> Dict:
-        url = host + API
+        url = self._url(host)
         last_err = None
         for i in range(retries + 1):
             try:
@@ -51,7 +58,7 @@ class KPLSpider:
         raise RuntimeError(f"KPL GET 失败 {params.get('a')}: {last_err}")
 
     def _post(self, params: Dict[str, Any], host: str = KPL_HOST_LHB, retries: int = 2) -> Dict:
-        url = host + API
+        url = self._url(host)
         last_err = None
         for i in range(retries + 1):
             try:

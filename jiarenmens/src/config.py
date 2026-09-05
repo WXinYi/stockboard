@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -40,6 +41,11 @@ KPL_HOST_HIS = "https://apphis.longhuvip.com"  # 历史(回测)
 KPL_HOST_APP = "https://apphq.longhuvip.com"   # 实时(情绪/大单)
 KPL_HOST_LHB = "https://applhb.longhuvip.com"  # 龙虎榜
 KPL_TIMEOUT = 10
+
+# His 域名对 GitHub Actions 出口 IP 风控(2026-08-29 起 limit_pool/market_breadth 断供,
+# 本地大陆直连正常) → CI 侧设 KPL_HIS_PROXY=SCF 函数地址后, His 请求改走 <proxy>/kpl-his
+# 中转(scf/index.js 契约: 强制 okhttp UA, 转发 w1/api/index.php)。本地不设, 保持直连。
+KPL_HIS_PROXY = os.environ.get("KPL_HIS_PROXY", "").rstrip("/")
 
 # 竞价扫描结果输出路径(前端读取)
 AUCTION_OUT = Path(__file__).resolve().parents[2] / "stockboard-app" / "public" / "data" / "latest" / "auction.json"
