@@ -1215,7 +1215,7 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
     """data/latest/strike_review.json —— 出击页「昨日可买复核」数据源:
     优先读 auction.db strike_pool 表(9:26 竞价班的当时存档, 审计口径"当时说了什么"),
     无存档回退重算(前一交易日 9:25 规则回放, 口径随规则演进)。附今日竞价涨幅(bid_pool)。"""
-    out = {"date": crawl_date, "prev_day": None, "stage": None, "src": None, "picks": []}
+    out = {"date": crawl_date, "prev_day": None, "stage": None, "src": None, "picks": [], "today_wzq": []}
     try:
         from src.analysis.emotion_cycle import compute_cycle
         from src.analysis.stage_candidates import stage_pool
@@ -1231,6 +1231,29 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
                                           (prev,))]
             except sqlite3.OperationalError:
                 out["prev_broken"] = []
+            try:
+                arc_today = c.execute("SELECT picks FROM strike_pool WHERE date=?", (crawl_date,)).fetchone()
+            except sqlite3.OperationalError:
+                arc_today = None
+        # 今日 9:25 弱转强候选("今日竞价弱转强"块): 优先读当日 9:26 存档, 无档用当日竞价重算
+        wzq = []
+        if arc_today:
+            wzq = json.loads(arc_today[0])
+        else:
+            try:
+                cycle_today = compute_cycle(crawl_date, persist=False)
+                wzq = [{k: p[k] for k in ("code", "name", "height", "status", "reason")}
+                       for p in stage_pool(cycle_today, max_n=30, bid_date=crawl_date)]
+            except Exception:
+                wzq = []
+        import re as _re
+        for p in wzq:
+            if not p["status"].startswith("可做(弱转强)"):
+                continue
+            m = _re.search(r"昨日(\S+?)分歧, 今竞价 ([+\-\d.]+)%", p["reason"])
+            out["today_wzq"].append({"code": p["code"], "name": p["name"],
+                                     "tag": m.group(1) if m else "分歧",
+                                     "bid_pct": m.group(2) if m else None, "reason": p["reason"]})
         if prev:
             out["prev_day"] = prev
             if arc:
