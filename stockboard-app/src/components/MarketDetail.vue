@@ -943,7 +943,7 @@ const lhbSorted = computed(() => {
     <template v-else-if="section === 'discipline'">
       <div v-if="mine?.weekly_focus" class="md-group disc-focus">🎯 {{ mine.weekly_focus }}</div>
 
-      <div v-if="mine?.battle_plan?.stage" class="md-group">
+      <div v-if="mine?.battle_plan?.stage" class="md-group disc-card dcb-guide">
         <div class="md-group-head">
           <span class="md-group-tag" style="color:#e67e22">🎯 今日作战指引</span>
           <span class="md-group-count">管线 {{ mine.as_of.slice(5, 16) }} · 每班更新</span>
@@ -976,7 +976,7 @@ const lhbSorted = computed(() => {
         </div>
       </div>
 
-      <div class="md-group">
+      <div class="md-group disc-card dcb-verdict">
         <div class="md-group-head">
           <span class="md-group-tag" :style="{ color: STAGE_COLORS[discCycle?.stage] || '#8a97a8' }">🧭 今日定性</span>
           <span class="md-group-count">盘面实时 · 交易时段 30s 刷新</span>
@@ -996,7 +996,7 @@ const lhbSorted = computed(() => {
         </div>
       </div>
 
-      <div class="md-group">
+      <div class="md-group disc-card dcb-nums">
         <div class="md-group-head">
           <span class="md-group-tag">📖 盘前五数</span>
           <span class="md-group-count">{{ discCycle?.date || dayLabel }} · 红强绿弱</span>
@@ -1016,7 +1016,7 @@ const lhbSorted = computed(() => {
         <div class="md-summary">两灯规则：A+B 同日亮 → 允许 1 成试错当日最强主线首板；C+D 同日亮 → 仓位上限恢复 5-6 成</div>
       </div>
 
-      <div class="md-group">
+      <div class="md-group disc-card dcb-positions">
         <div class="md-group-head">
           <span class="md-group-tag">✂️ 持仓处理({{ discPositions.length }})</span>
           <span v-if="mine?.as_of" class="md-group-count">价表 {{ mine.as_of.slice(5, 16) }}</span>
@@ -1050,7 +1050,7 @@ const lhbSorted = computed(() => {
         <div v-if="mine" class="disc-asof">板块口径 {{ mine.board_asof || '—' }} · 溢价近似口径 · 盘后实时价=收盘价{{ mine.trades_asof ? ` · 调仓核对至 ${mine.trades_asof.slice(4, 6)}-${mine.trades_asof.slice(6, 8)}` : '' }}</div>
       </div>
 
-      <div class="md-group">
+      <div class="md-group disc-card dcb-ops">
         <div class="md-group-head">
           <span class="md-group-tag">🕵️ 操作点评({{ discOps?.date?.slice(4, 6) }}-{{ discOps?.date?.slice(6, 8) }})</span>
           <span class="md-group-count">❌ {{ discOps?.bad || 0 }} · ⚠️ {{ discOps?.warn || 0 }} · ✅ {{ discOps?.ok || 0 }} · {{ discOps?.stage || '—' }}期</span>
@@ -1072,7 +1072,7 @@ const lhbSorted = computed(() => {
         <div v-if="!discOps?.items?.length" class="disc-empty">最新交易日无操作记录</div>
       </div>
 
-      <div class="md-group">
+      <div class="md-group disc-card dcb-rules">
         <div class="md-group-head">
           <span class="md-group-tag">⚖️ 铁律</span>
           <span class="md-group-count">按阶段强调</span>
@@ -1088,7 +1088,7 @@ const lhbSorted = computed(() => {
         </div>
       </div>
 
-      <div class="md-group">
+      <div class="md-group disc-card dcb-diary">
         <div class="md-group-head">
           <span class="md-group-tag">📝 每日三行卡</span>
           <span class="md-group-count">{{ todayKey() }} · 存本机</span>
@@ -1306,6 +1306,15 @@ const lhbSorted = computed(() => {
 
 /* ── 我的纪律卡 ── */
 .disc-focus { padding: 10px 14px; font-weight: 700; color: #5b6daa; background: #f0f3fa; border-radius: 10px; }
+/* 纪律卡各板块专属底色(dcb-*=卡片壳, 勿与卡内 disc-* 内容类重名): 蓝=指引 紫=定性 青=五数 琥珀=持仓 红=点评 灰=铁律 绿=三行卡 */
+.disc-card { border: 1px solid #eceff3; border-radius: 12px; padding: 8px 12px 6px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
+.dcb-guide { background: #f0f7ff; border-color: #cfe3f8; }
+.dcb-verdict { background: #f6f2fc; border-color: #e0d4f2; }
+.dcb-nums { background: #eefaf8; border-color: #cbeee9; }
+.dcb-positions { background: #fdf6ea; border-color: #f2e2c4; }
+.dcb-ops { background: #fdf1f0; border-color: #f3d3cf; }
+.dcb-rules { background: #f3f5f8; border-color: #dbe1e9; }
+.dcb-diary { background: #f1f9f1; border-color: #d2ebd2; }
 .disc-verdict { border-left: 4px solid var(--sc, #8a97a8); padding: 4px 0 4px 12px; }
 .dv-top { display: flex; align-items: baseline; gap: 10px; }
 .dv-stage { font-size: 26px; font-weight: 800; color: var(--sc, #8a97a8); }
