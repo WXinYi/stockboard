@@ -107,6 +107,18 @@ jobs:
             echo "盘中班次($H), 跳过宽度更新"
           fi
 
+      - name: 炸板池归档(选股宝)
+        if: success()
+        continue-on-error: true
+        run: |
+          cd jiarenmens
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -ge 1500 ]; then
+            python scripts/backfill_broken.py
+          else
+            echo "盘中班次($H), 跳过炸板归档"
+          fi
+
       - name: 导出 JSON
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
 

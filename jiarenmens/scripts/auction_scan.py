@@ -1402,6 +1402,28 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         print(f"      ⚠️ V5 筛选失败(不影响主流程): {e}")
         v5_list = []
 
+    # 出击选股当时存档(9:26 口径): stage_pool(当日周期+当日竞价) 名单原样落库 strike_pool 表。
+    # 复核/审计读"当时说了什么"而不是事后重算(export_json.build_strike_review 优先读本表)。
+    if not dry_run and cycle_res:
+        print("[5.8/6] 出击选股当时存档")
+        try:
+            from src.analysis.stage_candidates import stage_pool
+            _pool25 = stage_pool(cycle_res, max_n=20, bid_date=date_str)
+            _picks = [{k: p[k] for k in ("code", "name", "height", "status", "reason")} for p in _pool25]
+            _conn = __import__("sqlite3").connect(store.db_path)
+            try:
+                _conn.execute("CREATE TABLE IF NOT EXISTS strike_pool "
+                              "(date TEXT PRIMARY KEY, stage TEXT, picks TEXT, created_at TEXT)")
+                _conn.execute("INSERT OR REPLACE INTO strike_pool VALUES (?,?,?,?)",
+                              (date_str, cycle_res["stage"], json.dumps(_picks, ensure_ascii=False),
+                               datetime.now(BJ_TZ).strftime("%Y-%m-%d %H:%M")))
+                _conn.commit()
+            finally:
+                _conn.close()
+            print(f"      → strike_pool 存档 {len(_picks)} 条({cycle_res['stage']}期)")
+        except Exception as e:
+            print(f"      ⚠️ 出击存档失败(不影响主流程): {e}")
+
     # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
     if not dry_run:
         print(f"[5.7/6] 东财人气榜快照(am)")

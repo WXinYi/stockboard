@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchAuction, fetchMyPositions, fetchLianbanBid } from '../data/loader.js'
+import { fetchAuction, fetchMyPositions, fetchLianbanBid, fetchStrikeReview } from '../data/loader.js'
+import { jsonp, secid } from '../utils/eastmoney.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 import {
   fetchFengKou, fetchTianTi, fetchMarketLimitReasons, fetchNewHighTrend,
@@ -12,7 +13,7 @@ import {
   getLatestTradingDay, getLatestReportDate, isTradingTime,
 } from '../composables/useKplApi.js'
 import { loadCycleData, STAGE_COLORS, STAGE_RULES } from '../utils/emotionCycle.js'
-import { loadBattleData, candTipOf as candTip } from '../utils/leaderBattle.js'
+import { loadBattleData, candTipOf as candTip, reviewVerdict } from '../utils/leaderBattle.js'
 
 defineOptions({ name: 'MarketTab' })
 
@@ -74,11 +75,47 @@ async function loadCycleBattle(silent = false) {
     const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
     cycle.value = cd.cycle
     cycleDataDay.value = cd.cycle?.date || dayDash
-    let lb = null
-    try { lb = await fetchLianbanBid() } catch (e) { /* 盘外/文件未生成 */ }
-    battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd, lb)
+    // 复核文件与竞价换手并行预取: review 的 prev_broken 供引擎标记"弱转强·炸板回封"
+    const [lb, rv] = await Promise.all([fetchLianbanBid().catch(() => null), fetchStrikeReview().catch(() => null)])
+    review.value = rv
+    if (rv?.picks?.length) {
+      const m = {}
+      for (const q of await fetchEmPct(rv.picks.map(p => p.code))) m[q.code] = q.pct
+      reviewPct.value = m
+    }
+    battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd, lb, (rv?.prev_broken || []).map(p => p.code))
   } catch (e) { if (!silent) console.error('[MarketTab cycle]', e?.message) }
 }
+
+// ── 昨日可买复核: 前一交易日 9:25 选股的可做名单 → 今日实时涨幅逐只判定 持有/减半/开盘走/清仓 ──
+const review = ref(null)
+const reviewPct = ref({})
+async function fetchEmPct(codes) {
+  const rows = []
+  for (let i = 0; i < codes.length; i += 40) {
+    const url = `https://push2delay.eastmoney.com/api/qt/ulist.np/get?secids=${codes.slice(i, i + 40).map(secid).join(',')}&fields=f2,f3,f12,f14&fltt=2&invt=2`
+    try {
+      const j = await jsonp(url, 'cb')
+      const diff = j?.data?.diff
+      for (const d of (Array.isArray(diff) ? diff : Object.values(diff || {}))) {
+        const pct = parseFloat(d.f3)
+        rows.push({ code: String(d.f12 ?? ''), pct: isNaN(pct) ? null : pct })
+      }
+    } catch (e) { /* 单批失败忽略 */ }
+  }
+  return rows
+}
+const reviewRows = computed(() => {
+  const r = review.value
+  if (!r?.picks?.length) return []
+  const stage = cycle.value?.stage || r.stage
+  return r.picks.map(p => {
+    const pct = reviewPct.value[p.code] ?? null
+    return { ...p, pct, ...reviewVerdict(pct, p.code, stage) }
+  })
+})
+// 防过期: 复核文件日期须与页面数据日一致, 否则视为旧数据不展示
+const reviewValid = computed(() => review.value && (!cycle.value?.date || review.value.date === cycle.value.date))
 
 async function loadAll(silent = false) {
   loadMine(silent)
@@ -415,6 +452,7 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         </div>
         <div class="mt-strike-banner">
           <div>{{ gateBanner }}</div>
+          <div v-if="battle.strike.relay?.txt" class="sb-mtx">🗡 {{ battle.strike.relay.txt }}</div>
           <div v-if="gateMatrix" class="sb-mtx">📐 高位{{ gateMatrix.high }}×中位{{ gateMatrix.mid }}：{{ gateMatrix.note }}</div>
         </div>
         <div v-for="c in strikeShown" :key="c.code" class="mt-strike" :class="'st-' + (c.status.startsWith('出击') ? 'go' : c.status.startsWith('备选') ? 'alt' : 'watch')" @click="goStock(c)">
@@ -441,6 +479,23 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         </div>
         <div v-if="!strikeAll.length" class="mt-hold">本阶段无出击候选（纪律优先）</div>
         <div class="mt-strike-note">{{ battle.strike.disclaimer }}</div>
+      </section>
+      <section v-if="reviewValid" class="mt-sec">
+        <div class="mt-sec-head">
+          <h3>📋 昨日可买复核</h3>
+          <em>{{ review.prev_day }} 9:25 选股 · {{ review.date }} 执行 · {{ review.src || '重算' }}</em>
+        </div>
+        <div v-if="!review.picks.length" class="mt-hold">{{ review.stage }}期无可买（空仓纪律正确）✓</div>
+        <div v-for="row in reviewRows" :key="row.code" class="mt-review" @click="goStock(row)">
+          <div class="mt-strike-top">
+            <b>{{ row.name }}</b>
+            <span class="mt-strike-lv">{{ row.height }}板</span>
+            <span class="mt-row-count">{{ row.pct == null ? `竞价 ${row.bid_pct ?? '—'}%` : (row.pct > 0 ? '+' : '') + row.pct + '%' }}</span>
+            <span class="rv-tag" :class="row.cls">{{ row.tag }}</span>
+          </div>
+          <div class="mt-strike-logic">昨日：{{ row.reason }}</div>
+          <div class="mt-review-today" :class="'rv-' + row.cls">今日：{{ row.txt }}</div>
+        </div>
       </section>
       <section v-if="warTop4.length" class="mt-sec">
         <div class="mt-sec-head">
@@ -801,6 +856,15 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
 .mt-strike-tip { font-size: 11px; color: #8a6d3b; background: #faf6ec; border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
 .mt-strike-toggle { text-align: center; font-size: 12px; color: #667; padding: 8px 0 2px; cursor: pointer; user-select: none; }
 .mt-strike-toggle:active { opacity: .6; }
+.mt-review { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
+.rv-tag { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 9px; margin-left: auto; flex: none; }
+.rv-tag.hold { background: #fdecea; color: #c0392b; }
+.rv-tag.warn { background: #fdf3e7; color: #b06020; }
+.rv-tag.sell { background: #e8f6ee; color: #1e7e46; }
+.mt-review-today { font-size: 12px; margin-top: 2px; font-weight: 600; }
+.mt-review-today.rv-hold { color: #c0392b; }
+.mt-review-today.rv-warn { color: #b06020; }
+.mt-review-today.rv-sell { color: #1e7e46; }
 .mt-strike-risk { font-size: 11px; color: #ff5a5a; margin-top: 2px; }
 .mt-strike-note { font-size: 10px; color: #a0aab8; margin-top: 4px; }
 .mt-war-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; border-bottom: 1px dashed #eef1f5; cursor: pointer; }
