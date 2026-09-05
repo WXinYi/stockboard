@@ -83,6 +83,11 @@ async function loadCycleBattle(silent = false) {
       for (const q of await fetchEmPct(rv.picks.map(p => p.code))) m[q.code] = q.pct
       reviewPct.value = m
     }
+    if (rv?.today_wzq?.length) {
+      const m2 = {}
+      for (const q of await fetchEmPct(rv.today_wzq.map(p => p.code))) m2[q.code] = q.pct
+      wzqPct.value = m2
+    }
     battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd, lb, (rv?.prev_broken || []).map(p => p.code))
   } catch (e) { if (!silent) console.error('[MarketTab cycle]', e?.message) }
 }
@@ -90,6 +95,17 @@ async function loadCycleBattle(silent = false) {
 // ── 昨日可买复核: 前一交易日 9:25 选股的可做名单 → 今日实时涨幅逐只判定 持有/减半/开盘走/清仓 ──
 const review = ref(null)
 const reviewPct = ref({})
+const wzqPct = ref({})
+// 今日竞价弱转强(9:25 口径): 昨日分歧+竞价超预期, 分时确认才上; 回封(现价触板)则标已回封
+const limOf = c => /^(4|8|92)/.test(c) ? 30 : /^(688|689|300|301)/.test(c) ? 20 : 10
+const wzqRows = computed(() => {
+  const r = review.value
+  if (!r?.today_wzq?.length) return []
+  return r.today_wzq.map(p => {
+    const pct = wzqPct.value[p.code] ?? null
+    return { ...p, pct, resealed: pct != null && pct >= limOf(p.code) - 0.5 }
+  })
+})
 async function fetchEmPct(codes) {
   const rows = []
   for (let i = 0; i < codes.length; i += 40) {
@@ -480,11 +496,27 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         <div v-if="!strikeAll.length" class="mt-hold">本阶段无出击候选（纪律优先）</div>
         <div class="mt-strike-note">{{ battle.strike.disclaimer }}</div>
       </section>
-      <section v-if="reviewValid" class="mt-sec">
+      <section v-if="reviewValid && review" class="mt-sec">
+        <div class="mt-sec-head">
+          <h3>🌅 今日竞价弱转强</h3>
+          <em>{{ review.date }} 9:25 竞价口径</em>
+        </div>
+        <div v-if="!wzqRows.length" class="mt-hold">今日无竞价弱转强（{{ review.stage }}期不开放，仅启动/发酵/分歧）</div>
+        <div v-for="row in wzqRows" :key="row.code" class="mt-review" @click="goStock(row)">
+          <div class="mt-strike-top">
+            <b>{{ row.name }}</b>
+            <span class="mt-row-count">昨日{{ row.tag }}分歧 · 竞价 {{ row.bid_pct }}%<template v-if="row.pct != null"> · 现 {{ row.pct > 0 ? '+' : '' }}{{ row.pct }}%</template></span>
+            <span class="rv-tag" :class="row.resealed ? 'hold' : 'warn'">{{ row.resealed ? '已回封✅' : '待分时确认' }}</span>
+          </div>
+          <div class="mt-review-today rv-warn">分时确认才上：站稳分时均价/放量转强再买，失败 -3% 止损</div>
+        </div>
+      </section>
+      <section v-if="reviewValid && review" class="mt-sec">
         <div class="mt-sec-head">
           <h3>📋 昨日可买复核</h3>
           <em>{{ review.prev_day }} 9:25 选股 · {{ review.date }} 执行 · {{ review.src || '重算' }}</em>
         </div>
+        <div class="mt-review-guide">怎么用：昨天 9:25 选股单上的可买票，今天按实时涨幅逐只执行——封板=持有到尾盘一致转分歧兑现；涨3%以上=冲高兑现（卖在一致）；平盘弱=先出一半（弱于预期）；水下=开盘走（低于预期即卖）；今日周期转退潮/冰点=全部清仓（只卖不买）。</div>
         <div v-if="!review.picks.length" class="mt-hold">{{ review.stage }}期无可买（空仓纪律正确）✓</div>
         <div v-for="row in reviewRows" :key="row.code" class="mt-review" @click="goStock(row)">
           <div class="mt-strike-top">
@@ -857,6 +889,7 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
 .mt-strike-toggle { text-align: center; font-size: 12px; color: #667; padding: 8px 0 2px; cursor: pointer; user-select: none; }
 .mt-strike-toggle:active { opacity: .6; }
 .mt-review { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
+.mt-review-guide { font-size: 11px; color: #667; background: #f7f8fa; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; line-height: 1.6; }
 .rv-tag { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 9px; margin-left: auto; flex: none; }
 .rv-tag.hold { background: #fdecea; color: #c0392b; }
 .rv-tag.warn { background: #fdf3e7; color: #b06020; }
