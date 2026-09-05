@@ -1254,6 +1254,11 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
             out["today_wzq"].append({"code": p["code"], "name": p["name"],
                                      "tag": m.group(1) if m else "分歧",
                                      "bid_pct": m.group(2) if m else None, "reason": p["reason"]})
+        try:
+            from src.analysis.six_emotions import six_scores
+            out["six"] = six_scores(crawl_date)
+        except Exception as e:
+            print(f"⚠️ six_scores 失败: {e}")
         if prev:
             out["prev_day"] = prev
             if arc:

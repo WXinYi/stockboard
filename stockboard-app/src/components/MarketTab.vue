@@ -132,6 +132,12 @@ const reviewRows = computed(() => {
 })
 // 防过期: 复核文件日期须与页面数据日一致, 否则视为旧数据不展示
 const reviewValid = computed(() => review.value && (!cycle.value?.date || review.value.date === cycle.value.date))
+// 涅槃六情绪定性(市场/投机/板块×短期/整体): 主导条件决定战术偏向
+const sixTxt = computed(() => {
+  const x = review.value?.six
+  if (!x?.dominant) return ''
+  return `市场${x.market ?? '—'} 投机${x.spec ?? '—'} 板块${x.sector ?? '—'}（整体 ${x.m_market ?? '—'}/${x.m_spec ?? '—'}/${x.m_sector ?? '—'}）→ 主导: ${x.dominant} · ${x.note}`
+})
 
 async function loadAll(silent = false) {
   loadMine(silent)
@@ -495,6 +501,13 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         </div>
         <div v-if="!strikeAll.length" class="mt-hold">本阶段无出击候选（纪律优先）</div>
         <div class="mt-strike-note">{{ battle.strike.disclaimer }}</div>
+      </section>
+      <section v-if="reviewValid && review?.six" class="mt-sec">
+        <div class="mt-sec-head">
+          <h3>🌡 六情绪定性</h3>
+          <em>涅槃框架 · 0-100 历史分位</em>
+        </div>
+        <div class="mt-review-guide">🌡 {{ sixTxt }}</div>
       </section>
       <section v-if="reviewValid && review" class="mt-sec">
         <div class="mt-sec-head">
