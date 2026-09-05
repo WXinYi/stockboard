@@ -24,6 +24,7 @@ export const fetchChangesSummary = () => getJson('data/latest/changes_summary.js
 export const fetchAuction = () => getJson('data/latest/auction.json')
 export const fetchMyPositions = () => getJson('data/latest/my_positions.json')
 export const fetchLianbanBid = () => getJson('data/latest/lianban_bid.json')
+export const fetchStrikeReview = () => getJson('data/latest/strike_review.json')
 
 // 全量（路由级懒加载）
 export const fetchPlayersIndex  = () => getJson('data/latest/players_index.json')

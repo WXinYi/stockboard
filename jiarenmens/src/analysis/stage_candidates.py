@@ -69,8 +69,9 @@ def _bid_pool(date_str):
             (date_str,))}
 
 
-def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
-    """返回按阶段产生的候选池: [{code,name,height,reason,status}]"""
+def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) -> list:
+    """返回按阶段产生的候选池: [{code,name,height,reason,status}]
+    bid_date: 竞价数据日期, 默认=周期日(历史回放); 盘前存档场景传当日(9:26 竞价+昨日池)。"""
     stage = cycle_res["stage"]
     date_str = cycle_res["date"]
     pool: list[dict] = []
@@ -95,7 +96,8 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
         if "中军" in role:
             st = "观察(容量)"
         elif "补涨" in role:
-            st = "可做(补涨)" if stage in ("分歧", "退潮", "发酵") else "观察"
+            # 退潮期 cap=0 禁买(与 JS 端 STAGE_GATE 对齐), 补涨只在 分歧/发酵 可做
+            st = "可做(补涨)" if stage in ("分歧", "发酵") else "观察"
         else:
             st = lead_status.get(stage, "观察")
         if "封单衰减" in note and st.startswith("可做"):
@@ -119,7 +121,7 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
     prev_rows = [r for r in pool_rows if r["date"] == dates[dates.index(date_str) - 1]] \
         if date_str in dates and dates.index(date_str) > 0 else []
     prev_first = {r["code"]: r for r in prev_rows if r["height"] == 1}
-    bids = _bid_pool(date_str)
+    bids = _bid_pool(bid_date or date_str)
     mainlines = {m["board"] for m in cycle_res["mainlines"]}
 
     def bid_strong(code):
@@ -161,6 +163,28 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
             if in_main and r["height"] >= 3:
                 add(r["code"], r["name"], r["height"], "主线高位(秒板接力对象)", "观察(谨慎接力)")
 
+    # 3) 弱转强(陈小群): 昨日分歧(断板∪尾盘烂板) + 今日竞价超预期(+1.5~7%) → 必要条件,
+    #    分时确认才上, 失败止损。烂板=收盘封单/盘中最高封单<0.15(当日最弱档, 绝对阈值不可用——
+    #    封单全天被消化是常态, 09-01 实测分布校准)。
+    if stage in ("启动", "发酵", "分歧") and date_str in dates and dates.index(date_str) >= 1:
+        _i = dates.index(date_str)
+        prev_date2 = dates[_i - 1]
+        prev2_codes = {r["code"] for r in pool_rows if r["date"] == dates[_i - 2]} if _i >= 2 else set()
+        sealed_prev = {r["code"] for r in prev_rows}
+        broken_prev = _broken_map(prev_date2)  # 昨日触板未封(精确炸板池, 选股宝归档)
+        duanban = prev2_codes - sealed_prev  # 前日涨停、昨日未封 = 昨日断板
+        rotten = {r["code"] for r in pool_rows if r["date"] == prev_date2
+                  and r.get("max_seal") and r.get("seal_amount")
+                  and r["seal_amount"] / r["max_seal"] < 0.15}
+        names_d = {r["code"]: r["name"] for r in pool_rows}
+        for code in list(duanban | rotten | set(broken_prev))[:80]:
+            if code in seen or not bid_strong(code):
+                continue
+            tag = "断板" if code in duanban else ("炸板" if code in broken_prev else "烂板")
+            add(code, names_d.get(code, code) or broken_prev.get(code, code), 0,
+                f"弱转强: 昨日{tag}分歧, 今竞价 {bids[code]['change_pct']:+.1f}%, 分时确认才上",
+                "可做(弱转强)")
+
     # 3) V5 容量方向(周期闸门): 仅 发酵/高潮 开, 且只留主线板块内
     if stage in V5_STAGES:
         v5 = _load_v5(date_str)
@@ -170,7 +194,41 @@ def stage_pool(cycle_res: dict, max_n: int = 20) -> list:
                     f"V5容量方向({c.get('pos_tag') or '普通'}) [{'/'.join(c.get('boards', [])[:2])}]",
                     "观察(容量)")
 
-    return _apply_matrix(pool, cycle_res)[:max_n]
+    return _apply_matrix(_apply_shrink_filter(pool, cycle_res, cur_rows), cycle_res)[:max_n]
+
+
+def _circ_mv_map(date_str):
+    from pathlib import Path
+    import sqlite3
+    db = Path(__file__).resolve().parents[2] / "data" / "auction.db"
+    with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+        return {r[0]: r[1] for r in conn.execute(
+            "SELECT code, circ_mv FROM limit_pool WHERE date=?", (date_str,))}
+
+
+def _apply_shrink_filter(pool: list, cycle_res: dict, cur_rows: list) -> list:
+    """缩量板降级(著名刺客: 换手连板优于缩量板——换手才检验真实承接):
+    ≥2板 且 估算换手(amount/circ_mv)<3% → 观察(缩量板)。JS 端 leaderBattle 同规则(-12分)。"""
+    mvs = _circ_mv_map(cycle_res["date"])
+    amt = {r["code"]: (r["amount"] or 0) for r in cur_rows}
+    for p in pool:
+        if p["height"] >= 2 and p["status"].startswith("可做"):
+            mv, a = mvs.get(p["code"]), amt.get(p["code"]) or 0
+            if mv and a and 0 < a / mv * 100 < 3:
+                p["status"] = "观察(缩量板)"
+    return pool
+
+
+def _broken_map(date_str):
+    """昨日炸板 {code: name}(broken_pool 表, 选股宝 limit_up_broken 归档); 表不存在返回空 dict"""
+    from pathlib import Path
+    import sqlite3
+    db = Path(__file__).resolve().parents[2] / "data" / "auction.db"
+    try:
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+            return {r[0]: r[1] for r in conn.execute("SELECT code, name FROM broken_pool WHERE date=?", (date_str,))}
+    except sqlite3.Error:
+        return {}
 
 
 def _load_v5(date_str):

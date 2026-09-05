@@ -225,7 +225,7 @@ export function candTipOf(c, cap = 100) {
   return { buy: '龙头接力', trigger: '只排板不追高，一致转分歧兑现', stop: '断板即走', pos: cap === 0 ? off : '首仓 1 成（阶段上限内）' }
 }
 
-function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
+function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = null, prevBroken = null) {
   const stage = cycle.stage
   const gate = STAGE_GATE[stage] || { cap: 100, banner: '' }
   // 矩阵分层闸门: 与阶段闸门取更严者(同类型票在高位弱/中位弱时降级或禁买)
@@ -243,6 +243,7 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
   // 定位四分类(龙头/中军/补涨/跟风): 龙头谱系角色优先, 否则按 板块高度/市值/板块扩缩 推断
   const leadRole = new Map((cycle.leaders || []).map(l => [l.code, l.role || '']))
   const warOf = new Map(boardWars.wars.map(w => [w.board, w]))
+  const prevMap = new Map(prevFull.map(r => [r.code, r]))
   const primaryBoard = row => (row.plates || []).find(b => warOf.has(b)) || (row.plates || [])[0] || ''
   const classify = row => {
     const role = leadRole.get(row.code)
@@ -309,6 +310,26 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
     for (const r of [...todayJoined].filter(x => x.level >= 2).sort((x, y) => y.level - x.level).slice(0, 4))
       add(r, 35, '火种观察', `逆市连板=新周期火种候选(禁买期只看) ${r.level}板`)
   }
+  // 2c) 反核撬板(陈小群): 退潮/分歧/冰点期 总龙头深水(≤-5%)——跌停放量被撬+大资金牵头才小仓试错, 严禁后排反核
+  if (['退潮', '分歧', '冰点'].includes(stage)) {
+    const anchor = (cycle.leaders || [])[0]
+    const deep = anchor && unsealed.find(u => u.code === anchor.code && u.pct <= -5)
+    if (deep) add({ ...deep, level: deep.pid }, 30, '反核观察',
+      `总龙头${anchor.name}现${deep.pct.toFixed(1)}%深水——反核只评估核心: 跌停放量+大资金牵头+合力承接才试错`)
+  }
+  // 2d) 尾盘修复(92科比): 14:30后 杀跌日核心获承接(拉回>-2%且主力净买)——小仓先手, 次日不修复快速处理
+  const bj = new Date((now ?? Date.now()) + 8 * 3600e3) // 东八区钟点(测试注入原始时间戳, 统一+8h)
+  const hm = bj.toISOString().slice(11, 16)
+  if (['分歧', '退潮', '冰点'].includes(stage) && hm >= '14:30' && hm <= '15:01') {
+    const anchor = (cycle.leaders || [])[0]
+    const fix = anchor && unsealed.find(u => u.code === anchor.code && u.pct > -2 && (u.mainNet || 0) > 0)
+    if (fix) {
+      const existed = cands.find(c => c.code === fix.code)
+      if (existed) { if (!existed.logic.includes('尾盘承接')) existed.logic += '；尾盘承接确认(先手小仓, 次日不修复快速处理)' }
+      else add({ ...fix, level: fix.pid }, 35, '尾盘修复',
+        `尾盘核心承接(现${fix.pct.toFixed(1)}% 主力净买${yi(fix.mainNet)})——先手小仓, 次日不修复快速处理`)
+    }
+  }
   // 3) 盘中半路(JS实时维度): 未涨停池主线票 涨幅3-7% 主力净买
   if (stage !== '退潮') {
     for (const u of unsealed) {
@@ -340,6 +361,18 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
       if (bd >= 2) { score += 8; strengths.push('板块扩容') }
       else if (bd <= -2) { score -= 10; if (!c.risk) c.risk = '板块被抽血' }
     }
+    // 换手检验(著名刺客: 换手连板优于缩量板——换手才证明真实承接, 最强的板让次日接力者赚钱)
+    const to = row.turnover || 0
+    if ((row.level || 0) >= 2 && (row.seal > 0 || (row.amount || 0) > 0)) {
+      if (to > 0 && to < 3) { score -= 12; if (!c.risk) c.risk = '缩量板·换手未检验(次日接力存疑)' }
+      else if (to >= 5) { score += 4; strengths.push(`换手${to.toFixed(1)}%`) }
+    }
+    // 弱转强(陈小群): 昨日烂板(封单保持<0.15)或昨日炸板 今日回封 = 分歧转一致
+    const pr = prevMap.get(c.code)
+    const rottenPrev = pr && (pr.seal || 0) > 0 && (pr.maxSeal || 0) > 0 && pr.seal / pr.maxSeal < 0.15
+    if ((row.level || 0) >= 2 && (rottenPrev || (prevBroken && prevBroken.has(c.code)))) {
+      score += 6; strengths.push(rottenPrev ? '弱转强·烂板回封' : '弱转强·炸板回封')
+    }
     c.score = Math.max(0, Math.min(cap, score))
     const tierAct = mtx ? (mtx.tier[tierOf(c.level)] || 'go') : 'go'
     if (tierAct === 'care') c.score = Math.min(c.score, 70)
@@ -364,10 +397,19 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
     c.platesTxt = (row.plates || []).slice(0, 2).join('/')
   }
   const anchor = (cycle.leaders || [])[0]
+  // 接力盈利仪表(著名刺客: 最强的板是让次日接力者赚钱的板)——昨日涨停股今日可得涨幅均值
+  const limPctOf = c => /^(4|8|92)/.test(c) ? 30 : /^(688|689|300|301)/.test(c) ? 20 : 10
+  const todayPct = new Map()
+  for (const r of unsealed) todayPct.set(r.code, r.pct)
+  for (const r of todayJoined) if (!todayPct.has(r.code)) todayPct.set(r.code, limPctOf(r.code))
+  const known = prevFull.map(r => todayPct.get(r.code)).filter(v => v !== undefined)
+  const relayAvg = known.length ? known.reduce((a, b) => a + b, 0) / known.length : null
+  const relayTxt = relayAvg === null ? '' : `接力盈利: 昨日涨停 ${known.length} 只今日均值 ${relayAvg >= 0 ? '+' : ''}${relayAvg.toFixed(1)}% —— ${relayAvg >= 2 ? '接力者赚钱·生态健康' : relayAvg >= 0 ? '接力微利·只做核心' : '接力亏损·防守(只看不追)'}`
   return {
     gate: { stage, cap, banner, playbook: cycle.playbook,
       matrix: mtx && cycle.matrix ? { ...cycle.matrix, note: mtx.note } : null },
     anchor: anchor ? `${anchor.name}(${anchor.pid}板)` : '',
+    relay: { n: known.length, avg: relayAvg, txt: relayTxt },
     candidates: cands.sort((x, y) => y.score - x.score || y.level - x.level).slice(0, 8),
     disclaimer: '规则评分=胜率优先排序(待历史回测校准)，非收益保证；严格执行止损',
   }
@@ -407,14 +449,15 @@ function computeRisks(todayJoined, unsealed, cycle) {
  * @param {object} p  { ladderRows, todayPool, prevFull, unsealed, cycle }
  *   ladderRows/todayPool/prevFull/unsealed 见 useKplApi.fetchTianTi/fetchLimitPool/fetchUnsealedPool
  */
-export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], unsealed = [], cycle = {}, lianbanBid = null }) {
+export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], unsealed = [], cycle = {}, lianbanBid = null, prevBroken = null, now = null }) {
   const todayJoined = joinToday(ladderRows, todayPool)
   if (!todayJoined.length || !cycle.stage) {
     return { empty: true, strike: null, boardWars: { wars: [], relations: [], mainSwitch: null }, duels: [], risks: { brokenHighs: [], watch: [] } }
   }
   const boardWars = computeBoardWars(todayJoined, prevFull)
   const duels = computeDuels(todayJoined, prevFull, boardWars)
-  const strike = computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars)
+  const strike = computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now,
+    Array.isArray(prevBroken) ? new Set(prevBroken) : null)
   // 昨日连板 × 竞价实际换手 Top5 特殊标记(数据: latest/lianban_bid.json, 口径=scripts/lianban_bid_hs.py; 日期不匹配视为过期不标)
   if (lianbanBid && lianbanBid.date === cycle.date && Array.isArray(lianbanBid.top)) {
     const rank = new Map(lianbanBid.top.map((t, i) => [t.code, { rank: i + 1, hs: t.hs, prevPid: t.prev_pid }]))
@@ -427,17 +470,28 @@ export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], 
   return { empty: false, strike, boardWars, duels, risks }
 }
 
+// 昨日可买复核判定(战法: 低于预期即卖·卖在一致·周期转防守只卖不买)。pct=今日实时涨幅
+export function reviewVerdict(pct, code, stage) {
+  if (['退潮', '冰点'].includes(stage)) return { cls: 'sell', tag: '清仓', txt: '周期转防守：只卖不买' }
+  if (pct === null || pct === undefined) return { cls: 'warn', tag: '看竞价', txt: '无实时行情，人工确认' }
+  const lim = /^(4|8|92)/.test(code) ? 30 : /^(688|689|300|301)/.test(code) ? 20 : 10
+  if (pct >= lim - 0.5) return { cls: 'hold', tag: '持有', txt: '一致加速：尾盘一致转分歧再兑现' }
+  if (pct >= 3) return { cls: 'hold', tag: '持有·冲高兑现', txt: '卖在一致：冲高破分时均价即走' }
+  if (pct >= 0) return { cls: 'warn', tag: '减半', txt: '弱于预期：接力不赚钱原则，先出一半' }
+  return { cls: 'sell', tag: '开盘走', txt: '低于预期即卖，不等回本' }
+}
+
 /**
  * 装配: 今日 RT 涨停池(5板位) + 未涨停池(1/2/4/5) → computeBattle
  * 昨日全字段池复用 loadCycleData 的缓存结果(cd.prevFull); lianbanBid 为竞价换手标记数据(fetchLianbanBid), 可空
  */
-export async function loadBattleData(kpl, cd, lianbanBid = null) {
+export async function loadBattleData(kpl, cd, lianbanBid = null, prevBroken = null) {
   const [pools, unsealedLists] = await Promise.all([
     Promise.all([1, 2, 3, 4, 5].map(p => kpl.fetchLimitPool('', p, { rt: true, silent: true }))),
     Promise.all([1, 2, 4, 5].map(p => kpl.fetchUnsealedPool(p, true))),
   ])
   return computeBattle({
     ladderRows: cd.ladderRows, todayPool: pools.flat(),
-    prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle, lianbanBid,
+    prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle, lianbanBid, prevBroken,
   })
 }

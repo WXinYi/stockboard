@@ -60,7 +60,7 @@ def _ma(seq, n):
 
 def load_pool(days=40, extra_rows=None, exclude_date=None):
     """近 N 个池日全量行(+可选当日实时行, exclude_date=实时行覆盖的库内日期) + 真实连板高度反推"""
-    rows = _rows("""SELECT date, code, name, pid_type, zt_time, seal_amount, main_net,
+    rows = _rows("""SELECT date, code, name, pid_type, zt_time, seal_amount, max_seal, main_net,
                            amount, plates FROM limit_pool
                    WHERE date >= (SELECT MIN(date) FROM (SELECT DISTINCT date FROM limit_pool
                                     ORDER BY date DESC LIMIT ?))

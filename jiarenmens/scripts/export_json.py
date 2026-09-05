@@ -655,6 +655,9 @@ def export(db_path, crawl_date, out_dir):
     # lianban_bid.json（出击列表特殊标记: 昨日连板 × 今晨竞价实际换手 Top5）
     build_lianban_bid(latest_dir, crawl_date)
 
+    # strike_review.json（昨日可买复核: 前一交易日 9:25 选股的"可做"名单 + 今日竞价）
+    build_strike_review(latest_dir, crawl_date)
+
     # players/{zh_id}.json
     players_out_dir = latest_dir / "players"
     players_out_dir.mkdir(parents=True, exist_ok=True)
@@ -1206,6 +1209,46 @@ def build_lianban_bid(latest_dir: Path, crawl_date: str):
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     top_txt = " / ".join(f"{t['name']} {t['hs']:.2f}%" for t in out["top"]) or "无"
     print(f"   lianban_bid.json → {out['prev_day']}连板×{out['date']}竞价换手Top5: {top_txt}")
+
+
+def build_strike_review(latest_dir: Path, crawl_date: str):
+    """data/latest/strike_review.json —— 出击页「昨日可买复核」数据源:
+    优先读 auction.db strike_pool 表(9:26 竞价班的当时存档, 审计口径"当时说了什么"),
+    无存档回退重算(前一交易日 9:25 规则回放, 口径随规则演进)。附今日竞价涨幅(bid_pool)。"""
+    out = {"date": crawl_date, "prev_day": None, "stage": None, "src": None, "picks": []}
+    try:
+        from src.analysis.emotion_cycle import compute_cycle
+        from src.analysis.stage_candidates import stage_pool
+        with sqlite3.connect(f"file:{ROOT / 'data' / 'auction.db'}?mode=ro", uri=True) as c:
+            prev = c.execute("SELECT MAX(date) FROM limit_pool WHERE date < ?", (crawl_date,)).fetchone()[0]
+            bids = {r[0]: r[1] for r in c.execute(
+                "SELECT code, MAX(change_pct) FROM bid_pool WHERE date=? GROUP BY code", (crawl_date,))}
+            arc = c.execute("SELECT stage, picks FROM strike_pool WHERE date=?", (prev,)).fetchone() if prev else None
+            try:
+                out["prev_broken"] = [{"code": r[0], "name": r[1], "break_times": r[2], "change_pct": r[3]}
+                                      for r in c.execute(
+                                          "SELECT code, name, break_times, change_pct FROM broken_pool WHERE date=?",
+                                          (prev,))]
+            except sqlite3.OperationalError:
+                out["prev_broken"] = []
+        if prev:
+            out["prev_day"] = prev
+            if arc:
+                out["stage"], out["src"] = arc[0], "当时存档"
+                archived = json.loads(arc[1])
+            else:
+                cycle_prev = compute_cycle(prev, persist=False)
+                pool = stage_pool(cycle_prev, max_n=20)
+                out["stage"], out["src"] = cycle_prev["stage"], "重算"
+                archived = [{k: p[k] for k in ("code", "name", "height", "status", "reason")} for p in pool]
+            out["picks"] = [{**p, "bid_pct": bids.get(p["code"])}
+                            for p in archived if p["status"].startswith("可做")]
+    except Exception as e:
+        print(f"⚠️ strike_review: 计算失败({e}), 输出空复核")
+    with open(latest_dir / "strike_review.json", "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    names = " / ".join(f"{p['name']}({p['status']})" for p in out["picks"]) or "无可买(空仓)"
+    print(f"   strike_review.json → {out['prev_day']}可买复核[{out['src']}]: {names}")
 
 
 if __name__ == "__main__":

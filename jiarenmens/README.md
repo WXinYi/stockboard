@@ -120,6 +120,14 @@ export_json.py: build_lianban_bid()   # limit_pool 昨日连板(pid≥2) × bid_
   └─ stockboard-app/public/data/latest/lianban_bid.json   # 前端经 loadBattleData 注入 computeBattle 标 c.bidTop
 ```
 
+战法蒸馏（2026-09-05，源自 `~/.claude/skills/short-term-hot-money-agent` 8 套游资框架）：换手连板优于缩量板（≥2板 换手<3% 降12分标"缩量板·换手未检验"，≥5% 加分，刺客）；接力盈利仪表（昨日涨停股今日可得涨幅均值，banner 显示"接力者赚钱/亏损"，刺客）；反核观察（总龙头深水≤-5% 时仅核心可评估、严禁后排，陈小群）；尾盘修复（14:30 后核心承接+主力净买 → 先手小仓标注，92科比）。Python 对偶 `_apply_shrink_filter` 同步缩量板降级。每次进入页面（onMounted/onActivated）与盘中轮询都会重新按实时池子选股。
+
+「📋 昨日可买复核」（2026-09-05）：每天复核前一交易日 9:25 选股的"可做"名单——`export_json.build_strike_review` 产出 `latest/strike_review.json`（可做名单+今日竞价涨幅），前端结合东财实时涨幅逐只判定：封板→持有（尾盘一致转分歧兑现）/ +3%以上→持有·冲高兑现（卖在一致）/ 0~3%→减半（弱于预期）/ 水下→开盘走（低于预期即卖）/ 今日周期转退潮冰点→清仓（只卖不买）。判定函数 `reviewVerdict` 在 leaderBattle.js（纯函数）。顺手修复：stage_candidates 退潮期补涨误标"可做"（违反禁买铁律）。
+
+选股当时存档（2026-09-05）：auction.db 新表 `strike_pool(date,stage,picks,created_at)`，竞价班（auction_scan 5.8 段）用 `stage_pool(当日周期, bid_date=当日)` 的 9:26 口径名单原样落库；复核优先读存档（审计口径"当时说了什么"），无存档回退重算（规则演进口径），`src` 字段区分"当时存档/重算"并在复核区标题展示。`stage_pool` 新增 `bid_date` 参数支持盘前口径。
+
+弱转强候选（2026-09-05，陈小群）：昨日分歧 + 今日竞价超预期(+1.5~7%)。分歧池 = 断板（前日涨停昨日未封，limit_pool 差集）∪ 烂板（收盘封单/盘中最高封单 <0.15，当日最弱档——绝对阈值不可用，封单全天被消化是常态，09-01 分布校准）。Python `stage_pool` 在 启动/发酵/分歧 产出"可做(弱转强)"（进 9:26 存档与复核）；JS 端对"昨日烂板今日回封"加 6 分标"弱转强·烂板回封"（分歧转一致）。炸板池已接入（选股宝源 `src/spiders/xuangubao.py`，`limit_up_broken?date=` 支持任意历史日期）：`scripts/backfill_broken.py` 归档至 auction.db `broken_pool` 表（已回填 07-15 起 38 天 943 条），crawl.yml 收盘班每日落库。分歧池 = 断板 ∪ 烂板 ∪ 精确炸板；strike_review.json 附 `prev_broken`，前端经 `loadBattleData(…, prevBroken)` 对炸板回封标 "弱转强·炸板回封"(+6分)。
+
 ## 技术栈
 
 - Python 3.11+
