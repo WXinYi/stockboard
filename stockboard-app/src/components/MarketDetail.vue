@@ -13,7 +13,7 @@ import {
 } from '../composables/useKplApi.js'
 import { loadCycleData, STAGES, STAGE_COLORS, STAGE_RULES } from '../utils/emotionCycle.js'
 import { loadBattleData } from '../utils/leaderBattle.js'
-import { fetchMyPositions } from '../data/loader.js'
+import { fetchMyPositions, fetchStrikeReview } from '../data/loader.js'
 import { jsonp, secid } from '../utils/eastmoney.js'
 
 defineOptions({ name: 'MarketDetail' })
@@ -201,6 +201,13 @@ const yjLeader = computed(() => {
   return { txt: m[st] || `${l.name} ${l.pid}板 空间锚` }
 })
 const yjQuote = computed(() => STAGE_RULES[(mine.value?.battle_plan?.stage) || (discCycle.value?.stage)]?.yj || '')
+// 涅槃六情绪定性(周期页 hero): 数据走 strike_review.json 的 six 字段
+const sixInfo = ref(null)
+const sixTxt = computed(() => {
+  const x = sixInfo.value
+  if (!x?.dominant) return ''
+  return `市场${x.market ?? '—'} 投机${x.spec ?? '—'} 板块${x.sector ?? '—'}（整体 ${x.m_market ?? '—'}/${x.m_spec ?? '—'}/${x.m_sector ?? '—'}）→ 主导: ${x.dominant} · ${x.note}`
+})
 
 
 
@@ -295,6 +302,7 @@ async function load(silent = false) {
       const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
       const [battle, mine] = await Promise.all([
         loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd).catch(() => null),
+        fetchStrikeReview().then(r => { sixInfo.value = r?.six || null }).catch(() => null),
         fetchMyPositions().catch(() => null),
       ])
       res = { cycle: cd.cycle, battle, mine }
@@ -806,6 +814,7 @@ const lhbSorted = computed(() => {
           <ul class="cy-reasons"><li v-for="r in cycle.reasons" :key="r">{{ r }}</li></ul>
           <div class="cy-playbook">📌 {{ cycle.playbook }}</div>
           <div v-if="discRbr" class="cy-rbr">⚖️ 风险收益比 <span class="rbr-stars">{{ '★'.repeat(discRbr.stars) }}{{ '☆'.repeat(5 - discRbr.stars) }}</span><span class="rbr-txt">{{ discRbr.txt }}</span></div>
+          <div v-if="sixTxt" class="cy-six">🌡 {{ sixTxt }}</div>
           <div v-if="yjQuote" class="cy-yj">💬 {{ yjQuote }}</div>
         </div>
         <div class="cy-scale">
@@ -1407,6 +1416,7 @@ const lhbSorted = computed(() => {
 .yc-status.go { color: #fff; background: #e74c3c; }
 .yc-tip { font-size: 12px; color: #5b6daa; margin-top: 4px; }
 .dv-yj { margin-top: 8px; font-size: 12px; color: #8a6d3b; background: #faf6ec; border-radius: 8px; padding: 6px 10px; }
+.cy-six { margin-top: 8px; font-size: 12px; color: #4a6fa5; background: #f0f5fc; border-radius: 8px; padding: 6px 10px; }
 .do-verdict { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-radius: 8px; padding: 9px 10px; margin: 8px 0 4px; font-size: 13px; }
 .do-verdict b { font-size: 15px; }
 .do-verdict.g-bad { background: #fdf0ef; color: #c0392b; }
