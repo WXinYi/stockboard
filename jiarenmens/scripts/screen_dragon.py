@@ -33,6 +33,9 @@ CRAWL_DB = DATA_DIR / "crawl_data.db"
 AUCTION_DB = DATA_DIR / "auction.db"
 KLINE_CACHE = DATA_DIR / "kline_cache.json"
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.utils.market import market_prefix as _market  # noqa: E402 (92→bj 修复, 唯一实现)
+
 # 当前已追踪的龙头选手 (输出时高亮, 与 notify_daily.py DRAGON 一致)
 TRACKED = {"900422074", "900443192", "900315547", "900306078", "900450475"}
 
@@ -48,14 +51,6 @@ def is_stock(code: str, name: str) -> bool:
     if "转债" in name or "ETF" in name or "LOF" in name:
         return False
     return True
-
-
-def _market(code: str) -> str:
-    if code.startswith(("6", "5", "9")):
-        return "sh"
-    if code.startswith(("4", "8")):
-        return "bj"
-    return "sz"
 
 
 def load_kline_cache() -> dict:
