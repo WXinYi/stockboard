@@ -15,7 +15,8 @@
 | ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
 | ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
 | ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
-| 观察期 ⑥ | ⏳ 进行中(第1/5天: 09-02 ✅) | 09-02 自检通过：三 manifest 符合预期(热层尾部 09-02、W36 含回填 08-31、M08 封版完整)、推送 2 次(修复后基线+尾盘班，事故③已修复见下)、crawl-eod 专班首跑 success；余项见下方待办 B |
+| ⑦ Build Vue 提速 | ✅ **上线并双分支验证** | dist 壳按代码指纹缓存，数据班跳过 npm ci+vite 全量构建（原慢班 Build Vue 可达 425s）。09-05 两次 push 触发实测：cache-miss 全量构建分支 ✅ / cache-hit rsync 拼接分支 ✅，详见 A2 |
+| 观察期 ⑥ | ⏳ 进行中(第3/5天: 09-04 ✅) | 09-04 自检通过（定时任务 16:00 自动执行）：manifest trades 221030 单调递增(当日 +4086)、Pages 三 JSON 日期=当天、热层/温层 15:24-15:25 回传、竞价+打标 success、周五当周温层 tag W36 在位；余项见下方待办 B |
 
 ---
 
@@ -25,6 +26,17 @@
 
 - Release 三层全部就位：热层 `db-state` crawl-latest.db.gz 22.5MB（trades 207046，range 含 09-01，integrity ok）；温层 `db-w2026-W36`；冷层 `db-m2026-08`（159315 trades，08-01~08-30）——**月初自动封版按设计触发**。
 - 复核中发现**调度缺口**（见事故记录②）：闸门 15:10 高于 cron 末班 14:51，08-31 的 db 数据从未持久化而丢失一天。已修复：`crawl-eod` 收盘专班事件 + 14:45 兜底闸门。
+
+### A2.【✅ 已完成】Build Vue 提速：dist 壳缓存 + 数据拼接（09-05 上线并验证）
+
+- **问题**：每 10 分钟一班全量重跑 `npm ci && npm run build`，而变的只有 `public/data`。Build Vue 步骤实测波动 9s~425s（如 09-04 13:30 班 814s 总耗时中 Build Vue 占 425s），npm 下载缓存已命中仍慢——瓶颈在 node_modules 全量重装 + vite 打包 + 拷贝数千选手小文件的 I/O，且随 runner 负载抽签。
+- **改造**（crawl.yml，commit `bc0a66a9fb`）：`actions/cache@v4` 按 `hashFiles(src/** + index.html + vite.config.js + package-lock.json)` 缓存 dist 壳；cache-hit 数据班只跑 `rsync -a --delete public/data/ → dist/data/`（`--delete` 与 export_json 的跌榜清理语义一致），Setup Node/Build Vue 全部跳过；cache-miss 自动回退全量构建并重建缓存。
+- **验证**（09-05 周六，两次 push 触发 + 线上核对）：
+  - #479（miss 分支）：恢复 dist 壳 0s → Build Vue 9s 全量构建 → 拼接 skipped → **Post 缓存保存 success**，run 342s ✅
+  - #480（hit 分支）：恢复 dist 壳 1s → Setup Node/Build Vue **双双 skipped** → 拼接最新数据 1s，run 358s ✅
+  - Pages 部署指向 #480（e0b0b6e8c4），线上 summary.json date=2026-09-05 正常 ✅
+- **预期**：慢班（如 13:30 型）总耗时 13.6min → ~7min（省下整个 Build Vue 段），快班持平；方差消除。采集+导出 ~5.5min 成为新主导段。
+- **边界**：缓存 key 不含数据（数据走 rsync），代码 push 后第一班自动全量重建；长假 >7 天缓存被驱逐也只多花一次全量构建。
 
 ### B.【连续 5 个交易日】观察期每日检查（09-02 ~ 09-08）
 
@@ -37,6 +49,8 @@
 任一异常 → 先查 Actions 日志，再按 §8 运维手册处理。
 
 - ✅ **09-02（第1天）**：三 manifest 符合预期；钉钉推送仅 2 次（14:55 修复上线基线 + 15:20 尾盘班），远端 state 键全为 str（`_k` 生效）；crawl-eod 15:15 首跑 success。上午曾发生事故③（state 不落盘→每班重复推送且全无 🆕），14:45 修复上线后恢复正常。
+- ✅ **09-03（第2天）**：16:00 ZCode 定时自检通过——① crawl.yml 当天全 success（run #448-457，15:15 专班含在内）；② Pages 线上 summary/core/changes_summary 数据日期=09-03（当日调仓 3142 笔：新增 1263/清仓 1070），auction.json=09-03 09:25 生成；③ 热层 db-state 15:20 回传（crawl-latest.db.gz 23.5MB），温层 W36 同步更新；④ auction 09:25 扫描 + auction-label 15:05 打标均 success。manifest 复核：integrity ok，trades 216944（较 09-01 单调递增），date_range 尾部=09-03，当日 trades 3989 / positions 3172（与 09-02 量级一致）。注：钉钉推送项无法从定时任务侧直接核对（不在手机端即可见），由用户日常确认。
+- ✅ **09-04（第3天，周五）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #478 success（白天有 3 个 run 被 concurrency 取消：#473/474/476，后续 run 均 success，manifest 逐日 fingerprint 与 09-03 完全一致确认无数据缺口）；② Pages summary/core/changes_summary 数据日期=09-04（当日调仓 3260 笔：新增 1302/清仓 1115），auction.json=09-04 09:25；③ 热层 15:24 回传（23.9MB），温层 W36 15:25 同步；④ 竞价 09:25（run #25）+ 打标 15:05（run #16）均 success。manifest：integrity ok，trades 221030，date_range 尾部=09-04，当日 trades 4086 / positions 3236。**周五当周温层 tag `db-w2026-W36` 在位且当日更新**（待办 B 第4条满足）。
 
 ### C.【需用户明确确认】④ git 历史重写（filter-repo）
 
