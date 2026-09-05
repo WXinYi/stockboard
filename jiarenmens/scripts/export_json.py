@@ -1220,6 +1220,10 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
         from src.analysis.emotion_cycle import compute_cycle
         from src.analysis.stage_candidates import stage_pool
         with sqlite3.connect(f"file:{ROOT / 'data' / 'auction.db'}?mode=ro", uri=True) as c:
+            # 非交易日(周末/节假日) crawl_date 是自然日, 对齐到最近交易日(否则前端日期守卫全隐藏+六情绪越界)
+            crawl_date = c.execute("SELECT MAX(date) FROM limit_pool WHERE date <= ?",
+                                   (crawl_date,)).fetchone()[0] or crawl_date
+            out["date"] = crawl_date
             prev = c.execute("SELECT MAX(date) FROM limit_pool WHERE date < ?", (crawl_date,)).fetchone()[0]
             bids = {r[0]: r[1] for r in c.execute(
                 "SELECT code, MAX(change_pct) FROM bid_pool WHERE date=? GROUP BY code", (crawl_date,))}
