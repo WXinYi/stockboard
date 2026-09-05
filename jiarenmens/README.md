@@ -90,13 +90,35 @@ stockboard/
 
 - **周期引擎** `src/analysis/emotion_cycle.py`：六段量化判定（冰点/启动/发酵/高潮/分歧/退潮）。⚠️ 涨停池 `PidType=5` 是"≥5板"封顶桶，真实连板高度按个股逐日连续在池反推。阈值在 `CYCLE_CFG`，**待回测校准**。
 - **V5 周期闸门**（`auction_scan.py:screen_v5` 第五刀）：退潮/冰点 V5 静默、分歧仅主线内半仓、发酵/高潮仅主线板块内；闸外转 `v5_off_cycle` 照常落库，`v5_results.cycle_stage` 供按周期分组回测。
-- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补，`auction-label.yml` 收盘后自动续当日。
+- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补。⚠️ `auction-label.yml` 收盘只续 `--pool` **不含宽度**（2026-09-05 发现宽度停在 8/28 致 9/4 误判"分歧"），宽度日常更新已挂 `crawl.yml` 收盘班（≥15:00 班次），`cycle_brief.py` 计算前另有断档自愈兜底。
 - **常用命令**：
   ```bash
   python scripts/cycle_brief.py                        # 当前格局报告
   python scripts/cycle_push.py --session eod --dry-run # 尾盘推送试跑
   python scripts/backfill_emotion.py --breadth         # 宽度数据回补
   ```
+
+## 我的纪律卡（2026-09-05 新增）
+
+盘面页入口卡 + `/market/discipline` 详情页：今日定性→仓位上限（`STAGE_RULES`，双实现同源 `emotionCycle.js`）、盘前五数、冰点确认四菜单（A+B 试错许可 / C+D 仓位恢复）、持仓处理价位表（触价高亮 + 板块涨停统计 + rtV2 调仓自动核对）、每日三行卡（localStorage `sb-discipline-log`）。
+
+数据链（每天 12 班自动刷新）：
+```
+jiarenmens/data/my_positions.json   # 手编配置: 价位表/板块归属/weekly_focus, 每周复盘更新
+  └─ export_json.py: build_my_positions()   # rtV2 调仓轧差 + GetPlateInfo_w38(HisLimitResumption) 板块统计 + 腾讯行情
+       └─ stockboard-app/public/data/latest/my_positions.json   # 前端 loader.fetchMyPositions
+```
+板块名为 KPL 概念聚类（每日漂移，如"算力(液冷)"），配置里写关键词即可（包含匹配）；`其他`/`ST板块` 桶不参与判定。调仓核对为近 120 笔轧差估算，盘支持当日回转（T+0）。
+
+## 出击列表选股（2026-09-05 升级）
+
+盘面页「🎯 今日出击」Tab = 唯一出击展示位（周期详情页已移除该模块）：阶段闸门×九宫格 → 四池候选（龙头谱系/阶段扩展/半路/退潮火种）→ 评分排序（`leaderBattle.js` computeStrike，纯规则可回测）。每只候选带 定位标签（龙头/中军/补涨/跟风，跟风强制回避）、买点三件套（`candTipOf` 共用函数）、按闸门换算的建议仓位；启动期含首板试错池（早封+主力净买），退潮期火种入候选。Python 对偶 `src/analysis/stage_candidates.py` 同步候选范围与状态语义。
+
+特殊标记「🔥 竞价换手TOP5」= 昨日连板股中今晨 9:25 竞价实际换手率前五（口径同 `scripts/lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯分时 0930 首行÷流通市值补算）：
+```
+export_json.py: build_lianban_bid()   # limit_pool 昨日连板(pid≥2) × bid_pool 竞价换手
+  └─ stockboard-app/public/data/latest/lianban_bid.json   # 前端经 loadBattleData 注入 computeBattle 标 c.bidTop
+```
 
 ## 技术栈
 

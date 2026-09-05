@@ -1,7 +1,7 @@
 // 龙头博弈 + 今日出击 · 浏览器端纯规则引擎(不用大模型, 全部确定性规则, 可回测)
 // ⚠️ 「今日出击」的阶段闸门/候选规则与 jiarenmens/src/analysis/stage_candidates.py 对齐, 改规则两边同步。
 //    矩阵分层闸门 MATRIX_GATE 同样两边镜像(语义对齐 MarketDetail.vue 的 MATRIX_DESC 九宫格)。
-// 板块之争/高标对决/半路候选为 JS 展示层实现(暂无 Python 对应); 若日后移植到推送, 需成对维护。
+// 板块之争/高标对决/半路候选/定位标签(龙头·中军·补涨·跟风)/买点三件套为 JS 展示层实现(暂无 Python 对应, Python 仅同步候选范围与状态语义); 若日后移植到推送, 需成对维护。
 // 评分权重为经验值, 待 auction.db 历史回测校准(M3); 评分=胜率优先排序, 非收益保证。
 
 import { tierOf } from './emotionCycle.js'
@@ -187,6 +187,44 @@ const MATRIX_GATE = {
 }
 const TIER_NAME = { low: '低位', mid: '中位', high: '高位' }
 
+// 买点三件套(买法/触发/止损)按 mode 定制; posTxt 由阶段闸门 cap 换算, 前端 candTip 直接透传
+const TIP_BY_MODE = {
+  '排板接力': { buy: '龙头接力', trigger: '竞价高开2-5%抢筹或回封排板；高开>7%只等回踩', stop: '断板即走 · 水下-2%' },
+  '排板': { buy: '龙头接力', trigger: '封单回封排板，不追盘中冲高', stop: '断板即走' },
+  '低吸不追高': { buy: '龙头低吸', trigger: '分时回踩均价线企稳再接，不追高开', stop: '跌破昨日低点' },
+  '低吸补涨': { buy: '补涨快进', trigger: '龙头封死后板块内卡位首日，快进快出', stop: '当日炸板即走' },
+  '首板试错': { buy: '首板试错', trigger: '竞价高开0-4%轻仓打，板块梯队≥3才有效', stop: '-3% 不过夜' },
+  '1进2排板': { buy: '1进2确认', trigger: '竞价强(+1.5~7%)→打板确认，炸板即走', stop: '炸板/水下-3%' },
+  '半路': { buy: '半路低吸', trigger: '主力净买为证，封板则持有至一致转分歧', stop: '-3% 不过夜' },
+  '排板/半路': { buy: '梯队排板', trigger: '封单回封排板或半路强转一致，不追分时冲高', stop: '断板即走 · -3%不过夜' },
+  '谨慎接力': { buy: '秒板接力', trigger: '只排板不追高，一致加速段兑现', stop: '断板即走' },
+  '火种观察': { buy: '火种试错', trigger: '试错许可(A+B)亮灯后，竞价高开0-5%试错', stop: '-3% 无条件' },
+  '观察(容量)': { buy: '中军低吸', trigger: '回踩5日线/分时均线低吸，不追涨', stop: '破位前低' },
+}
+function posFor(cap, status) {
+  if (cap === 0) return '0 成 · 阶段禁买'
+  if (status.startsWith('出击')) return cap >= 100 ? '单票≤2成' : cap >= 60 ? '单票≤1.5成' : cap >= 45 ? '单票≤1成' : '单票≤0.5成'
+  if (status.startsWith('备选')) return cap >= 100 ? '半仓试 · 单票≤1成' : '半仓试 · 单票≤0.5成'
+  return '0 成 · ' + status
+}
+
+// 买点三件套展示(盘面页出击Tab/详情页共用): 引擎 buyTip/posTxt 透传, 无引擎字段时按 mode/高度兜底
+export function candTipOf(c, cap = 100) {
+  if (c.buyTip) return { ...c.buyTip, pos: c.posTxt || (cap === 0 ? '0 成 · 阶段禁买' : '首仓 1 成') }
+  const lv = c.level || 0
+  const off = cap === 0 ? '0 成 · 阶段禁买' : '首仓 1 成'
+  if ((c.mode || '').includes('半路')) {
+    return { buy: '半路低吸', trigger: '主力净买为证，封板则持有至一致转分歧', stop: '-3% 不过夜', pos: off }
+  }
+  if (lv <= 1) {
+    return { buy: '首板试错', trigger: '板块梯队≥3 才有效，次日溢价为正再加', stop: '-3% 不过夜', pos: off }
+  }
+  if (lv === 2) {
+    return { buy: '1进2 确认', trigger: '分歧转一致打板，炸板即走', stop: '-3% 不过夜', pos: off }
+  }
+  return { buy: '龙头接力', trigger: '只排板不追高，一致转分歧兑现', stop: '断板即走', pos: cap === 0 ? off : '首仓 1 成（阶段上限内）' }
+}
+
 function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
   const stage = cycle.stage
   const gate = STAGE_GATE[stage] || { cap: 100, banner: '' }
@@ -202,14 +240,36 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
   const pool = new Map([...todayJoined.map(r => [r.code, r]), ...unsealed.map(u => [u.code, u])])
   const cands = []
 
+  // 定位四分类(龙头/中军/补涨/跟风): 龙头谱系角色优先, 否则按 板块高度/市值/板块扩缩 推断
+  const leadRole = new Map((cycle.leaders || []).map(l => [l.code, l.role || '']))
+  const warOf = new Map(boardWars.wars.map(w => [w.board, w]))
+  const primaryBoard = row => (row.plates || []).find(b => warOf.has(b)) || (row.plates || [])[0] || ''
+  const classify = row => {
+    const role = leadRole.get(row.code)
+    if (role) {
+      if (role.includes('空间锚') || role.includes('总龙头')) return '总龙头'
+      if (role.includes('板块龙头')) return '龙头'
+      if (role.includes('中军')) return '中军'
+      if (role.includes('补涨')) return '补涨'
+    }
+    const lvl = row.level ?? row.pid ?? 0
+    const w = warOf.get(primaryBoard(row))
+    const maxH = w ? w.maxH : 0, dC = w ? w.dCount : null
+    if (lvl >= 3) return maxH && lvl >= maxH ? '龙头' : '梯队'
+    if ((row.circMv || 0) >= 150e8) return '中军'
+    if (dC !== null && dC <= -2) return '跟风'
+    if (maxH >= 3 && dC !== null && dC >= 1) return '补涨'
+    return lvl === 1 ? '首板' : '梯队'
+  }
+
   const add = (row, base, mode, logic) => {
     const c = cands.find(x => x.code === row.code)
     if (c) { if (!c.logic.includes(logic)) c.logic += `；${logic}`; return }
     cands.push({ code: row.code, name: row.name, level: row.level ?? row.pid ?? 0, base, mode, logic })
   }
 
-  // 1) 龙头谱系: 状态由 阶段×角色 决定(与 stage_candidates.py 对齐)
-  const leadMode = { 高潮: '排板接力', 发酵: '排板', 分歧: '低吸不追高' }
+  // 1) 龙头谱系: 状态由 阶段×角色 决定(与 stage_candidates.py 对齐); 启动期龙头分歧转一致可上
+  const leadMode = { 高潮: '排板接力', 发酵: '排板', 分歧: '低吸不追高', 启动: '低吸不追高' }
   for (const l of cycle.leaders || []) {
     const row = pool.get(l.code) || { code: l.code, name: l.name, level: l.pid, plates: [] }
     const role = l.role || ''
@@ -232,8 +292,22 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
   } else if (stage === '启动' || stage === '冰点') {
     for (const r of todayJoined) {
       if (prevPid1.has(r.code) && r.level >= 2) add(r, 45, '1进2排板', `昨日首板今晋级${r.level}板(1进2确认)`)
-      else if (stage === '冰点' && r.level >= 2) add(r, 30, '观察', `逆市连板(冰点火种) ${r.level}板`)
+      else if (stage === '冰点' && r.level >= 2) add(r, 30, '火种观察', `逆市连板(冰点火种) ${r.level}板`)
     }
+    if (stage === '启动') {
+      // 首板试错: 主线首板 + 早封(≤10:00, 一字视为最强) + 主力净买 —— 新龙头苗子
+      for (const r of todayJoined) {
+        if (r.level !== 1 || !(r.plates || []).some(b => mainBoards.includes(b))) continue
+        const t = hhmm(r.ztTime)
+        if ((t && t > '10:00') || (r.mainNet || 0) <= 0) continue
+        add(r, 55, '首板试错', `主线首板·早封${t || '一字'} 主力净买${yi(r.mainNet)}(新龙头苗子)`)
+      }
+    }
+  }
+  // 2b) 退潮火种: 禁买期也要"看什么"——今日逆市连板即新周期候选载体
+  if (stage === '退潮') {
+    for (const r of [...todayJoined].filter(x => x.level >= 2).sort((x, y) => y.level - x.level).slice(0, 4))
+      add(r, 35, '火种观察', `逆市连板=新周期火种候选(禁买期只看) ${r.level}板`)
   }
   // 3) 盘中半路(JS实时维度): 未涨停池主线票 涨幅3-7% 主力净买
   if (stage !== '退潮') {
@@ -276,6 +350,15 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars) {
       c.status = '观察(矩阵禁买)'
       c.risk = c.risk ? `${c.risk}；矩阵${TIER_NAME[tierOf(c.level)]}禁买` : `矩阵${TIER_NAME[tierOf(c.level)]}禁买`
     }
+    // 定位标签 + 跟风回避 + 买点三件套/建议仓位(状态语义与 stage_candidates.py 对齐)
+    c.roleTxt = classify(row)
+    if (c.roleTxt === '跟风') {
+      c.score = Math.min(c.score, 30)
+      if (c.status === '出击' || c.status === '备选' || c.status === '观察') c.status = '观察(跟风回避)'
+      c.risk = c.risk ? `跟风·回避：${c.risk}` : '跟风·回避：板块退潮末端杂毛，一致时最先掉队'
+    }
+    c.posTxt = posFor(cap, c.status)
+    c.buyTip = TIP_BY_MODE[c.mode] || (c.roleTxt === '中军' ? TIP_BY_MODE['观察(容量)'] : null)
     c.strength = strengths.join(' · ')
     c.sealTxt = row.seal ? `封单${yi(row.seal)}` : ''
     c.platesTxt = (row.plates || []).slice(0, 2).join('/')
@@ -324,7 +407,7 @@ function computeRisks(todayJoined, unsealed, cycle) {
  * @param {object} p  { ladderRows, todayPool, prevFull, unsealed, cycle }
  *   ladderRows/todayPool/prevFull/unsealed 见 useKplApi.fetchTianTi/fetchLimitPool/fetchUnsealedPool
  */
-export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], unsealed = [], cycle = {} }) {
+export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], unsealed = [], cycle = {}, lianbanBid = null }) {
   const todayJoined = joinToday(ladderRows, todayPool)
   if (!todayJoined.length || !cycle.stage) {
     return { empty: true, strike: null, boardWars: { wars: [], relations: [], mainSwitch: null }, duels: [], risks: { brokenHighs: [], watch: [] } }
@@ -332,21 +415,29 @@ export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], 
   const boardWars = computeBoardWars(todayJoined, prevFull)
   const duels = computeDuels(todayJoined, prevFull, boardWars)
   const strike = computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars)
+  // 昨日连板 × 竞价实际换手 Top5 特殊标记(数据: latest/lianban_bid.json, 口径=scripts/lianban_bid_hs.py; 日期不匹配视为过期不标)
+  if (lianbanBid && lianbanBid.date === cycle.date && Array.isArray(lianbanBid.top)) {
+    const rank = new Map(lianbanBid.top.map((t, i) => [t.code, { rank: i + 1, hs: t.hs, prevPid: t.prev_pid }]))
+    for (const c of strike.candidates) {
+      const r = rank.get(c.code)
+      if (r) c.bidTop = r
+    }
+  }
   const risks = computeRisks(todayJoined, unsealed, cycle)
   return { empty: false, strike, boardWars, duels, risks }
 }
 
 /**
  * 装配: 今日 RT 涨停池(5板位) + 未涨停池(1/2/4/5) → computeBattle
- * 昨日全字段池复用 loadCycleData 的缓存结果(cd.prevFull)
+ * 昨日全字段池复用 loadCycleData 的缓存结果(cd.prevFull); lianbanBid 为竞价换手标记数据(fetchLianbanBid), 可空
  */
-export async function loadBattleData(kpl, cd) {
+export async function loadBattleData(kpl, cd, lianbanBid = null) {
   const [pools, unsealedLists] = await Promise.all([
     Promise.all([1, 2, 3, 4, 5].map(p => kpl.fetchLimitPool('', p, { rt: true, silent: true }))),
     Promise.all([1, 2, 4, 5].map(p => kpl.fetchUnsealedPool(p, true))),
   ])
   return computeBattle({
     ladderRows: cd.ladderRows, todayPool: pools.flat(),
-    prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle,
+    prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle, lianbanBid,
   })
 }

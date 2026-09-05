@@ -90,6 +90,23 @@ jobs:
         continue-on-error: true
         run: cd jiarenmens && python scripts/auction_scan.py --hot-rank
 
+      # 市场宽度(涨停/跌停/炸板率)每日落库: 仅收盘班次(≥15:00)写, 盘中班次跳过
+      # 防止盘中写进半日数; 断档会使周期引擎用旧宽度误判阶段(9/4 曾误判"分歧")
+      - name: 市场宽度更新
+        if: success()
+        continue-on-error: true
+        env:
+          # His 域名对 Actions 出口 IP 风控(08-29 起), 走 SCF 中转(同 auction-label.yml)
+          KPL_HIS_PROXY: https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com
+        run: |
+          cd jiarenmens
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -ge 1500 ]; then
+            python scripts/backfill_emotion.py --breadth
+          else
+            echo "盘中班次($H), 跳过宽度更新"
+          fi
+
       - name: 导出 JSON
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
 
