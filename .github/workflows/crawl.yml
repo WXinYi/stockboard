@@ -93,7 +93,18 @@ jobs:
       - name: 导出 JSON
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
 
+      # dist 壳按代码指纹缓存：数据班(代码未变)恢复缓存后仅 rsync 拼接最新数据，
+      # 跳过 npm ci + vite 全量构建(实测慢班 Build Vue 可达 7 分钟，占整班一半)；
+      # 代码 push 后第一班 cache miss 自动回退全量构建并重建缓存
+      - name: 恢复 dist 壳
+        id: dist
+        uses: actions/cache@v4
+        with:
+          path: stockboard-app/dist
+          key: dist-shell-${{ hashFiles('stockboard-app/src/**', 'stockboard-app/index.html', 'stockboard-app/vite.config.js', 'stockboard-app/package-lock.json') }}
+
       - name: Setup Node
+        if: steps.dist.outputs.cache-hit != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -101,7 +112,13 @@ jobs:
           cache-dependency-path: stockboard-app/package-lock.json
 
       - name: Build Vue
+        if: steps.dist.outputs.cache-hit != 'true'
         run: cd stockboard-app && npm ci && npm run build
+
+      # --delete 与 export_json 的"清理跌榜选手旧 JSON"语义一致，不残留已淘汰选手文件
+      - name: 拼接最新数据
+        if: steps.dist.outputs.cache-hit == 'true'
+        run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
 
       # 钉钉通知放在「提交数据」之前：notify_daily.py 会写 last_notify_state.json，
       # 让状态文件跟随当次「提交数据」一起 commit 持久化，供下次对比"新增操作"
