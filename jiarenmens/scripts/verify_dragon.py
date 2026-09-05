@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.spiders.auction_spider import KPLSpider  # noqa: E402
+from src.utils.market import market_prefix as _market  # noqa: E402 (92→bj 修复, 唯一实现)
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 CRAWL_DB = DATA_DIR / "crawl_data.db"
@@ -146,14 +147,6 @@ def load_buys() -> dict:
 # =============================================================================
 # 3. 腾讯日K: 次日收益
 # =============================================================================
-def _market(code: str) -> str:
-    if code.startswith(("6", "5", "9")):
-        return "sh"
-    if code.startswith(("4", "8")):
-        return "bj"
-    return "sz"
-
-
 def fetch_kline(codes) -> dict:
     """腾讯 qfq 日K → {code: {date: {"open":, "close":}}}"""
     out = {}

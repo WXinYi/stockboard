@@ -74,12 +74,7 @@ def _player_detail(wid: str, date_str: str):
 
 
 # ── 腾讯实时行情（当日涨跌幅, 新浪降级）────────────────────────────
-def _market(code: str) -> str:
-    if code.startswith(("6", "5", "9")):
-        return "sh"
-    if code.startswith(("4", "8")):
-        return "bj"
-    return "sz"
+from src.utils.market import market_prefix as _market  # noqa: E402 (92→bj 修复, 唯一实现)
 
 
 def _quotes_tencent(codes) -> dict:
@@ -92,7 +87,7 @@ def _quotes_tencent(codes) -> dict:
         except Exception:
             continue
         for line in text.splitlines():
-            m = re.match(r'v_s[hz](\d+)="(.*)"', line.strip())
+            m = re.match(r'v_(?:s[hz]|bj)(\d+)="(.*)"', line.strip())
             if not m:
                 continue
             fields = m.group(2).split("~")
@@ -125,7 +120,7 @@ def _quotes_sina(codes) -> dict:
         except Exception:
             continue
         for line in text.splitlines():
-            m = re.search(r'hq_str_s[hz](\d+)="(.*)";', line.strip())
+            m = re.search(r'hq_str_(?:s[hz]|bj)(\d+)="(.*)";', line.strip())
             if not m:
                 continue
             fields = m.group(2).split(",")
