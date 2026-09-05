@@ -267,7 +267,10 @@ def six_scores(date: str | None = None) -> dict:
     dates = sorted(out)
     d = date or dates[-1]
     if d not in out:
-        raise KeyError(f"{d} 不在数据范围内({dates[0]}~{dates[-1]})")
+        if date and date > dates[-1]:
+            d = dates[-1]  # 未来日期(非交易日)钳到最新, 避免周末班越界
+        else:
+            raise KeyError(f"{d} 不在数据范围内({dates[0]}~{dates[-1]})")
     m = metrics[d]
     return {"date": d, **out[d],
             "top_board": m["top_board"], "top_cnt": m["top_cnt"], "height": m["height"],
