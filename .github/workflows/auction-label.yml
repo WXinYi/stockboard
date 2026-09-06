@@ -1,6 +1,9 @@
-name: 竞价结果标签
+name: 涨停池回补
 # 收盘后(约 15:05, cron-job.org repository_dispatch / workflow_dispatch)触发。
-# 把当日竞价选股(auction.db candidates)关联实际收盘表现, 写入 candidate_results, 积累回测样本。
+# 原为"竞价结果标签"(candidates/candidate_results/v5_results 打标回测)——该存量体系
+# 已于 2026-09-06 整链删除; 现职责为 backfill_emotion --pool 写 limit_pool 全字段
+# (周期引擎/六情绪/出击选股的数据源), 修复当日涨停池断档。文件名与 dispatch type
+# `label` 不变, cron-job.org 调度无需改动。
 
 on:
   repository_dispatch:
@@ -32,7 +35,7 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
-      # auction.db 恢复(Release 迁移): 打标写库前必恢复; Release 失败回退日期快照→git 内库过渡
+      # auction.db 恢复(Release 迁移): 写库前必恢复; Release 失败回退日期快照→git 内库过渡
       - name: 下载 auction.db 热层
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,15 +50,12 @@ jobs:
           fi
           sha256sum data/auction.db | awk '{print $1}' > /tmp/auction_sha_start
 
-      - name: 结果标签(今日选股 → 收盘表现)
-        run: cd jiarenmens && python scripts/auction_scan.py --label $(TZ=Asia/Shanghai date +%F)
-
       - name: 涨停池全字段落库(周期引擎数据源, 修复当日断档)
         if: success()
         continue-on-error: true
         run: cd jiarenmens && python scripts/backfill_emotion.py --pool $(TZ=Asia/Shanghai date +%F) $(TZ=Asia/Shanghai date +%F)
 
-      # auction.db 上传闸门(Release 迁移): sha 变更才传; 标签结果不可重算, 失败即失败不吞
+      # auction.db 上传闸门(Release 迁移): sha 变更才传; 失败即失败不吞
       - name: 上传 auction.db 热层
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

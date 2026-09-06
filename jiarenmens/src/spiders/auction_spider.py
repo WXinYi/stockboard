@@ -180,19 +180,6 @@ class KPLSpider:
         return self._get({"a": "DailyLimitPerformance", "c": "HisHomeDingPan", "Day": date_str,
                           "PidType": pid_type, "Type": 4, "Index": 0, "Order": 0, "st": st}, KPL_HOST_HIS)
 
-    def zt_gene(self, stock_id: str) -> List:
-        """涨停基因(免Token): [涨停次数, 5%溢价次, 次日红盘%, 首板封板率%, 首板破板率%, 连板率%]"""
-        data = self._get({"a": "GetZhangTingGene", "apiv": "w42", "c": "StockL2Data", "StockID": stock_id,
-                          "PhoneOSNew": 1, "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3",
-                          "VerSion": "5.21.0.0"}, KPL_HOST_RT)
-        return data.get("List", [])
-
-    def stock_bid(self, stock_id: str) -> Dict:
-        """个股竞价分时 9:15-9:25: bid [[时间,价格,买卖方向,累计量],...]"""
-        return self._get({"a": "GetStockBid", "c": "StockL2Data", "PhoneOSNew": 1,
-                          "DeviceID": "d66474b3-fd78-3a95-a56d-76e29e765ea3", "VerSion": "5.20.0.2",
-                          "Token": self.token, "apiv": "w41", "StockID": stock_id, "UserID": self.user_id}, KPL_HOST_RT)
-
     def main_monitor(self, stock_id: str, money: int = 2) -> Dict:
         """大单成交(30万-1000万分档, Money: 0=30万 2=100万 3=300万): 逐笔大单"""
         return self._get({"Order": 0, "st": 20, "a": "GetMainMonitor_w30", "c": "StockYiDongKanPan",
@@ -240,13 +227,6 @@ class AuctionStore:
         self.db_path = db_path or (DATA_DIR / "auction.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
-        # 周期闸门: v5_results 记录选股时点的周期阶段(回测按阶段分组)
-        try:
-            with self._conn() as c:
-                c.execute("ALTER TABLE v5_results ADD COLUMN cycle_stage TEXT")
-        except Exception:
-            pass  # 列已存在
-
     def _init_db(self):
         with self._conn() as c:
             c.executescript("""
@@ -271,88 +251,18 @@ class AuctionStore:
                 main_net REAL, amount REAL, plates TEXT, circ_mv REAL, tag TEXT,
                 PRIMARY KEY (date, code)
             );
-            CREATE TABLE IF NOT EXISTS gene_daily (
-                date TEXT, code TEXT, limit_count INTEGER, premium_5pct INTEGER,
-                next_red_pct REAL, seal_pct REAL, break_pct REAL, consecutive_pct REAL,
-                PRIMARY KEY (date, code)
-            );
-            CREATE TABLE IF NOT EXISTS candidates (
-                date TEXT, code TEXT, name TEXT, tier TEXT,
-                score REAL, max_score INTEGER,
-                s1 INTEGER, s2 INTEGER, s3 INTEGER, s4 INTEGER, s5 INTEGER, s6 INTEGER,
-                s7 REAL, fused_score REAL,
-                s8 INTEGER, s9 INTEGER, unfilled_buy REAL,
-                bid_price REAL, bid_pct REAL, bid_net REAL, turnover REAL,
-                vol_ratio REAL, circ_mv REAL, bid_vol_last REAL,
-                bid_buy_ratio REAL, bid_vol_total REAL,
-                ma60_above INTEGER, ret20 REAL, macd_ok INTEGER, kdj_ok INTEGER,
-                tag TEXT, boards TEXT, seal_pct REAL, resonance INTEGER,
-                rank_in_day INTEGER,
-                PRIMARY KEY (date, code)
-            );
-            CREATE TABLE IF NOT EXISTS candidate_results (
-                date TEXT, code TEXT,
-                open_px REAL, high_px REAL, low_px REAL, close_px REAL,
-                pct_open REAL, pct_bid REAL, pct_day REAL,
-                pct_open_day REAL, pct_e31 REAL,
-                role TEXT,  -- NULL=候选(core/watch) / control=随机池基准 / rejected_fade=高开低走被拒组
-                PRIMARY KEY (date, code)
-            );
-            CREATE TABLE IF NOT EXISTS funnel_rejected (
-                date TEXT, code TEXT, name TEXT, reason TEXT,
-                PRIMARY KEY (date, code)
-            );
-            CREATE TABLE IF NOT EXISTS bid_series (
-                date TEXT, code TEXT, name TEXT,
-                series TEXT,
-                PRIMARY KEY (date, code)
-            );
-            CREATE TABLE IF NOT EXISTS v5_results (
-                date TEXT, code TEXT,
-                name TEXT,
-                -- 选股时点快照(9:25 定格)
-                bid_pct REAL, turnover REAL, circ_mv REAL,
-                prev_pct REAL, height INTEGER,
-                was_limit INTEGER, fade INTEGER, half_pos INTEGER,
-                pos_tag TEXT,             -- main=主攻3万 / sub=次攻2.4万 / NULL=普通
-                group_tag TEXT,           -- v5=候选 / v5_rej_turn=换手不足被拒 / v5_rej_mv=市值不足被拒
-                boards TEXT,
-                -- 收盘后打标(T+0 当日)
-                open_px REAL, close_px REAL, pct_open REAL,   -- 开盘买→当日收(V5 主口径)
-                pct_day REAL,             -- 当日收 vs 昨收
-                -- 次日打标(T+1, 卖出纪律执行日; 昨日强组 vs 低位组的关键分野)
-                next_date TEXT,
-                next_open_pct REAL,       -- 次日开盘 vs 当日收(隔夜跳空)
-                next_close_pct REAL,      -- 次日收盘 vs 当日开盘(次日持有收益, V5 次日兑现口径)
-                next_stop_hit INTEGER,    -- 次日盘中最低是否触及 -3% 止损线(相对买入价)
-                labeled_at TEXT,
-                PRIMARY KEY (date, code)
-            );
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_bid_pool_date ON bid_pool(date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_limit_pool_date ON limit_pool(date)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_candidates_date ON candidates(date)")
-            # 迁移: 旧库 candidates 表缺融合/文章因子列时 ALTER 补列(幂等)
-            _have = {r[1] for r in c.execute("PRAGMA table_info(candidates)")}
-            for _col, _ddl in {
-                "s7": "REAL", "fused_score": "REAL",
-                "bid_buy_ratio": "REAL", "bid_vol_total": "REAL",
-                "ma60_above": "INTEGER", "ret20": "REAL",
-                "macd_ok": "INTEGER", "kdj_ok": "INTEGER",
-                "s8": "INTEGER", "s9": "INTEGER", "unfilled_buy": "REAL",
-            }.items():
-                if _col not in _have:
-                    c.execute(f"ALTER TABLE candidates ADD COLUMN {_col} {_ddl}")
             # 迁移: 旧库 bid_pool 表补 unfilled_buy 列(幂等)
             _have_pool = {r[1] for r in c.execute("PRAGMA table_info(bid_pool)")}
             if "unfilled_buy" not in _have_pool:
                 c.execute("ALTER TABLE bid_pool ADD COLUMN unfilled_buy REAL")
-            # 迁移: 旧库 candidate_results 补 pct_day/pct_open_day/pct_e31/role 列(幂等)
-            _have_res = {r[1] for r in c.execute("PRAGMA table_info(candidate_results)")}
-            for _col, _ddl in {"pct_day": "REAL", "pct_open_day": "REAL",
-                               "pct_e31": "REAL", "role": "TEXT"}.items():
-                if _col not in _have_res:
-                    c.execute(f"ALTER TABLE candidate_results ADD COLUMN {_col} {_ddl}")
+            # 存量清理守卫(2026-09-06): 评分漏斗/V5/打标体系已删, Release 热层旧库仍带这些表
+            # → 每班开跑自动 DROP(幂等), 班内 sha 变更后自动上传干净库。确认无旧库残留后本段可删。
+            for _legacy in ("v5_results", "candidates", "candidate_results",
+                            "funnel_rejected", "bid_series", "gene_daily"):
+                c.execute(f"DROP TABLE IF EXISTS {_legacy}")
 
     @staticmethod
     def _validate_date(date_str):
@@ -425,27 +335,6 @@ class AuctionStore:
                      float(r[9] or 0) if len(r) > 9 else 0,
                      str(r[11] or ""), float(r[12] or 0), str(r[16] or ""), source))
 
-    def save_bid_series(self, date_str: str, stock_bids: Dict[str, List], pool: Dict = None):
-        """保存 GetStockBid 原始竞价分时(每只票整段 [时间,价,方向,累计量] 序列, JSON)。
-        回测时从 series 可重算 S2/S3/委比代理/竞价量, 不必依赖扫描时快照。
-        stock_bids: {code: [[time,px,dir,cum_vol],...]} 或 {code: {"code":..,"name":..,"bid":[...]}}
-        pool: 候选池(取 name, 可选)"""
-        import json
-        self._validate_date(date_str)
-        with self._conn() as c:
-            for code, v in stock_bids.items():
-                if isinstance(v, dict):
-                    bid = v.get("bid") or []
-                    name = v.get("name") or ""
-                else:
-                    bid = v or []
-                    name = (pool or {}).get(code, {}).get("name", "") if pool else ""
-                if not bid:
-                    continue
-                c.execute("""INSERT OR REPLACE INTO bid_series
-                    (date, code, name, series) VALUES (?,?,?,?)""",
-                    (date_str, code, name, json.dumps(bid, ensure_ascii=False)))
-
     def save_limit_pool(self, date_str: str, groups: List[tuple]):
         """groups: [(pid_type, rows), ...] — DailyLimitPerformance 每个 PidType 的 info
         可能含多个分组数组, 需先展平再按 PidType 落库"""
@@ -462,144 +351,6 @@ class AuctionStore:
                         (date_str, r[0], r[1], pid_type, int(r[4] or 0), str(r[5] or ""),
                          float(r[6] or 0), float(r[7] or 0), float(r[8] or 0), float(r[11] or 0),
                          str(r[12] or ""), float(r[13] or 0), str(r[18] if len(r) > 18 else "")))
-
-    def save_genes(self, date_str: str, genes: Dict[str, List]):
-        self._validate_date(date_str)
-        with self._conn() as c:
-            for code, g in genes.items():
-                if len(g) < 6:
-                    continue
-                c.execute("""INSERT OR REPLACE INTO gene_daily
-                    (date, code, limit_count, premium_5pct, next_red_pct, seal_pct, break_pct, consecutive_pct)
-                    VALUES (?,?,?,?,?,?,?,?)""",
-                    (date_str, code, int(g[0]), int(g[1]), float(g[2]), float(g[3]),
-                     float(g[4]), float(g[5])))
-
-    def save_candidates(self, date_str: str, candidates: List[Dict], watch: List[Dict]):
-        """落库当日选股(core/watch 两层) + S1-S6 因子分 + 原始因子(回测输入)。
-        候选 dict 来自 run_funnel: {code,name,score,tier,max,factors,sub,gene,boards,tag,resonance}"""
-        self._validate_date(date_str)
-        with self._conn() as c:
-            # 日期隔离: 每次扫描产出完整名单, 先清当日旧行, 避免 INSERT OR REPLACE 残留上次名单多出/剔除的 code
-            c.execute("DELETE FROM candidates WHERE date=?", (date_str,))
-            for tier, arr in (("core", candidates), ("watch", watch)):
-                for rank, item in enumerate(arr, 1):
-                    f_ = item.get("factors") or {}
-                    s_ = item.get("sub") or {}
-                    g_ = (item.get("gene") or {}).get("data") or {}
-                    c.execute("""INSERT OR REPLACE INTO candidates
-                        (date, code, name, tier, score, max_score,
-                         s1, s2, s3, s4, s5, s6, s7, fused_score,
-                         s8, s9, unfilled_buy,
-                         bid_price, bid_pct, bid_net, turnover, vol_ratio, circ_mv, bid_vol_last,
-                         bid_buy_ratio, bid_vol_total,
-                         ma60_above, ret20, macd_ok, kdj_ok,
-                         tag, boards, seal_pct, resonance, rank_in_day)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (date_str, item["code"], item.get("name") or "", tier,
-                         float(item.get("score") or 0), int(item.get("max") or 21),
-                         int(s_.get("S1资金") or 0), int(s_.get("S2形态") or 0),
-                         int(s_.get("S3共振") or 0), int(s_.get("S4身位") or 0),
-                         int(s_.get("S5量比") or 0), int(s_.get("S6基因") or 0),
-                         item.get("s7"), item.get("fused_score"),
-                         int(s_.get("S8撮合") or 0), int(s_.get("S9委买") or 0),
-                         f_.get("unfilled_buy"),
-                         f_.get("bid_price"), f_.get("bid_pct"), f_.get("bid_net"),
-                         f_.get("turnover"), f_.get("vol_ratio"), f_.get("circ_mv"),
-                         f_.get("bid_vol_last"),
-                         f_.get("bid_buy_ratio"), f_.get("bid_vol_total"),
-                         f_.get("ma60_above"), f_.get("ret20"),
-                         f_.get("macd_ok"), f_.get("kdj_ok"),
-                         item.get("tag") or "",
-                         ",".join(item.get("boards") or []), g_.get("seal_pct"),
-                         int(item.get("resonance") or 0), rank))
-
-    def save_candidate_result(self, date_str: str, code: str, open_px, high_px, low_px,
-                              close_px, pct_open, pct_bid, pct_day=None,
-                              pct_open_day=None, pct_e31=None, role=None):
-        """写入单只当日实际表现(candidate_results), --label 结果标签用
-        pct_bid = 收盘相对竞价价(策略口径); pct_day = 收盘相对昨收(当天涨跌幅);
-        pct_open_day = 收盘相对开盘价(开盘买入); pct_e31 = 收盘相对 09:31 价(E层确认入场)
-        role: NULL=候选 / control=随机池基准 / rejected_fade=高开低走被拒组(对照组)"""
-        self._validate_date(date_str)
-        with self._conn() as c:
-            c.execute("""INSERT OR REPLACE INTO candidate_results
-                (date, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
-                 pct_open_day, pct_e31, role)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (date_str, code, open_px, high_px, low_px, close_px, pct_open, pct_bid, pct_day,
-                 pct_open_day, pct_e31, role))
-
-    def save_rejected(self, date_str: str, rows: List[Dict]):
-        """落库漏斗被拒明细(funnel_rejected), 对照组(高开低走/对倒/资金不足)打标基础"""
-        self._validate_date(date_str)
-        with self._conn() as c:
-            c.execute("DELETE FROM funnel_rejected WHERE date=?", (date_str,))
-            c.executemany("""INSERT OR REPLACE INTO funnel_rejected (date, code, name, reason)
-                             VALUES (?,?,?,?)""",
-                          [(date_str, r["code"], r["name"], r.get("reason") or "") for r in rows])
-
-    def save_v5_results(self, date_str: str, rows: List[Dict]):
-        """落库 V5 当日名单快照(v5_results), 含选股时点因子与分组标签。
-        幂等: 先 DELETE 当日再整批写入(重跑覆盖)。"""
-        self._validate_date(date_str)
-        with self._conn() as c:
-            c.execute("DELETE FROM v5_results WHERE date=?", (date_str,))
-            c.executemany("""INSERT OR REPLACE INTO v5_results
-                (date, code, name, bid_pct, turnover, circ_mv,
-                 prev_pct, height, was_limit, fade, half_pos,
-                 pos_tag, group_tag, boards, cycle_stage)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                [(date_str, r["code"], r["name"], r.get("bid_pct"), r.get("turnover"),
-                  r.get("circ_mv"), r.get("prev_pct"), r.get("height"),
-                  int(bool(r.get("was_limit"))), int(bool(r.get("fade"))),
-                  int(bool(r.get("half_pos"))), r.get("pos_tag"), r.get("group_tag"),
-                  ",".join(r.get("boards") or []), r.get("cycle_stage")) for r in rows])
-
-    def load_v5_results(self, date_str: str) -> List[Dict]:
-        with self._conn() as c:
-            return [dict(r) for r in c.execute(
-                "SELECT * FROM v5_results WHERE date=? ORDER BY turnover DESC", (date_str,))]
-
-    def label_v5_result(self, date_str: str, code: str, open_px=None, close_px=None,
-                        pct_open=None, pct_day=None):
-        """T+0 打标: 更新单只 V5 结果的当日行情(只更新列, 不动选股快照)"""
-        self._validate_date(date_str)
-        with self._conn() as c:
-            c.execute("""UPDATE v5_results SET
-                open_px=?, close_px=?, pct_open=?, pct_day=?, labeled_at=datetime('now','localtime')
-                WHERE date=? AND code=?""",
-                (open_px, close_px, pct_open, pct_day, date_str, code))
-
-    def label_v5_next(self, date_str: str, code: str, next_date, next_open_pct=None,
-                      next_close_pct=None, next_stop_hit=None):
-        """T+1 打标: 次日开盘/收盘表现 + 是否触及-3%止损(卖出纪律验证核心字段)"""
-        self._validate_date(date_str)
-        with self._conn() as c:
-            c.execute("""UPDATE v5_results SET
-                next_date=?, next_open_pct=?, next_close_pct=?, next_stop_hit=?,
-                labeled_at=datetime('now','localtime')
-                WHERE date=? AND code=?""",
-                (next_date, next_open_pct, next_close_pct, next_stop_hit, date_str, code))
-
-    def load_bid_pool(self, date_str: str) -> List[Dict]:
-        """读取当日候选池(bid_pool), 对照组抽样用"""
-        with self._conn() as c:
-            rows = c.execute("SELECT * FROM bid_pool WHERE date=?", (date_str,)).fetchall()
-            return [dict(r) for r in rows]
-
-    def load_rejected(self, date_str: str) -> List[Dict]:
-        """读取当日漏斗被拒明细(funnel_rejected), 高开低走被拒组打标用"""
-        with self._conn() as c:
-            rows = c.execute("SELECT * FROM funnel_rejected WHERE date=?", (date_str,)).fetchall()
-            return [dict(r) for r in rows]
-
-    def load_candidates(self, date_str: str) -> List[Dict]:
-        """按日期读取当日候选(core/watch), --label 结果标签用"""
-        with self._conn() as c:
-            rows = c.execute("SELECT * FROM candidates WHERE date=? ORDER BY tier, rank_in_day",
-                             (date_str,)).fetchall()
-            return [dict(r) for r in rows]
 
     def load_bid_pool(self, date_str: str) -> List[Dict]:
         self._validate_date(date_str)

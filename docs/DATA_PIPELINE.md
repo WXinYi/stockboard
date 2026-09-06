@@ -155,7 +155,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 ```
 
 另有独立机器：
-- **竞价扫描** `auction_scan.py`（09:25 cron 单独触发，写 `auction.db`，钉钉推**出击选股Top5 + 昨日连板·竞价换手Top5**，09:31 `--confirm` 补推出击开盘确认；存量评分漏斗候选 2026-09-06 停跑——不再采涨停基因/全池竞价分时，V5 首枪保留为内部喂养供 stage_pool 容量方向与回测）；
+- **竞价扫描** `auction_scan.py`（09:25 cron 单独触发，写 `auction.db`，钉钉推**出击选股Top5 + 昨日连板·竞价换手Top5**，09:31 `--confirm` 补推出击开盘确认；存量评分漏斗与 V5 首枪 2026-09-06 **整链删除**——代码/回测表/打标全移除，活函数迁 `src/analysis/auction_env.py`）；
 - **盘中监控** `intraday_monitor.py`（本机 LaunchAgent 09:26–15:10，写 `intraday.db`，本地独享不提交）；
 - **尾盘格局** `cycle_push.py --session eod`（14:30–14:55 窗口，搭 crawl dispatch 便车）。
 
@@ -179,7 +179,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 |---|---|---|---|
 | 选手榜单 | `https://emdcspzhapi.dfcfs.cn/rtV1` (`rt_get_rank`) | `src/spiders/player_list.py` | 总/年/月/周/日 5 类榜单，每榜 `--limit`(默认500)名，页大小20 |
 | 选手详情/持仓/调仓 | `https://emdcspzhapi.eastmoney.com/rtV2` (POST, appKey=eastmoney) | `src/spiders/api_detail.py` | 一次调用拿全三样；无鉴权，固定 timestamp；重试3次 |
-| 竞价候选 | 开盘啦实时接口 (apphwhq: GetBKJJ_W36 / RealRankingInfo / MorningBiddingList 等) | `scripts/auction_scan.py` | 当天走实时路径，历史回放走 His 路径 |
+| 竞价池/板块/情绪 | 开盘啦实时接口 (apphwhq: GetBKJJ_W36 / RealRankingInfo / MorningBiddingList 等) | `scripts/auction_scan.py` | 当天走实时路径，历史回放走 His 路径 |
 | 人气榜 | 东财人气榜 TOP100 | `scripts/auction_scan.py --hot-rank` | am/pm 每(date,snap)去重，最多两份/天 |
 | 实时涨停池/格局 | 开盘啦 + 东财实时 | `scripts/cycle_push.py` | 只推钉钉，不落数据库 |
 | 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | 本机独享 |
@@ -214,7 +214,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 | 库 | 写入方 | 内容 | 是否提交 git |
 |---|---|---|---|
-| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价候选/漏斗/梯队/情绪/结果标签/涨停池/宽度/炸板池/指数 13 张表 | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 7 天 + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
+| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/情绪/梯队/涨停池/宽度/炸板池/指数/出击存档 8 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 7 天 + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
 | `hot_rank.db` | auction_scan --hot-rank | 东财人气榜 am/pm 快照 | 是 |
 | `intraday.db` / `analysis.db` | intraday_monitor.py | 盘中信号快照 | **否**（.gitignore，本机独享） |
 | `crawl_data.db-shm/-wal` | SQLite WAL | — | 否（.gitignore） |

@@ -15,7 +15,7 @@
 
 `crawl_data.db` **不再进 git**，持久化走 GitHub Release 三层存储（热层 40 采集日 / 温层 12 周滚动 / 冷层永久），完整方案与运维手册见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
 
-`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/打标/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照留 7 天 + 周快照留 26 周——当前周随每班刷新、周切换自然冻结为周末状态；bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
+`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照留 7 天 + 周快照留 26 周——当前周随每班刷新、周切换自然冻结为周末状态；bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
 
 ```bash
 python3 scripts/fetch_db.py --latest          # 热层(最近40采集日) → data/crawl_data.db
@@ -81,7 +81,7 @@ stockboard/
     ├── spiders/               # 数据获取模块（auction_spider 含 KPL 实时盘口/涨停池）
     ├── storage/               # 存储模块
     ├── analysis/              # 分析模块
-    │   ├── auction_funnel.py  # 竞价评分漏斗
+    │   ├── auction_env.py     # 竞价环境检查 + 强势板块选择(原漏斗的两个活函数)
     │   ├── emotion_cycle.py   # ★ 超短情绪周期引擎（六段/主线/龙头谱系）
     │   └── stage_candidates.py# 阶段候选池（周期→战法模式→候选）
     └── utils/                 # 工具函数
@@ -92,8 +92,8 @@ stockboard/
 围绕「情绪周期 → 主线 → 龙头谱系 → 阶段候选」的超短决策辅助，交付形态是**钉钉每日三推**（09:25 竞价 / 13:05 午盘 / 14:40 尾盘，搭现有 crawl/auction workflow 便车）。
 
 - **周期引擎** `src/analysis/emotion_cycle.py`：六段量化判定（冰点/启动/发酵/高潮/分歧/退潮）。⚠️ 涨停池 `PidType=5` 是"≥5板"封顶桶，真实连板高度按个股逐日连续在池反推。阈值在 `CYCLE_CFG`，**待回测校准**。
-- **V5 周期闸门**（`auction_scan.py:screen_v5` 第五刀）：退潮/冰点 V5 静默、分歧仅主线内半仓、发酵/高潮仅主线板块内；闸外转 `v5_off_cycle` 照常落库，`v5_results.cycle_stage` 供按周期分组回测。
-- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补。⚠️ `auction-label.yml` 收盘只续 `--pool` **不含宽度**（2026-09-05 发现宽度停在 8/28 致 9/4 误判"分歧"），宽度日常更新已挂 `crawl.yml` 收盘班（≥15:00 班次），`cycle_brief.py` 计算前另有断档自愈兜底。
+- **存量评分漏斗与 V5 已整链删除**（2026-09-06）：`auction_funnel.py`/`screen_v5`/v5_results 等回测表/打标(`--label`)全部移除，出击名单的"周期闸门"语义由 `stage_candidates.py`(Python) 与 `leaderBattle.js`(JS) 镜像实现；`env_check`/`board_select` 迁至 `src/analysis/auction_env.py` 继续服役。
+- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补。⚠️ `auction-label.yml`(涨停池回补班) 收盘只续 `--pool` **不含宽度**（2026-09-05 发现宽度停在 8/28 致 9/4 误判"分歧"），宽度日常更新已挂 `crawl.yml` 收盘班（≥15:00 班次），`cycle_brief.py` 计算前另有断档自愈兜底。
 - **常用命令**：
   ```bash
   python scripts/cycle_brief.py                        # 当前格局报告
@@ -115,7 +115,7 @@ jiarenmens/data/my_positions.json   # 手编配置: 价位表/板块归属/weekl
 
 ## 出击列表选股（2026-09-05 升级）
 
-**09:29 钉钉推送换血（2026-09-06）**：竞价班推送从"评分漏斗候选池 + V5 首枪"换成 **🎯出击选股 Top5（strike_pool 9:26 口径存档，与盘面页出击 Tab 同源）+ 🪜昨日连板·今日竞价换手 Top5**（口径同 `build_lianban_bid`/`lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯 0930 补算，`rank_lianban_bid` 纯函数+单测）；09:31 `--confirm` 同步改为**出击开盘确认**（读 strike_pool 存档，09:31 最新价 vs 竞价价判守住/跌破，候选不再走 /tmp 中转）。存量评分漏斗（B1-S9 融合候选/涨停基因/全池竞价分时采集）**停跑**——省去每交易日数百请求；V5 首枪降级为**内部喂养**（不推送不占名额）：`stage_pool` 发酵/高潮的容量方向仍从 auction.json `v5` 段读数，`v5_results` 照常落库，`--label` 里 v5 打标已改为不依赖 candidates（候选停产不再连带断链）。前端同步：auction.json 去掉 `candidates`/`watch`/`rejected`，新增 `strike`/`strike_watch`/`bidrank`；竞价页（AuctionTab）换出击选股+连板换手两段，盘面页竞价迷你卡改显出击前2。`--dry-run` 语义收紧：不推钉钉**且不写生产 auction.json**（演练不覆盖前端快照）。
+**09:29 钉钉推送换血（2026-09-06）**：竞价班推送从"评分漏斗候选池 + V5 首枪"换成 **🎯出击选股 Top5（strike_pool 9:26 口径存档，与盘面页出击 Tab 同源）+ 🪜昨日连板·今日竞价换手 Top5**（口径同 `build_lianban_bid`/`lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯 0930 补算，`rank_lianban_bid` 纯函数+单测）；09:31 `--confirm` 同步改为**出击开盘确认**（读 strike_pool 存档，09:31 最新价 vs 竞价价判守住/跌破，候选不再走 /tmp 中转）。存量评分漏斗与 V5 首枪当日先停跑、随后**整链删除**（漏斗评分/涨停基因/全池竞价分时采集、v5_results/candidates/candidate_results 等回测表、`--label`/`--v5-report`/`--backfill-factors` 入口全移除）——每交易日省去数百请求，auction.db 热层 2.19MB→0.7MB。页面『观察(容量)』= 龙头谱系中军（JS/Python 两端都有），与 V5 无关。前端同步：auction.json 去掉 `candidates`/`watch`/`rejected`，新增 `strike`/`strike_watch`/`bidrank`；竞价页（AuctionTab）换出击选股+连板换手两段，盘面页竞价迷你卡改显出击前2。`--dry-run` 语义收紧：不推钉钉**且不写生产 auction.json**（演练不覆盖前端快照）。
 
 盘面页「🎯 今日出击」Tab = 唯一出击展示位（周期详情页已移除该模块）：阶段闸门×九宫格 → 四池候选（龙头谱系/阶段扩展/半路/退潮火种）→ 评分排序（`leaderBattle.js` computeStrike，纯规则可回测）。每只候选带 定位标签（龙头/中军/补涨/跟风，跟风强制回避）、买点三件套（`candTipOf` 共用函数）、按闸门换算的建议仓位；启动期含首板试错池（早封+主力净买），退潮期火种入候选。Python 对偶 `src/analysis/stage_candidates.py` 同步候选范围与状态语义。
 

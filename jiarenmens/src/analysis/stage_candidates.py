@@ -5,13 +5,10 @@
 每个阶段对应文章战法里的选股模式:
   冰点  → 1进2 候选(昨日首板+今日竞价强势) + 逆市连板        (首板套利/新周期火种)
   启动  → 昨日低位晋级候选 + 主线首板                        (打首板/低点做龙头)
-  发酵  → 主线梯队(2-5板)强者 + 龙头谱系 + V5容量方向(主线内) (上龙头/同梯队)
-  高潮  → 龙头谱系(接力名单) + V5容量方向(主线内)            (只做龙头接力)
+  发酵  → 主线梯队(2-5板)强者 + 龙头谱系 + 主线中军          (上龙头/同梯队)
+  高潮  → 龙头谱系(接力名单) + 主线中军                      (只做龙头接力)
   分歧  → 龙头谱系(低吸观察)                                 (抱团龙头, 避中位)
   退潮  → 仅空间锚(观察)                                     (空仓纪律)
-
-V5 竞价首枪作为"容量方向"只在 发酵/高潮 两个阶段开启(周期闸门), 且只保留主线板块内
-的标的 —— 即 V5 的选股池由情绪周期产生与过滤。
 
 高中位矩阵分层闸门(与 stockboard-app/src/utils/leaderBattle.js 的 MATRIX_GATE 镜像同步):
 同一阶段下按 cycle_res["matrix"](高位|中位) 再分 low=1-2板 / mid=3-5板 / high=≥6板 三层
@@ -19,8 +16,6 @@ V5 竞价首枪作为"容量方向"只在 发酵/高潮 两个阶段开启(周�
 (JS 版另有评分上限 cap, Python 无评分, 仅状态语义对齐。)
 """
 from src.analysis.emotion_cycle import load_pool, ladder_split
-
-V5_STAGES = {"发酵", "高潮"}
 
 MATRIX_GATE = {
     "强|强":     {"tier": {"high": "go",    "mid": "go",    "low": "go"}},
@@ -186,15 +181,6 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
                 "可做(弱转强)",
                 tag=tag, bid_pct=f"{bids[code]['change_pct']:+.1f}")  # 结构化字段: build_strike_review 优先读, 免 regex 解析 reason
 
-    # 3) V5 容量方向(周期闸门): 仅 发酵/高潮 开, 且只留主线板块内
-    if stage in V5_STAGES:
-        v5 = _load_v5(date_str)
-        for c in v5:
-            if any(b in mainlines for b in c.get("boards", [])) and len(pool) < max_n + 8:
-                add(c["code"], c["name"], 0,
-                    f"V5容量方向({c.get('pos_tag') or '普通'}) [{'/'.join(c.get('boards', [])[:2])}]",
-                    "观察(容量)")
-
     return _apply_matrix(_apply_shrink_filter(pool, cycle_res, cur_rows), cycle_res)[:max_n]
 
 
@@ -231,14 +217,3 @@ def _broken_map(date_str):
     except sqlite3.Error:
         return {}
 
-
-def _load_v5(date_str):
-    import json
-    from pathlib import Path
-    f = Path(__file__).resolve().parents[3] / "stockboard-app" / "public" / "data" / "latest" / "auction.json"
-    if not f.exists():
-        return []
-    j = json.loads(f.read_text())
-    if j.get("date") != date_str:
-        return []
-    return [v for v in (j.get("v5") or []) if v.get("group_tag") == "v5"]
