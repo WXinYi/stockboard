@@ -1400,7 +1400,10 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                          "pid": l["pid"], "role": l["role"]} for l in cycle_res["leaders"]],
         } if cycle_res else None),
         "empty_reason": "" if env_res["pass"] else "; ".join(env_res["reasons"]),
-        "stats": {"pool": len(pool), "boards": len(boards)},
+        "stats": {"pool": len(pool), "boards": len(boards), "genes": 0},
+        # ── 过渡兼容键(老 Pages 构建的 AuctionTab 读 candidates.length/watch 会崩,
+        #    新 UI 要等 crawl 班 npm run build 部署; 新 UI 上线后本组可删) ──
+        "candidates": [], "watch": [],
     }
     # dry-run 不写生产快照(演练/回放不覆盖前端auction.json; 演练正文直接打印供人工核验)
     if not dry_run:

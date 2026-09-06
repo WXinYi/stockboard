@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchAuction } from '../data/loader.js'
 
@@ -20,6 +20,11 @@ onMounted(async () => {
 function openStock(code) {
   router.push(`/stock/${code}`)
 }
+
+// 缺键防御(旧形状快照/加载竞态): 无 strike/bidrank/boards 键时渲染空态而非崩页
+const boards = computed(() => auction.value?.boards || [])
+const strike = computed(() => auction.value?.strike || [])
+const bidrank = computed(() => auction.value?.bidrank || [])
 
 function fmt(v, digits = 2) {
   if (v === null || v === undefined) return '—'
@@ -72,10 +77,10 @@ function shortStatus(c) {
 
       <template v-if="auction.env.pass">
         <!-- 强势板块 -->
-        <section v-if="auction.boards.length" class="auction-sec">
-          <h3 class="auction-sec-title">🔥 强势板块 <em>{{ auction.boards.length }}</em></h3>
+        <section v-if="boards.length" class="auction-sec">
+          <h3 class="auction-sec-title">🔥 强势板块 <em>{{ boards.length }}</em></h3>
           <div class="board-chips">
-            <span v-for="b in auction.boards" :key="b.code" class="chip"
+            <span v-for="b in boards" :key="b.code" class="chip"
                   :class="{ both: b.src === '爆量+强度' }">
               {{ b.name }}
               <i v-if="b.burst">{{ fmt(b.burst, 1) }}x</i>
@@ -87,18 +92,18 @@ function shortStatus(c) {
         <!-- 出击选股(09:29 推送同源: strike_pool 9:26 口径存档) -->
         <section class="auction-sec">
           <h3 class="auction-sec-title">
-            🎯 出击选股 <em>{{ auction.strike.length }}</em>
+            🎯 出击选股 <em>{{ strike.length }}</em>
             <span v-if="auction.stats" class="sec-sub">池{{ auction.stats.pool }}</span>
           </h3>
 
-          <div v-if="!auction.strike.length" class="empty-cand">
+          <div v-if="!strike.length" class="empty-cand">
             本阶段无出击候选（纪律优先）
           </div>
           <div v-else class="cand-list">
             <div v-if="auction.strike_watch" class="empty-cand">
               本阶段无出击/备选（纪律优先）— 仅观察名单
             </div>
-            <div v-for="(c, i) in auction.strike" :key="c.code"
+            <div v-for="(c, i) in strike" :key="c.code"
                  class="cand-row" :class="{ core: isGo(c), watch: !isGo(c) }" @click="openStock(c.code)">
               <div class="cand-line1">
                 <span class="h-rank rank-num" :class="{ watch: !isGo(c) }">{{ i + 1 }}</span>
@@ -119,10 +124,10 @@ function shortStatus(c) {
         </section>
 
         <!-- 昨日连板 · 竞价换手 Top5 -->
-        <section v-if="auction.bidrank && auction.bidrank.length" class="auction-sec">
-          <h3 class="auction-sec-title">🪜 昨日连板 · 竞价换手 <em>{{ auction.bidrank.length }}</em></h3>
+        <section v-if="bidrank.length" class="auction-sec">
+          <h3 class="auction-sec-title">🪜 昨日连板 · 竞价换手 <em>{{ bidrank.length }}</em></h3>
           <div class="cand-list">
-            <div v-for="(b, i) in auction.bidrank" :key="b.code"
+            <div v-for="(b, i) in bidrank" :key="b.code"
                  class="cand-row watch" @click="openStock(b.code)">
               <div class="cand-line1">
                 <span class="h-rank rank-num watch">{{ i + 1 }}</span>
