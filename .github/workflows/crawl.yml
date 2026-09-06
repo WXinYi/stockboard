@@ -38,6 +38,8 @@ jobs:
       # auction.db 恢复: 竞价/宽度/炸板/六情绪多班共写(Release 三层迁移), 每班开跑前必恢复,
       # sha 起点也在此记录(上传闸门用)。Release 失败自动回退最新日快照; 迁移过渡期回退 git 内 db。
       - name: 下载 auction.db 热层
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd jiarenmens
           if python3 scripts/release_db.py --what auction --download-latest; then
@@ -139,6 +141,8 @@ jobs:
       # auction.db 上传闸门: sha 变更才传(夜间空转班自动跳过)。竞价档案易逝不可重采,
       # 失败即让 run 失败(同 crawl_data 的"宁可停, 不可断链"), 不吞错。
       - name: 上传 auction.db 热层
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd jiarenmens
           NOW=$(sha256sum data/auction.db | awk '{print $1}')

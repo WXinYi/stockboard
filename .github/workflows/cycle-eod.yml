@@ -29,6 +29,8 @@ jobs:
 
       # auction.db 恢复(Release 迁移): cycle_push 只读周期引擎数据, 恢复失败可降级但需可见
       - name: 下载 auction.db 热层
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd jiarenmens
           if python3 scripts/release_db.py --what auction --download-latest; then

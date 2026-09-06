@@ -30,6 +30,8 @@ jobs:
 
       # auction.db 恢复(Release 迁移): 扫描写库前必恢复; Release 失败回退日期快照→git 内库过渡
       - name: 下载 auction.db 热层
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd jiarenmens
           if python3 scripts/release_db.py --what auction --download-latest; then
@@ -57,6 +59,8 @@ jobs:
 
       # auction.db 上传闸门(Release 迁移): sha 变更才传; 竞价档案易逝, 失败即失败不吞
       - name: 上传 auction.db 热层
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd jiarenmens
           NOW=$(sha256sum data/auction.db | awk '{print $1}')
