@@ -51,7 +51,7 @@ jobs:
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python scripts/watched_flash.py
 
-      - name: 竞价扫描 + 钉钉主结论(09:29 前)
+      - name: 出击选股 + 昨日连板换手Top5 + 钉钉推送(09:29 前)
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
@@ -105,10 +105,11 @@ jobs:
               print("已过 09:31, 直接确认")
           EOF
 
-      - name: E 层开盘确认 + 钉钉补推
+      - name: 出击开盘确认 + 钉钉补推
         if: always()
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
-        # 修复 KeyError 后不再吞错: E 层失败应使 workflow 失败(可见), 且不影响已提交的 auction.db
-        run: cd jiarenmens && python scripts/auction_scan.py --confirm --candidates /tmp/auction_candidates.json
+        # 修复 KeyError 后不再吞错: 确认失败应使 workflow 失败(可见), 且不影响已提交的 auction.db
+        # 候选读 strike_pool 当时存档(与 09:29 推送同一份), 不再依赖 /tmp 中转
+        run: cd jiarenmens && python scripts/auction_scan.py --confirm

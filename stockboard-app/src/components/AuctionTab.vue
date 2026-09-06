@@ -25,6 +25,17 @@ function fmt(v, digits = 2) {
   if (v === null || v === undefined) return '—'
   return Number(v).toFixed(digits)
 }
+
+// 状态映射(与 Python pick_strike_top 同口径): 可做*=出击, 可做(矩阵谨慎)=备选, 其余=观察
+function isGo(c) {
+  const s = c.status || ''
+  return s.startsWith('可做') && !s.includes('矩阵谨慎')
+}
+function shortStatus(c) {
+  const s = c.status || ''
+  if (s.startsWith('可做')) return s.includes('矩阵谨慎') ? '备选' : '出击'
+  return '观察'
+}
 </script>
 
 <template>
@@ -73,92 +84,62 @@ function fmt(v, digits = 2) {
           </div>
         </section>
 
-        <!-- 候选池 -->
+        <!-- 出击选股(09:29 推送同源: strike_pool 9:26 口径存档) -->
         <section class="auction-sec">
           <h3 class="auction-sec-title">
-            🎯 核心候选 <em>{{ auction.candidates.length }}</em>
-            <span v-if="auction.stats" class="sec-sub">池{{ auction.stats.pool }} · 基因{{ auction.stats.genes }}</span>
+            🎯 出击选股 <em>{{ auction.strike.length }}</em>
+            <span v-if="auction.stats" class="sec-sub">池{{ auction.stats.pool }}</span>
           </h3>
 
-          <div v-if="!auction.candidates.length" class="empty-cand">
-            竞价无真金白银抢筹 — 观望
+          <div v-if="!auction.strike.length" class="empty-cand">
+            本阶段无出击候选（纪律优先）
           </div>
-
           <div v-else class="cand-list">
-            <div class="cand-head">
-              <span class="h-rank">#</span>
-              <span class="h-name">个股</span>
-              <span class="h-f">竞价</span>
-              <span class="h-f">净买</span>
-              <span class="h-f">量比</span>
-              <span class="h-score">得分</span>
+            <div v-if="auction.strike_watch" class="empty-cand">
+              本阶段无出击/备选（纪律优先）— 仅观察名单
             </div>
-            <div v-for="(c, i) in auction.candidates" :key="c.code"
-                 class="cand-row core" @click="openStock(c.code)">
+            <div v-for="(c, i) in auction.strike" :key="c.code"
+                 class="cand-row" :class="{ core: isGo(c), watch: !isGo(c) }" @click="openStock(c.code)">
               <div class="cand-line1">
-                <span class="h-rank rank-num">{{ i + 1 }}</span>
+                <span class="h-rank rank-num" :class="{ watch: !isGo(c) }">{{ i + 1 }}</span>
                 <span class="h-name">
                   <strong>{{ c.name }}</strong>
                   <span class="code">{{ c.code }}</span>
-                  <span v-if="c.sub['S4身位']" class="bonus">身位+{{ c.sub['S4身位'] }}</span>
-                  <span v-if="c.tag && c.tag.includes('板')" class="tag">{{ c.tag }}</span>
+                  <span v-if="c.height >= 2" class="tag">{{ c.height }}连板</span>
+                  <span v-else-if="c.height === 1" class="tag">首板</span>
                 </span>
-                <span class="h-f f-bid">{{ c.factors.bid_pct !== null ? fmt(c.factors.bid_pct) + '%' : '—' }}</span>
-                <span class="h-f f-net">{{ c.factors.bid_net !== null ? fmt(c.factors.bid_net / 1e4, 0) + '万' : '—' }}</span>
-                <span class="h-f f-vol">{{ c.factors.vol_ratio !== null ? fmt(c.factors.vol_ratio) : '—' }}</span>
-                <span class="h-score" :class="{ hot: c.score >= 10 }">{{ c.score }}<i>/{{ c.max }}</i></span>
+                <span class="h-f f-bid">{{ c.bid_pct !== null && c.bid_pct !== undefined ? fmt(c.bid_pct) + '%' : '—' }}</span>
+                <span class="h-score" :class="{ hot: isGo(c) }">{{ shortStatus(c) }}</span>
               </div>
               <div class="cand-line2">
-                <span v-for="(v, k) in c.sub" :key="k" class="sub" :class="{ on: v > 0, off: v < 0 }">
-                  {{ k }}{{ v > 0 ? '+' : '' }}{{ v }}
-                </span>
-                <span class="gene" :title="c.gene.reason">🧬 {{ c.gene.reason }}</span>
-                <span v-if="c.boards.length" class="boards">{{ c.boards.slice(0, 3).join('·') }}</span>
+                <span class="reason">{{ c.reason }}</span>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- 备选观察 -->
-        <section v-if="auction.watch && auction.watch.length" class="auction-sec">
-          <h3 class="auction-sec-title">👀 备选观察 <em>{{ auction.watch.length }}</em></h3>
+        <!-- 昨日连板 · 竞价换手 Top5 -->
+        <section v-if="auction.bidrank && auction.bidrank.length" class="auction-sec">
+          <h3 class="auction-sec-title">🪜 昨日连板 · 竞价换手 <em>{{ auction.bidrank.length }}</em></h3>
           <div class="cand-list">
-            <div class="cand-head">
-              <span class="h-rank">#</span>
-              <span class="h-name">个股</span>
-              <span class="h-f">竞价</span>
-              <span class="h-f">净买</span>
-              <span class="h-f">量比</span>
-              <span class="h-score">得分</span>
-            </div>
-            <div v-for="c in auction.watch" :key="c.code"
-                 class="cand-row watch" @click="openStock(c.code)">
+            <div v-for="(b, i) in auction.bidrank" :key="b.code"
+                 class="cand-row watch" @click="openStock(b.code)">
               <div class="cand-line1">
-                <span class="h-rank rank-num watch">W</span>
+                <span class="h-rank rank-num watch">{{ i + 1 }}</span>
                 <span class="h-name">
-                  <strong>{{ c.name }}</strong>
-                  <span class="code">{{ c.code }}</span>
-                  <span v-if="c.sub['S4身位']" class="bonus">身位+{{ c.sub['S4身位'] }}</span>
-                  <span v-if="c.tag && c.tag.includes('板')" class="tag">{{ c.tag }}</span>
+                  <strong>{{ b.name }}</strong>
+                  <span class="code">{{ b.code }}</span>
+                  <span v-if="b.height >= 2" class="tag">{{ b.height }}连板</span>
                 </span>
-                <span class="h-f f-bid">{{ c.factors.bid_pct !== null ? fmt(c.factors.bid_pct) + '%' : '—' }}</span>
-                <span class="h-f f-net">{{ c.factors.bid_net !== null ? fmt(c.factors.bid_net / 1e4, 0) + '万' : '—' }}</span>
-                <span class="h-f f-vol">{{ c.factors.vol_ratio !== null ? fmt(c.factors.vol_ratio) : '—' }}</span>
-                <span class="h-score">{{ c.score }}<i>/{{ c.max }}</i></span>
-              </div>
-              <div class="cand-line2">
-                <span v-for="(v, k) in c.sub" :key="k" class="sub" :class="{ on: v > 0, off: v < 0 }">
-                  {{ k }}{{ v > 0 ? '+' : '' }}{{ v }}
-                </span>
-                <span class="gene" :title="c.gene.reason">🧬 {{ c.gene.reason }}</span>
-                <span v-if="c.boards.length" class="boards">{{ c.boards.slice(0, 3).join('·') }}</span>
+                <span class="h-f f-bid">{{ b.bid_pct !== null && b.bid_pct !== undefined ? fmt(b.bid_pct) + '%' : '—' }}</span>
+                <span class="h-score">换手{{ fmt(b.turnover) }}%</span>
               </div>
             </div>
           </div>
         </section>
 
         <p class="foot-note">
-          当日 09:29 结论快照 · 数据源 开盘啦(公开接口) · 阈值待回测校准, 仅供参考
+          当日 09:29 出击结论快照(与钉钉推送同源) · 数据源 开盘啦(公开接口) · 周期闸门纪律优先, 仅供参考
         </p>
       </template>
     </template>
@@ -215,6 +196,7 @@ function fmt(v, digits = 2) {
 .cand-row:active { background: #f7f9fc; }
 .cand-line1 { display: flex; align-items: center; gap: 8px; padding: 9px 12px 4px; }
 .cand-line2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 12px 9px; }
+.cand-line2 .reason { font-size: 11px; color: #64748b; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 列宽(表头/数据行共用) */
 .h-rank { flex: 0 0 22px; text-align: center; font-size: 11px; }

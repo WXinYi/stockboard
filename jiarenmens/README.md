@@ -66,7 +66,7 @@ stockboard/
 │   ├── archive/               # fetch_db.py 回测产物（gitignore，勿 git add -A 误提交）
 │   └── dashboard.html         # 生成的看板页面
 ├── scripts/
-│   ├── auction_scan.py        # 竞价扫描全流程（评分漏斗 + V5 周期闸门 + 钉钉）
+│   ├── auction_scan.py        # 竞价扫描：出击选股Top5 + 昨日连板·竞价换手Top5 钉钉推送（存量评分漏斗 09-06 停跑, V5 转内部喂养）
 │   ├── cycle_push.py          # 午盘/尾盘格局钉钉推送（每日三推之二/三）
 │   ├── cycle_brief.py         # 当前超短格局报告 CLI
 │   ├── backfill_emotion.py    # 市场宽度/涨停池历史回补
@@ -114,6 +114,8 @@ jiarenmens/data/my_positions.json   # 手编配置: 价位表/板块归属/weekl
 板块名为 KPL 概念聚类（每日漂移，如"算力(液冷)"），配置里写关键词即可（包含匹配）；`其他`/`ST板块` 桶不参与判定。调仓核对为近 120 笔轧差估算，盘支持当日回转（T+0）。
 
 ## 出击列表选股（2026-09-05 升级）
+
+**09:29 钉钉推送换血（2026-09-06）**：竞价班推送从"评分漏斗候选池 + V5 首枪"换成 **🎯出击选股 Top5（strike_pool 9:26 口径存档，与盘面页出击 Tab 同源）+ 🪜昨日连板·今日竞价换手 Top5**（口径同 `build_lianban_bid`/`lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯 0930 补算，`rank_lianban_bid` 纯函数+单测）；09:31 `--confirm` 同步改为**出击开盘确认**（读 strike_pool 存档，09:31 最新价 vs 竞价价判守住/跌破，候选不再走 /tmp 中转）。存量评分漏斗（B1-S9 融合候选/涨停基因/全池竞价分时采集）**停跑**——省去每交易日数百请求；V5 首枪降级为**内部喂养**（不推送不占名额）：`stage_pool` 发酵/高潮的容量方向仍从 auction.json `v5` 段读数，`v5_results` 照常落库，`--label` 里 v5 打标已改为不依赖 candidates（候选停产不再连带断链）。前端同步：auction.json 去掉 `candidates`/`watch`/`rejected`，新增 `strike`/`strike_watch`/`bidrank`；竞价页（AuctionTab）换出击选股+连板换手两段，盘面页竞价迷你卡改显出击前2。`--dry-run` 语义收紧：不推钉钉**且不写生产 auction.json**（演练不覆盖前端快照）。
 
 盘面页「🎯 今日出击」Tab = 唯一出击展示位（周期详情页已移除该模块）：阶段闸门×九宫格 → 四池候选（龙头谱系/阶段扩展/半路/退潮火种）→ 评分排序（`leaderBattle.js` computeStrike，纯规则可回测）。每只候选带 定位标签（龙头/中军/补涨/跟风，跟风强制回避）、买点三件套（`candTipOf` 共用函数）、按闸门换算的建议仓位；启动期含首板试错池（早封+主力净买），退潮期火种入候选。Python 对偶 `src/analysis/stage_candidates.py` 同步候选范围与状态语义。
 

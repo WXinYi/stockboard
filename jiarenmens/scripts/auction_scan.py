@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 """
-竞价扫描入口: 采集 → 漏斗 → 候选 JSON → 钉钉推送
+竞价扫描入口: 采集 → 周期 → 出击选股 → 钉钉推送
+
+09:29 推送 = 出击选股 Top5(盘面页出击Tab 的 9:26 口径存档, stage_candidates.stage_pool)
+         + 昨日连板 · 今日竞价换手 Top5。存量漏斗选股(B1-S9 融合分候选/备选)已停跑
+         (2026-09-06): 漏斗评分/涨停基因/全池竞价分时采集全部移除, 省去每交易日数百请求。
+         V5 竞价首枪仍保留为**内部喂养**(不推送): stage_pool 的"V5容量方向"(发酵/高潮)
+         从 auction.json v5 段读数, v5_results 继续落库供 --v5-report 回测积累。
 
 用法(在 jiarenmens/ 目录下执行):
   python scripts/auction_scan.py --probe            # T1 探测: 验证竞价接口可用性
-  python scripts/auction_scan.py --dry-run          # 完整扫描, 不推钉钉(本地验证用)
+  python scripts/auction_scan.py --dry-run          # 完整扫描, 不推钉钉不写生产快照(本地验证用)
   python scripts/auction_scan.py --date 2026-08-07  # 回放指定日期(历史数据)
-  python scripts/auction_scan.py --confirm --candidates /tmp/auction_candidates.json  # E 层开盘确认(09:31)
-  python scripts/auction_scan.py --label            # 结果标签: 今天收盘表现写 candidate_results(收盘后跑)
+  python scripts/auction_scan.py --confirm          # 出击选股开盘确认(09:31, 读 strike_pool)
+  python scripts/auction_scan.py --label            # 结果标签: 收盘表现写 candidate_results(收盘后跑)
   python scripts/auction_scan.py --label 2026-08-12 # 结果标签: 历史日期回补(回测样本)
-  python scripts/auction_scan.py --backfill-factors # 历史候选日K因子回填(ma60/ret20/macd/kdj)
+  python scripts/auction_scan.py --backfill-factors # 历史候选日K因子回填(ma60/ret20/macd/kdj; 存量候选专用)
 
-时序: 09:25 cron 触发 → 扫描 ≈2-3min → 09:29 钉钉主结论 → 09:31 --confirm 补推 E 层。
+时序: 09:25 cron 触发 → 扫描 → 09:29 钉钉出击推送 → 09:31 --confirm 补推开盘确认。
 
 数据源(2026-08-13 改造): 开盘啦 His 接口(板块/量能/涨停池)只服务**已完成**交易日,
 09:25 对"今天"一律 1020 → 当天扫描走**实时路径**(apphwhq 主机, 无日期参数):
 实时板块异动 GetBKJJ_W36 + 板块强度 RealRankingInfo(Type=1) → 强势板块 → GetBKJJBL
-成分(**含竞价量比, S5 当天可用**) + MorningBiddingList 四类买入榜单(连板标记 r[16]→身位)
+成分(**含竞价换手**) + MorningBiddingList 四类买入榜单(连板标记 r[16]→身位)
 合并成候选池; 情绪用实时 ChangeStatistics。历史回放(--date 过去日期)走原 His 完整路径。
 """
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -40,15 +47,30 @@ from src.analysis.emotion_cycle import compute_cycle  # noqa: E402
 from src.config import AUCTION_OUT, DATA_DIR  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.spiders.auction_spider import AuctionStore, HotRankStore, KPLSpider  # noqa: E402
+try:
+    from export_json import _tencent_auction_amt  # noqa: E402  # 竞价换手0值补算(同 scripts/ 目录)
+except ImportError:  # 以包形式导入(scripts.auction_scan, 单测)时 scripts/ 不在 sys.path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from export_json import _tencent_auction_amt  # noqa: E402
 
 BJ_TZ = ZoneInfo("Asia/Shanghai")
 WORKERS = 20          # 并发
-GENE_LIMIT = 60       # 涨停基因查询上限(候选池按初步分取前 N)
-BID_LIMIT = 20        # 竞价分时/大单查询上限(最终候选前 N)
 BOARD_LIMIT = 20      # 强势板块数(8→20: 提高量比覆盖, 减少榜单独有票无量比)
-SCORE_THRESHOLD = 13  # 核心过线分(21 分制: 原15 + 三力撮合/委买6, 待回测校准); 备选线 = 过线-3
-CONTROL_SAMPLE = 20   # 对照组: 过B1门槛池随机抽样数(--label 打标)
-FADE_SAMPLE = 20      # 对照组: 高开低走被拒组抽样数(--label 打标, 负对照)
+CONTROL_SAMPLE = 20   # 对照组: 过B1门槛池随机抽样数(--label 打标, 存量候选时代样本)
+FADE_SAMPLE = 20      # 对照组: 高开低走被拒组抽样数(--label 打标, 负对照, 存量候选时代样本)
+STRIKE_TOP = 5        # 09:29 出击选股推送条数
+BIDRANK_TOP = 5       # 09:29 昨日连板·竞价换手推送条数
+
+# 阶段闸门镜像(与 stockboard-app/src/utils/leaderBattle.js STAGE_GATE 同步, 仅用于推送文案):
+# cap=仓位上限(成), banner=阶段纪律一句话
+STAGE_GATE_CN = {
+    "退潮": (0, "空仓纪律：退潮期不出击，高位接力亏损率最高，只观察空间锚"),
+    "冰点": (30, "冰点期：只做 1进2 套利与新周期火种观察，仓位轻"),
+    "启动": (100, "启动期：打低位首板/1进2 为主，情绪低点做龙头"),
+    "发酵": (100, "发酵期：上主线龙头/同梯队强者，五板封住定龙头"),
+    "高潮": (100, "高潮期：只做龙头接力(秒板/放量分歧板)，跟风不碰"),
+    "分歧": (60, "分歧期：只抱团龙头低吸，避开中位股(核按钮高发)"),
+}
 
 
 # =============================================================================
@@ -300,38 +322,6 @@ def collect_boards(spider, date_str, live=False):
     return _collect_boards_his(spider, date_str)
 
 
-def collect_genes(spider, pool, limit=GENE_LIMIT):
-    """涨停基因: 按初步分(B1+B2+B3)取前 N"""
-    prelim = sorted(pool.values(), key=funnel.prelim_score, reverse=True)[:limit]
-    genes = {}
-    def fetch(item):
-        try:
-            return item["code"], spider.zt_gene(item["code"])
-        except Exception as e:
-            print(f"⚠️ 涨停基因失败 {item['code']}: {e}")
-            return item["code"], []
-    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        for code, g in ex.map(fetch, prelim):
-            if g:
-                genes[code] = g
-    return genes
-
-
-def collect_bids(spider, candidates_top):
-    """候选前 N 的竞价分时(GetStockBid, B4/B5 用)"""
-    stock_bids = {}
-    def fetch(code):
-        try:
-            return code, spider.stock_bid(code).get("bid", [])
-        except Exception as e:
-            print(f"⚠️ 竞价分时失败 {code}: {e}")
-            return code, []
-    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        for code, bid in ex.map(fetch, candidates_top):
-            stock_bids[code] = bid
-    return stock_bids
-
-
 # =============================================================================
 # E 层开盘确认(09:31, 腾讯分时)
 # =============================================================================
@@ -382,62 +372,87 @@ def _mkline_0931(code: str, date_str: str) -> Optional[float]:
     return p0931 if p0931 is not None else p0930
 
 
-def e_confirm(candidates_path: Path):
-    """E1 首分钟放量(>竞价末分钟增量) / E2 09:31 最新价守住竞价价(未跌破) → 钉钉补推。
-    ⚠️ 修正 2026-08-13: A 股开盘价=集合竞价撮合价, 原 E2"开盘价>竞价价×1.001"机制上恒不成立;
-    改为 09:31 最新价 vs 竞价价, 区分"守住(兑现)"与"跌破(诱多回落)"。"""
-    with open(candidates_path) as f:
-        candidates = json.load(f)
+def _load_strike_picks(date_str: str) -> tuple:
+    """读 strike_pool 当时存档(9:26 口径, 与 09:29 推送同一份): (date, stage, picks)。
+    date 当日无存档时回退库内最近一条(手动重跑/复盘场景)。"""
+    import sqlite3
+    db = DATA_DIR / "auction.db"
+    with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT date, stage, picks FROM strike_pool WHERE date=?",
+                           (date_str,)).fetchone()
+        if row is None:
+            row = conn.execute("SELECT date, stage, picks FROM strike_pool "
+                               "ORDER BY date DESC LIMIT 1").fetchone()
+    if not row:
+        return None, None, []
+    return row["date"], row["stage"], json.loads(row["picks"])
+
+
+def e_confirm(date_str: str) -> int:
+    """出击选股开盘确认(09:31) → 钉钉补推。
+    候选 = strike_pool 存档的出击 Top5(pick_strike_top 与 09:29 推送同口径),
+    竞价价取 bid_pool(merged) 撮合价。
+    走强标准: 09:31 最新价 ≥ 竞价价 → 守住(兑现); 跌破 → 诱多回落。
+    ⚠️ A 股开盘价=集合竞价撮合价, "开盘价>竞价价"机制上恒不成立(2026-08-13 修正, 沿用)。
+    存量 E1(首分钟放量 vs 竞价末分钟量)随全池竞价分时采集一并停跑(无 bid_vol 数据源)。"""
+    a_date, stage, picks_all = _load_strike_picks(date_str)
+    if not picks_all:
+        print("⚠️ strike_pool 无存档(扫描未跑或当日周期引擎不可用), 跳过确认推送")
+        return 1
+    picks, watch_mode = pick_strike_top(picks_all)
+    if watch_mode:
+        print("⚠️ 当日无出击/备选候选(纪律优先), 跳过确认推送")
+        return 0
+    store = AuctionStore()
+    bid_px_map = {}
+    for r in store.load_bid_pool(a_date):
+        bid_px_map.setdefault(r["code"], r.get("price"))
     rows = []
-    for c in candidates[:10]:
+    for p in picks:
         try:
-            minute = qq_minute(c["code"])
-            first_vol = float(minute[0][2])
-            first_px = float(minute[0][1])
-            # 09:31 最新价(有第二根bar则用之, 否则=开盘价), 与竞价价对比判守住/跌破
+            minute = qq_minute(p["code"])
             last_px = float(minute[min(1, len(minute) - 1)][1])
         except Exception as e:
-            print(f"⚠️ 腾讯分时失败 {c['code']}: {e}")
+            print(f"⚠️ 腾讯分时失败 {p['code']}: {e}")
             continue
-        bid_px = c["factors"].get("bid_price")
-        bid_vol = c["factors"].get("bid_vol_last")
-        e1 = bool(bid_vol and first_vol > bid_vol)  # 首分钟量 > 竞价末分钟增量量
-        e2 = bool(bid_px and last_px >= bid_px)     # 09:31 最新价 ≥ 竞价价 → 守住(未跌破)
-        rows.append({"code": c["code"], "name": c["name"], "first_vol": first_vol,
-                     "first_px": first_px, "last_px": last_px, "bid_px": bid_px,
-                     "bid_vol": bid_vol, "E1": e1, "E2": e2})
+        bid_px = bid_px_map.get(p["code"])
+        # 09:31 最新价 ≥ 竞价价 → 守住(未跌破)
+        e2 = bool(bid_px and last_px >= bid_px)
+        rows.append({"code": p["code"], "name": p["name"], "last_px": last_px,
+                     "bid_px": bid_px, "bid_pct": p.get("bid_pct"),
+                     "height": p.get("height"), "reason": p.get("reason"), "E2": e2})
     if not rows:
         print("⚠️ 无可用分时数据, 跳过推送")
-        return []
-    text = _confirm_text(rows)
-    resp = DingTalk().send_markdown("竞价开盘确认", text)
+        return 1
+    text = _confirm_text(rows, a_date, stage)
+    resp = DingTalk().send_markdown(f"🎯 出击开盘确认 {a_date}", text)
     print(f"📣 钉钉推送: {resp}")
-    return rows
+    return 0
 
 
-def _confirm_text(rows: List[Dict]) -> str:
-    """E 层确认消息文本: 09:31 最新价 vs 竞价价(守住/跌破) + 首分钟放量倍数。
-    修正 2026-08-13: 开盘价=集合竞价撮合价, 无法用它"跳空"验证;
-    走强标准改为 E2 守住竞价价(最新价≥竞价价, 未回落)。"""
+def _confirm_text(rows: List[Dict], date_str: str, stage: Optional[str]) -> str:
+    """E 层确认消息文本: 09:31 最新价 vs 竞价价(守住/跌破) + 当日身位/理由"""
     ok = [r for r in rows if r["E2"]]
     text = [
-        f"## ⚡ 开盘确认 09:31",
-        f"> {len(ok)}/{len(rows)} 只守住竞价价",
+        "## ⚡ 出击开盘确认 09:31",
+        f"> {date_str}" + (f" · {stage}期" if stage else "") + f" · {len(ok)}/{len(rows)} 只守住竞价价",
         "",
     ]
-    for r in rows[:10]:
+    for r in rows[:STRIKE_TOP]:
         mark = "🟢" if r["E2"] else "🔴"
         line = f"- {mark} {_stock_link(r['name'], r['code'])} 最新{r['last_px']:.2f}"
         if r["bid_px"]:
             chg = (r["last_px"] - r["bid_px"]) / r["bid_px"] * 100
             line += f" (较竞价{chg:+.2f}%)"
+        if r.get("bid_pct") is not None:
+            line += f" · 竞价{r['bid_pct']:+.1f}%"
+        h = r.get("height") or 0
+        if h >= 1:
+            line += f" · {h}板"
         text.append(line)
-        vol = f"首分钟量 {r['first_vol']:.0f}手"
-        if r["bid_vol"]:
-            ratio = r["first_vol"] / r["bid_vol"]
-            verb = "放量" if ratio >= 1 else "缩量"
-            vol += f" (竞价末 {r['bid_vol']:.0f}手, {verb}{ratio:.1f}倍)"
-        text.append("    " + vol)
+        if r.get("reason"):
+            text.append("    " + str(r["reason"])[:60])
     text.append("")
     text.append("📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)")
     return "\n".join(text)
@@ -703,81 +718,63 @@ def screen_v5(date_str: str, pool: Dict[str, Dict], limit_codes: set,
     return out
 
 
-def build_v5_message(v5_list: List[Dict], regime: Optional[Dict] = None,
-                     cycle_res: Optional[Dict] = None) -> str:
-    """V5 钉钉段落: 周期闸门状态 + 市况判别 + 主攻/次攻 + 身位与仓位标注"""
-    lines = [""]
-    if cycle_res:
-        gate_txt = {"退潮": "🔒关闭(退潮期空仓纪律)", "冰点": "🔒关闭(冰点期空仓纪律)",
-                    "分歧": "🟡半开(仅主线内·一律半仓)", "发酵": "🟢开启(仅主线内)",
-                    "高潮": "🟢开启(仅主线内)"}.get(cycle_res["stage"], "off")
-        main_txt = "/".join(m["board"] for m in cycle_res["mainlines"][:3]) or "无"
-        lead_txt = " | ".join(f"**{l['name']}**{l['pid']}板[{l['role']}]"
-                              for l in cycle_res["leaders"][:3]) or "无"
-        lines.append(f"**🧭 周期: {cycle_res['stage']}**(置信度 {cycle_res['confidence']}/9) · V5闸门 {gate_txt}")
-        lines.append(f"**🎨 主线**: {main_txt}")
-        lines.append(f"**👑 龙头谱系**: {lead_txt}")
-        lines.append(f"**📌 阶段纪律**: {cycle_res['playbook']}")
-    if not v5_list:
-        head = ""
-        if regime:
-            head = f"\n**📡 市况: {regime['regime']}** ({' · '.join(regime['detail'])})\n"
-        reason = ("周期闸门关闭(空仓纪律)" if cycle_res and cycle_res["stage"] in ("退潮", "冰点")
-                  else "主线内无 2-6% 带量转强" if cycle_res else "竞价无 2-6% 带量转强")
-        return head + "\n".join(lines) + f"\n**🔫 V5 开盘首枪**: 今日无候选({reason})\n"
-    if regime:
-        lines.append(f"**📡 市况: {regime['regime']}** ({' · '.join(regime['detail'])})")
-    lines.append(f"**🔫 V5 开盘首枪 {len(v5_list)} 只**:")
-    # 主攻只授予第一只【全仓】票(half_pos=True 顺延); 次攻同理授予下一只全仓票。
-    # 半仓票不占主攻/次攻名额(避免"🎯主攻3万·⚠️半仓"自相矛盾)。
-    main_idx = next((i for i, v in enumerate(v5_list) if not v.get("half_pos")), None)
-    sub_idx = next((i for i, v in enumerate(v5_list)
-                    if not v.get("half_pos") and i != main_idx), None)
-    for i, v in enumerate(v5_list[:6], 1):
-        tag = []
-        if i - 1 == main_idx:
-            tag.append("🎯主攻3万")
-        elif i - 1 == sub_idx:
-            tag.append("⚡次攻2.4万")
-        if v.get("half_pos"):
-            tag.append("⚠️半仓" + ("·竞价回落" if v.get("fade") else ""))
-        pos = []
-        if v.get("height") == 1:
-            pos.append("首板")
-        elif (v.get("height") or 0) >= 2:
-            pos.append(f"{v['height']}连板")
-        elif v.get("was_limit"):
-            pos.append("昨涨停")
-        pos_text = (" · " + " · ".join(pos)) if pos else ""
-        tag_text = (" · " + " · ".join(tag)) if tag else ""
-        boards = f" ({'、'.join(v['boards'])})" if v["boards"] else ""
-        lines.append(
-            f"{i}. {_stock_link(v['name'], v['code'])} 竞价{v['bid_pct']:+.2f}% "
-            f"换手{v['turnover']:.2f} 昨{'%+.1f%%' % v['prev_pct'] if v['prev_pct'] is not None else '?'}"
-            f"{pos_text}{tag_text}{boards}")
-    lines.append("> 规则: 竞价2~6%+市值>50亿+换手≥0.15; 首板/2板全仓可主攻; 3板以上·昨日大阳·竞价回落⚠️半仓; 止损-3%; 次日兑现")
-    return "\n".join(lines)
-
-
 def _stock_link(name: str, code: str) -> str:
     """钉钉 markdown 链接 → 原生股票详情页(/stock/:code, 与 app 内部及 notify_daily/watched_flash 一致)"""
     url = f"https://WXinYi.github.io/stockboard/#/stock/{code}?name={quote(name)}"
     return f"[{name}]({url})"
 
 
-def build_message(date_str, result, boards, crawl_time) -> str:
-    env = result["env"]
+def pick_strike_top(picks: List[Dict], top_n: int = STRIKE_TOP) -> tuple:
+    """出击选股 Top5(纯函数, 单测覆盖)。
+    状态映射(与盘面页 leaderBattle 对齐): 可做*=出击, 可做(矩阵谨慎)=备选, 其余=观察。
+    优先出击 → 备选; 都没有则回退观察名单(watch_mode=True, 纪律优先只展示不买)。
+    保持 stage_pool 存档顺序(谱系→扩展→弱转强→容量), 不重排。"""
+    go = [p for p in picks if (p.get("status") or "").startswith("可做")
+          and "矩阵谨慎" not in (p.get("status") or "")]
+    care = [p for p in picks if "矩阵谨慎" in (p.get("status") or "")]
+    picked = (go + care)[:top_n]
+    if picked:
+        return picked, False
+    return [p for p in picks if (p.get("status") or "").startswith("观察")][:top_n], True
+
+
+def rank_lianban_bid(rows: List[Dict], top_n: int = BIDRANK_TOP) -> List[Dict]:
+    """昨日连板 · 今日竞价换手 Top5(纯函数, 单测覆盖)。
+    rows: 已装配的候选行 [{code,name,height,bid_pct,turnover}] (装配口径在 scan():
+    连板名单=limit_pool 前一交易日 pid_type>=2; 换手=KPL turnover_ratio 优先,
+    0值腾讯 0930 竞价额/流通市值补算 —— 与 export_json.build_lianban_bid / 盘面页
+    bidTop 标记同口径)。规则: 换手>0 才参与 → 换手高优先 → 竞价涨幅高优先。"""
+    rows = [r for r in rows if (r.get("turnover") or 0) > 0
+            and "ST" not in (r.get("name") or "").upper()]
+    rows.sort(key=lambda x: (-x["turnover"], -(x.get("bid_pct") or 0)))
+    return rows[:top_n]
+
+
+def _strike_line(i: int, p: Dict) -> List[str]:
+    """出击选股单只消息行: 状态图标 + 名称(链接) + 身位 + 竞价 + 状态与理由"""
+    st = p.get("status") or ""
+    icon = "🟡" if "矩阵谨慎" in st else ("🔴" if st.startswith("可做") else "⚪")
+    h = p.get("height") or 0
+    pos = f"{h}连板" if h >= 2 else ("首板" if h == 1 else "")
+    bid = f" 竞价{p['bid_pct']:+.1f}%" if p.get("bid_pct") is not None else ""
+    return [f"{i}. {icon} {_stock_link(p['name'], p['code'])} {pos}{bid}".rstrip(),
+            f"   {st} · {(p.get('reason') or '')[:60]}"]
+
+
+def build_strike_message(date_str: str, crawl_time: str, cycle_res: Optional[Dict],
+                         regime: Optional[Dict], env: Dict, picks: List[Dict],
+                         watch_mode: bool, bidrank: List[Dict]) -> str:
+    """09:29 推送正文: 周期+纪律+环境 → 出击选股 Top5 → 昨日连板·竞价换手 Top5"""
     e = env["data"]
-    lines = [
-        f"## 🏆 竞价抢筹候选池 {crawl_time}",
-        f"> {date_str} · 大盘 {'✅ 可做' if env['pass'] else '❌ 空仓'}",
-        "",
-    ]
-    if not env["pass"]:
-        lines += ["**空仓原因**: " + "; ".join(env["reasons"]),
-                  "", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
-        return "\n".join(lines)
-    # 环境行: 优先展示"当天竞价驱动"数据(红盘占比/竞价委买/竞价总额), 情绪/连板高度 09:25 只能取昨收 → 明确标"昨"
+    lines = [f"## 🎯 今日出击 {crawl_time}", f"> {date_str}"]
+    if cycle_res:
+        cap, banner = STAGE_GATE_CN.get(cycle_res["stage"], (100, ""))
+        cap_txt = "禁买" if cap == 0 else f"{cap}成"
+        reg_txt = f" · 📡 市况{regime['regime']}" if regime else ""
+        lines.append(f"**周期: {cycle_res['stage']}**(置信度 {cycle_res['confidence']}/9)"
+                     f" · 仓位上限 {cap_txt}{reg_txt}")
+        if banner:
+            lines.append(f"> {banner}")
     env_parts = []
     if e["red_ratio"] is not None:
         env_parts.append(f"竞价红盘{e['red_ratio']:.0%}")
@@ -787,83 +784,26 @@ def build_message(date_str, result, boards, crawl_time) -> str:
     tj, lj = e.get("bid_total"), e.get("bid_total_prev")
     if tj:
         env_parts.append(f"竞价{tj}" + (f"(昨{lj})" if lj else ""))
-    if e["capacity_ratio"] is not None:
-        env_parts.append(f"量能比{e['capacity_ratio']:.2f}")
     env_parts.append(f"昨情绪{e['strong']}·昨连板{e['lbgd']}")
     lines.append(f"**环境**: {' · '.join(env_parts)}")
-    # env_check 备注(信息性参考, 不阻塞)也进推送: 软化后恒 pass, 原"空仓原因"分支永不走
-    notes = env.get("reasons") or []
-    if notes and not (len(notes) == 1 and notes[0] == "环境正常"):
-        lines.append(f"　↳ " + "；".join(n[:40] for n in notes[:2]))
-    # src 信号来源 → 友好文字(L1=今日新增爆量, L2=昨日延续爆量)
-    src_text = lambda s: s.replace("爆量L1", "今日爆量").replace("爆量L2", "延续爆量")
-    board_text = "、".join(f"{b['name']}({src_text(b['src'])})" for b in boards[:6])
-    lines += ["", f"**🔥 强势板块**: {board_text or '无'}", ""]
-    core = [c for c in result["candidates"] if c.get("tier") == "core"]
-    lines.append(f"**🎯 核心候选 {len(core)} 只**:")  # 核心不截断, 有几只推几只
-    for i, c in enumerate(core, 1):
-        lines += _cand_line(i, c, "core")
-    if not core:
-        lines.append("   (无 — 竞价无真金白银抢筹, 观望)")
-    watch = result.get("watch", [])
-    if watch:
-        lines += ["", f"**👀 备选观察 {len(watch[:5])} 只**:"]
-        for i, c in enumerate(watch[:5], 1):
-            lines += _cand_line(i, c, "watch")
+    lines.append("")
+    if watch_mode:
+        lines.append("**本阶段无出击候选(纪律优先)** — 仅观察名单:")
+    else:
+        lines.append(f"**🎯 出击选股 {len(picks)} 只**:")
+    for i, p in enumerate(picks, 1):
+        lines += _strike_line(i, p)
+    if bidrank:
+        lines += ["", f"**🪜 昨日连板 · 竞价换手 Top{len(bidrank)}**:"]
+        for i, b in enumerate(bidrank, 1):
+            h = b.get("height") or 0
+            pos = f"{h}连板" if h >= 2 else ("首板" if h == 1 else "")
+            bid = f" 竞价{b['bid_pct']:+.1f}%" if b.get("bid_pct") is not None else ""
+            lines.append(f"{i}. {_stock_link(b['name'], b['code'])} {pos}{bid} "
+                         f"· 换手{b['turnover']:.2f}%".strip())
+        lines.append("> 换手=竞价实际成交换手(09:25口径); 竞价无成交的连板股不参与排名")
     lines += ["", "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)"]
     return "\n".join(lines)
-
-
-def _cand_line(i: int, c: Dict, kind: str = "core") -> List[str]:
-    """单只候选的消息行(亮点式): 名称(可点击) + 资金 + 核心附加亮点
-    kind=core: 名称/💰/✨ 3 行; kind=watch: 名称/💰 2 行(减少刷屏)"""
-    f_ = c["factors"]
-    tags = []
-    if c["tag"] and "板" in c["tag"]:  # 只展示连板类标记(过滤流通市值等杂字段)
-        tags.append(c["tag"])
-    if c["boards"]:
-        tags.append("、".join(c["boards"][:2]))
-    tag_text = (" · " + " · ".join(tags)) if tags else ""
-    fused = c.get("fused_score")
-    fused_txt = f" 融合{fused:.1f}" if fused is not None else ""
-    lines = [f"{i}. {_stock_link(c['name'], c['code'])} 评分{c['score']}/{c['max']}{fused_txt}{tag_text}"]
-    parts = []
-    if f_["bid_pct"] is not None:
-        parts.append(f"竞价{f_['bid_pct']:+.2f}%")
-    if f_["bid_net"] is not None:
-        net = f_["bid_net"] / 1e4
-        parts.append(f"{'净买' if net >= 0 else '净卖'}{abs(net):.0f}万")
-    if f_["vol_ratio"] is not None:
-        parts.append(f"量比{f_['vol_ratio']:.2f}")
-    if f_.get("bid_buy_ratio") is not None:
-        parts.append(f"委比{f_['bid_buy_ratio']:.0%}")  # 参考展示(单日实证与结果反向, 不参与评分)
-    # 三力: S8撮合(量加权红量占比) + S9委买(20分后不可撤单委买/流通市值) + 委买堆量绝对值
-    sub_ = c.get("sub") or {}
-    if f_.get("unfilled_buy") is not None:
-        ub = f_["unfilled_buy"] / 1e7
-        parts.append(f"委买{ub:.1f}千万")
-    if sub_.get("S8撮合"):
-        parts.append(f"撮合红{sub_['S8撮合']}/3")
-    if sub_.get("S9委买"):
-        parts.append(f"委买力{sub_['S9委买']}/3")
-    lines.append("   💰 " + " · ".join(parts))
-    if c.get("s7_note") and c["s7_note"] != "技术中性":
-        lines.append(f"   🔬 {c['s7_note']}")
-    if kind == "core":
-        highlights = []
-        res = int(c.get("resonance") or 0)
-        if c["boards"] and res >= 2:
-            highlights.append(f"{c['boards'][0]}共振({res}票)")
-        gene = (c.get("gene") or {}).get("data") or {}
-        seal = gene.get("seal_pct")
-        if seal is not None:
-            if seal >= 70:
-                highlights.append(f"封板率{seal:.0f}% 基因优秀")
-            elif seal >= 50:
-                highlights.append(f"封板率{seal:.0f}% 基因尚可")
-        if highlights:
-            lines.append("   ✨ " + " · ".join(highlights))
-    return lines
 
 
 # =============================================================================
@@ -1023,27 +963,29 @@ def _quote_now(code: str) -> Optional[float]:
 
 def label_results(date_str: str) -> int:
     """结果标签: 抓当日开/收/高/低 → 关联竞价价算 pct_open/pct_bid → 写 candidate_results。
-    收盘后(15:05)定时跑或手动对历史日期回补, 是回测样本积累的基础。"""
+    收盘后(15:05)定时跑或手动对历史日期回补, 是回测样本积累的基础。
+    存量漏斗候选停跑(2026-09-06)后 candidates 不再新增 → 候选打标自然空跑;
+    V5 打标(v5_results → T+0/T+1)不依赖 candidates, 必须继续执行。"""
     store = AuctionStore()
     cands = store.load_candidates(date_str)
-    if not cands:
-        print(f"⚠️ {date_str} 无候选(未扫描或非交易日), 跳过")
-        return 0
-    # 日期隔离: 先清当日"已不在候选名单"的旧结果行(候选集随 BOARD_LIMIT/融合规则变化)
-    codes = tuple(c["code"] for c in cands)
-    with store._conn() as c:
-        # 只清"过时候选"行(role IS NULL); 对照组行(role 非空)保留, 避免重打标被删
-        c.execute(f"DELETE FROM candidate_results WHERE date=? AND role IS NULL AND "
-                  f"code NOT IN ({','.join('?'*len(codes))})", (date_str, *codes))
-    print(f"[标签] {date_str} 共 {len(cands)} 只候选, 抓取当日行情...")
-    n_ok = 0
-    for cand in cands:
-        if _label_one(store, date_str, cand["code"], cand["name"], cand["bid_price"]):
-            n_ok += 1
-    print(f"✅ 已打标签 {n_ok}/{len(cands)} 只 → candidate_results")
-    # ---- 对照组打标(回测对比基准): 随机池基准 + 高开低走被拒负对照 ----
-    n_ctl = _label_controls(store, date_str, cands)
-    print(f"✅ 对照组打标 {n_ctl} 只 (control/FADE) → candidate_results")
+    if cands:
+        # 日期隔离: 先清当日"已不在候选名单"的旧结果行(候选集随 BOARD_LIMIT/融合规则变化)
+        codes = tuple(c["code"] for c in cands)
+        with store._conn() as c:
+            # 只清"过时候选"行(role IS NULL); 对照组行(role 非空)保留, 避免重打标被删
+            c.execute(f"DELETE FROM candidate_results WHERE date=? AND role IS NULL AND "
+                      f"code NOT IN ({','.join('?'*len(codes))})", (date_str, *codes))
+        print(f"[标签] {date_str} 共 {len(cands)} 只候选, 抓取当日行情...")
+        n_ok = 0
+        for cand in cands:
+            if _label_one(store, date_str, cand["code"], cand["name"], cand["bid_price"]):
+                n_ok += 1
+        print(f"✅ 已打标签 {n_ok}/{len(cands)} 只 → candidate_results")
+        # ---- 对照组打标(回测对比基准): 随机池基准 + 高开低走被拒负对照 ----
+        n_ctl = _label_controls(store, date_str, cands)
+        print(f"✅ 对照组打标 {n_ctl} 只 (control/FADE) → candidate_results")
+    else:
+        print(f"[标签] {date_str} 无漏斗候选(存量选股已停跑或非交易日), 跳过候选打标")
     # ---- V5 开盘首枪打标(T+0 当日 + T+1 次日回补) ----
     label_v5(date_str, store)
     return 0
@@ -1305,6 +1247,11 @@ def _fallback_trading_day(spider: KPLSpider, date_str: str) -> str:
 
 
 def scan(date_str: str, dry_run: bool = False) -> int:
+    """主扫描: 采集 → 周期 → 出击选股 Top5 + 昨日连板·竞价换手 Top5 → 钉钉推送。
+    存量漏斗选股(B1-S9 融合候选/备选)已停跑(2026-09-06): 不再采集涨停基因与全池竞价分时,
+    不再算漏斗评分与 S7 融合, 不再写 candidates/rejected —— 省去每交易日数百请求。
+    V5 首枪保留为**内部喂养**(不推送): stage_pool 发酵/高潮的容量方向从 auction.json 的
+    v5 段读数; v5_results 继续落库供 --label/--v5-report 回测积累。"""
     t0 = time.time()
     spider = KPLSpider()
     date_str = _fallback_trading_day(spider, date_str)
@@ -1313,64 +1260,25 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     store = AuctionStore()
     crawl_time = datetime.now(BJ_TZ).strftime("%H:%M")
 
-    print(f"[1/6] 环境层采集 {date_str} ({'当天实时' if live else '历史回放'})")
+    print(f"[1/5] 环境层采集 {date_str} ({'当天实时' if live else '历史回放'})")
     env = collect_env(spider, date_str, live=live)
     store.save_mood(date_str, env["mood"], env["capacity"], env["bid_total"],
                     env["bid_count"], env["zt_expr"])
 
-    print(f"[2/6] 板块层 + 候选池 ({'MorningBiddingList 实时' if live else 'His 板块成分'})")
+    print(f"[2/5] 板块层 + 竞价池 ({'MorningBiddingList 实时' if live else 'His 板块成分'})")
     boards, pool, board_bid, zt_data = collect_boards(spider, date_str, live=live)
     store.save_board_bid(date_str, board_bid)
     store.save_limit_pool(date_str, zt_data)
-
-    print(f"[3/6] 涨停基因({len(pool)} 池 → top{GENE_LIMIT})")
-    genes = collect_genes(spider, pool)
-    store.save_genes(date_str, genes)
-
-    print(f"[4/6] 过 B1 门槛全量拉竞价分时(消除前N名数据断层)")
-    in_gate = [i for i in pool.values()
-               if i.get("bid_pct") is not None and 1 <= i["bid_pct"] <= 7]
-    stock_bids = collect_bids(spider, [i["code"] for i in in_gate])
-    print(f"      {len(in_gate)} 只过门槛 → 竞价分时 {len(stock_bids)} 只")
-    if live and stock_bids:
-        # 原始竞价分时落库(仅当天: GetStockBid 无历史, 回放时拿的是今天数据, 存了会污染 bid_series)
-        store.save_bid_series(date_str, stock_bids, pool)
-        print(f"      → bid_series 落库 {len(stock_bids)} 只")
-
-    print(f"[5/6] 漏斗计算")
-    result = funnel.run_funnel(
-        env, boards, list(pool.values()), genes, stock_bids,
-        score_threshold=SCORE_THRESHOLD)
-    # E 层确认覆盖核心 + 备选(独立变量, 不污染 out 的 candidates)
-    e_candidates = result["candidates"] + result.get("watch", [])
-
-    # 融合(文章九大标准 × v3): 采集日K因子 → S7 技术分 → 融合分 → 层内重定层
-    # S1-S6 原分不变(S1 资金仍是核心信号); 融合分只决定核心/备选归属与层内排序。
-    fused_list = []
-    for item in e_candidates:
-        enrich_dayk_factors(item, date_str)
-        s7, s7_note = funnel.article_s7(item["factors"])
-        item["s7"], item["s7_note"] = s7, s7_note
-        item["fused_score"] = funnel.fuse_score(item, s7)
-        item["tier"] = funnel.fuse_tier(item, s7)
-        fused_list.append(item)
-    result["candidates"] = sorted([c for c in fused_list if c["tier"] == "core"],
-                                  key=lambda c: c["fused_score"], reverse=True)
-    result["watch"] = sorted([c for c in fused_list if c["tier"] == "watch"],
-                             key=lambda c: c["fused_score"], reverse=True)
-
-    # 落库当日选股(S1-S6 + S7 + 原始因子, 回测输入) + 候选池(板块成分 + 竞价列表合并)
-    store.save_candidates(date_str, result["candidates"], result.get("watch", []))
+    # 竞价池(板块成分 + 竞价列表合并)落库: stage_pool 的竞价数据/换手排名全靠它
     store.save_bid_pool(date_str, [_pool_row_layout(i) for i in pool.values()], "merged")
-    # 落库漏斗被拒明细(对照组: 高开低走/对倒/资金不足 打标基础)
-    store.save_rejected(date_str, result.get("rejected", []))
 
-    # V5 开盘首枪(独立于评分系统的人工打法): 四刀筛 + 身位分层
-    # 昨日涨停 = limit_pool 里 date_str 的**前一交易日**(实盘 live 路径不落当天涨停池,
-    # 且"昨日涨停"语义本就是前一日; 回放时前一交易日数据已由历史补齐)。
-    print(f"[5.5/6] V5 开盘首枪筛选")
+    # 市况(纯本地 limit_pool/board_bid 计算, 零请求) + 市场环境(软化后恒 pass, 信息性)
     regime = market_regime(date_str)
-    print(f"      📡 市况: {regime['regime']} ({' · '.join(regime['detail'])})")
+    env_res = funnel.env_check(env["mood"], env["capacity"], env["bid_total"], env["bid_count"])
+    print(f"[3/5] 市况/环境: 📡 {regime['regime']}({' · '.join(regime['detail'])}) · "
+          f"{'可出手' if env_res['pass'] else '空仓'} ({'; '.join(env_res['reasons'])})")
+
+    # 昨日涨停基准日(live 路径不落当天涨停池, "昨日"语义本就是前一日; 回放时历史已补齐)
     _conn = __import__("sqlite3").connect(store.db_path)
     _prev_day_row = _conn.execute(
         "SELECT MAX(date) FROM limit_pool WHERE date < ?", (date_str,)).fetchone()
@@ -1378,56 +1286,94 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     limit_codes = {str(r[0]) for r in _conn.execute(
         "SELECT code FROM limit_pool WHERE date=?", (_prev_limit_day,)).fetchall()} if _prev_limit_day else set()
     _conn.close()
-    print(f"      昨日涨停基准日: {_prev_limit_day} ({len(limit_codes)} 只)")
-    try:
-        cycle_res = None
-        try:
-            cycle_res = compute_cycle(date_str, persist=False)
-            print(f"      周期: {cycle_res['stage']} (置信度 {cycle_res['confidence']}/9), "
-                  f"主线 {[m['board'] for m in cycle_res['mainlines'][:3]]}")
-        except Exception as e:
-            print(f"      ⚠️ 周期引擎不可用({e}), V5 不做周期闸门")
-        v5_list = screen_v5(date_str, pool, limit_codes, stock_bids=stock_bids,
-                            cycle_res=cycle_res)
-        n_v5_cand = sum(1 for v in v5_list if v.get("group_tag") == "v5")
-        n_off = sum(1 for v in v5_list if v.get("group_tag") == "v5_off_cycle")
-        print(f"      V5 候选 {n_v5_cand} 只"
-              + (f", 首选 {next(v['name'] for v in v5_list if v['group_tag'] == 'v5')}"
-                 if n_v5_cand else "") + (f", 闸门外 {n_off} 只" if n_off else ""))
-        # V5 名单快照落库(v5_results): 候选 + 闸门外 + 对照组, 收盘后 --label 打标
-        store.save_v5_results(date_str, v5_list)
-        n_v5_ctl = sum(1 for v in v5_list if (v.get("group_tag") or "").startswith("v5_rej"))
-        print(f"      → v5_results 落库: 候选 {n_v5_cand} + 闸门外 {n_off} + 对照 {n_v5_ctl}")
-    except Exception as e:
-        print(f"      ⚠️ V5 筛选失败(不影响主流程): {e}")
-        v5_list = []
 
-    # 出击选股当时存档(9:26 口径): stage_pool(当日周期+当日竞价) 名单原样落库 strike_pool 表。
-    # 复核/审计读"当时说了什么"而不是事后重算(export_json.build_strike_review 优先读本表)。
-    if not dry_run and cycle_res:
-        print("[5.8/6] 出击选股当时存档")
+    print(f"[4/5] 情绪周期")
+    cycle_res = None
+    try:
+        cycle_res = compute_cycle(date_str, persist=False)
+        print(f"      周期: {cycle_res['stage']} (置信度 {cycle_res['confidence']}/9), "
+              f"主线 {[m['board'] for m in cycle_res['mainlines'][:3]]}")
+    except Exception as e:
+        print(f"      ⚠️ 周期引擎不可用({e}), 出击选股无法生成")
+
+    # V5 竞价首枪(内部喂养, 不推送): 容量方向供 stage_pool 发酵/高潮段(经 auction.json v5)
+    v5_list = []
+    if cycle_res:
+        try:
+            v5_list = screen_v5(date_str, pool, limit_codes, stock_bids=None,
+                                cycle_res=cycle_res)
+            store.save_v5_results(date_str, v5_list)
+            n_v5 = sum(1 for v in v5_list if v.get("group_tag") == "v5")
+            print(f"      V5 内部喂养: 候选 {n_v5} 只(不推送), v5_results 落库 {len(v5_list)} 条")
+        except Exception as e:
+            print(f"      ⚠️ V5 筛选失败(今日容量方向缺席, 不影响主流程): {e}")
+
+    print(f"[5/5] 出击选股 + 昨日连板换手")
+    picks, watch_mode, bidrank = [], False, []
+    if cycle_res:
+        # 出击选股(9:26 口径): stage_pool(当日周期+当日竞价) → Top5。
+        # strike_pool 原样存档(复核/审计读"当时说了什么"; 09:31 --confirm 也读本表)。
         try:
             from src.analysis.stage_candidates import stage_pool
             _pool25 = stage_pool(cycle_res, max_n=20, bid_date=date_str)
             _picks = [{k: p.get(k) for k in ("code", "name", "height", "status", "reason", "tag", "bid_pct")}
                       for p in _pool25]
+            picks, watch_mode = pick_strike_top(_picks)
+            print(f"      出击名单 {len(_picks)} 条 → Top{len(picks)}"
+                  + ("(全观察, 纪律优先)" if watch_mode else ""))
+            if not dry_run:
+                _conn = __import__("sqlite3").connect(store.db_path)
+                try:
+                    _conn.execute("CREATE TABLE IF NOT EXISTS strike_pool "
+                                  "(date TEXT PRIMARY KEY, stage TEXT, picks TEXT, created_at TEXT)")
+                    _conn.execute("INSERT OR REPLACE INTO strike_pool VALUES (?,?,?,?)",
+                                  (date_str, cycle_res["stage"], json.dumps(_picks, ensure_ascii=False),
+                                   datetime.now(BJ_TZ).strftime("%Y-%m-%d %H:%M")))
+                    _conn.commit()
+                finally:
+                    _conn.close()
+                print(f"      → strike_pool 存档 {len(_picks)} 条({cycle_res['stage']}期)")
+        except Exception as e:
+            print(f"      ⚠️ 出击选股失败(不影响落库): {e}")
+        # 昨日连板 · 今日竞价换手 Top5(口径同 build_lianban_bid/盘面页 bidTop):
+        # 连板名单 = limit_pool 前一交易日 pid_type>=2; 换手 KPL 优先, 0值腾讯 0930 补算
+        try:
             _conn = __import__("sqlite3").connect(store.db_path)
             try:
-                _conn.execute("CREATE TABLE IF NOT EXISTS strike_pool "
-                              "(date TEXT PRIMARY KEY, stage TEXT, picks TEXT, created_at TEXT)")
-                _conn.execute("INSERT OR REPLACE INTO strike_pool VALUES (?,?,?,?)",
-                              (date_str, cycle_res["stage"], json.dumps(_picks, ensure_ascii=False),
-                               datetime.now(BJ_TZ).strftime("%Y-%m-%d %H:%M")))
-                _conn.commit()
+                _lb_rows = _conn.execute(
+                    "SELECT code, name, pid_type, circ_mv FROM limit_pool "
+                    "WHERE date=? AND pid_type>=2", (_prev_limit_day,)).fetchall() \
+                    if _prev_limit_day else []
             finally:
                 _conn.close()
-            print(f"      → strike_pool 存档 {len(_picks)} 条({cycle_res['stage']}期)")
+            _np = os.environ.get("NO_PROXY", "")
+            if _lb_rows and "gtimg.cn" not in _np:
+                os.environ["NO_PROXY"] = _np + ("," if _np else "") + \
+                    "gtimg.cn,.gtimg.cn,ifzq.gtimg.cn,web.ifzq.gtimg.cn"
+            lianban_rows = []
+            for code, name, pid, mv in _lb_rows:
+                item = pool.get(str(code))
+                t_name = (item.get("name") if item else None) or name or ""
+                if "ST" in t_name.upper():
+                    continue
+                turn = (item.get("turnover_ratio") or 0) if item else 0
+                bid_pct = item.get("bid_pct") if item else None
+                f_mv = (item.get("circ_mv") if item else None) or mv
+                if not turn and f_mv:
+                    amt = _tencent_auction_amt(str(code))
+                    if amt:
+                        turn = amt / f_mv * 100  # 竞价成交额/流通市值(补算口径)
+                lianban_rows.append({"code": str(code), "name": t_name,
+                                     "height": pid or 0, "bid_pct": bid_pct,
+                                     "turnover": turn or 0})
+            bidrank = rank_lianban_bid(lianban_rows)
+            print(f"      昨日({_prev_limit_day})连板 {len(lianban_rows)} 只 → 竞价换手 Top{len(bidrank)}")
         except Exception as e:
-            print(f"      ⚠️ 出击存档失败(不影响主流程): {e}")
+            print(f"      ⚠️ 昨日连板换手排名失败(不影响主流程): {e}")
 
     # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
     if not dry_run:
-        print(f"[5.7/6] 东财人气榜快照(am)")
+        print(f"      东财人气榜快照(am)")
         try:
             hot = collect_em_hot(top=100)
             hr = HotRankStore()
@@ -1440,11 +1386,10 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         except Exception as e:
             print(f"      ⚠️ 人气榜采集失败(不影响主流程): {e}")
 
-    print(f"[6/6] 输出 + 推送 (耗时 {time.time()-t0:.0f}s)")
     out = {
         "date": date_str, "generated_at": crawl_time,
-        "env": result["env"], "boards": boards,
-        "candidates": result["candidates"], "watch": result.get("watch", []),
+        "env": env_res, "boards": boards,
+        "strike": picks, "strike_watch": watch_mode, "bidrank": bidrank,
         "v5": v5_list, "regime": regime,
         "cycle": ({
             "stage": cycle_res["stage"], "confidence": cycle_res["confidence"],
@@ -1454,29 +1399,37 @@ def scan(date_str: str, dry_run: bool = False) -> int:
             "leaders": [{"code": l["code"], "name": l["name"],
                          "pid": l["pid"], "role": l["role"]} for l in cycle_res["leaders"]],
         } if cycle_res else None),
-        "empty_reason": result["empty_reason"],
-        "rejected": result.get("rejected", [])[:50],  # JSON 只保留前 50 条(全量已落库)
-        "stats": {"pool": len(pool), "genes": len(genes), "boards": len(boards)},
+        "empty_reason": "" if env_res["pass"] else "; ".join(env_res["reasons"]),
+        "stats": {"pool": len(pool), "boards": len(boards)},
     }
-    AUCTION_OUT.parent.mkdir(parents=True, exist_ok=True)
-    # 前端生产文件写入前同样校验数据日期(与 AuctionStore._validate_date 同规则):
-    # 防止非交易日手跑把"今天"假快照覆盖到 auction.json(2026-08-23 审计实测发生过)
-    AuctionStore._validate_date(date_str)
-    AUCTION_OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), "utf-8")
-    cand_path = Path("/tmp/auction_candidates.json")  # 供 --confirm 步骤使用
-    cand_path.write_text(json.dumps(e_candidates, ensure_ascii=False), "utf-8")
-    print(f"✅ auction.json 已写入 {AUCTION_OUT} (核心 {len(result['candidates'])} + 备选 {len(result.get('watch', []))} 只 + V5 {len(v5_list)} 只)")
-
+    # dry-run 不写生产快照(演练/回放不覆盖前端auction.json; 演练正文直接打印供人工核验)
     if not dry_run:
-        v5_push = [v for v in v5_list if v.get("group_tag") == "v5"]
-        text = build_message(date_str, result, boards, crawl_time) \
-            + build_v5_message(v5_push, regime, cycle_res)
-        try:
-            resp = DingTalk().send_markdown(f"竞价抢筹 {date_str} {crawl_time}", text)
-            print(f"📣 钉钉推送: {resp}")
-        except Exception as e:
-            # 推送失败不能阻断 workflow 的 commit 步骤(否则当天选股丢库), 只告警
-            print(f"❌ 钉钉推送失败(不影响落库): {e}")
+        AUCTION_OUT.parent.mkdir(parents=True, exist_ok=True)
+        # 前端生产文件写入前同样校验数据日期(与 AuctionStore._validate_date 同规则):
+        # 防止非交易日手跑把"今天"假快照覆盖到 auction.json(2026-08-23 审计实测发生过)
+        AuctionStore._validate_date(date_str)
+        AUCTION_OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), "utf-8")
+        print(f"✅ auction.json 已写入 {AUCTION_OUT} "
+              f"(出击 {len(picks)} + 连板换手 {len(bidrank)} + V5喂养 {len(v5_list)})")
+
+    if cycle_res:
+        text = build_strike_message(date_str, crawl_time, cycle_res, regime, env_res,
+                                    picks, watch_mode, bidrank)
+    else:
+        text = (f"## 🎯 今日出击 {crawl_time}\n> {date_str}\n"
+                "**⚠️ 周期引擎不可用, 出击选股未生成**(下一交易日自动重试)\n\n"
+                "📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)")
+    if dry_run:
+        print("──── dry-run 推送正文(未发送) ────")
+        print(text)
+        print("────────────────────────────────")
+        return 0
+    try:
+        resp = DingTalk().send_markdown(f"🎯 今日出击 {date_str} {crawl_time}", text)
+        print(f"📣 钉钉推送: {resp}")
+    except Exception as e:
+        # 推送失败不能阻断 workflow 的 commit 步骤(否则当天选股丢库), 只告警
+        print(f"❌ 钉钉推送失败(不影响落库): {e}")
     return 0
 
 
@@ -1511,8 +1464,7 @@ def main():
     ap = argparse.ArgumentParser(description="竞价抢筹扫描")
     ap.add_argument("--date", help="扫描日期 YYYY-MM-DD(默认今天)")
     ap.add_argument("--probe", action="store_true", help="接口探测模式(T1)")
-    ap.add_argument("--confirm", action="store_true", help="E 层开盘确认(09:31)")
-    ap.add_argument("--candidates", default="/tmp/auction_candidates.json", help="候选清单路径(--confirm 用)")
+    ap.add_argument("--confirm", action="store_true", help="出击选股开盘确认(09:31, 读 strike_pool)")
     ap.add_argument("--label", nargs="?", const="today", metavar="YYYY-MM-DD",
                     help="结果标签模式: 抓当日收盘写 candidate_results(默认今天; 可传历史日期回补)")
     ap.add_argument("--v5-report", action="store_true",
@@ -1522,7 +1474,7 @@ def main():
                     help="东财人气榜快照(TOP100)落 hot_rank.db; snap 自动判定 am/pm(crawl.yml 午后调用)")
     ap.add_argument("--backfill-factors", action="store_true",
                     help="历史候选日K因子回填(ma60_above/ret20/macd_ok/kdj_ok; 委比无历史数据留 NULL)")
-    ap.add_argument("--dry-run", action="store_true", help="不推钉钉")
+    ap.add_argument("--dry-run", action="store_true", help="演练: 不推钉钉不写生产快照, 正文打印供核验")
     args = ap.parse_args()
 
     date_str = args.date or datetime.now(BJ_TZ).strftime("%Y-%m-%d")
@@ -1538,8 +1490,7 @@ def main():
     if args.hot_rank:
         return hot_rank_job()
     if args.confirm:
-        e_confirm(Path(args.candidates))
-        return 0
+        return e_confirm(date_str)
     return scan(date_str, dry_run=args.dry_run)
 
 

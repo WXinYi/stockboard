@@ -258,7 +258,8 @@ const auctionReason = computed(() => {
   const r = auction.value?.env?.reasons
   return r && r.length ? r[0] : ''
 })
-const auctionCandidates = computed(() => (auction.value?.candidates || []).slice(0, 2))
+// 竞价迷你卡: 出击选股前2(09:29 推送同源; 存量漏斗候选已停跑)
+const auctionCandidates = computed(() => (auction.value?.strike || []).slice(0, 2))
 
 // ── 市场情绪 ──
 const moodToday = computed(() => (mood.value || [])[0] || null)   // info 按 Day 倒序, 最新在前
@@ -449,7 +450,7 @@ const instTop8 = computed(() => (institution.value || []).slice(0, 8))
         </div>
         <div v-if="auctionCandidates.length" class="mt-auction-row">
           <span v-for="c in auctionCandidates" :key="c.code" class="mt-auction-stock">
-            <em class="mt-tag">{{ c.tier === 'core' ? '核心' : '备选' }}</em>{{ c.name }}<i>{{ c.score }}分</i>
+            <em class="mt-tag">{{ (c.status || '').startsWith('可做') ? '出击' : '观察' }}</em>{{ c.name }}
           </span>
         </div>
       </template>
