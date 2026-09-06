@@ -13,6 +13,7 @@ import argparse
 import gzip
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -109,6 +110,27 @@ def cmd_list():
         print(f"{rel['tag_name']:<16} {assets}")
 
 
+def _download_what_auction() -> int:
+    """auction-state latest → 最新日期快照兜底 → data/auction.db(匿名可读)。"""
+    dest = ROOT / "data" / "auction.db"
+    rel = get_release("auction-state")
+    if not rel:
+        print("❌ Release auction-state 不存在(用 --list 查看可用归档)", file=sys.stderr)
+        return 1
+    daily = sorted((a["name"] for a in rel.get("assets", [])
+                    if re.fullmatch(r"auction-\d{4}-\d{2}-\d{2}\.db\.gz", a["name"])),
+                   reverse=True)
+    for name in ["auction-latest.db.gz"] + daily:
+        try:
+            download_gz("auction-state", name, dest)
+            return 0
+        except SystemExit as e:
+            print(f"⚠️ {name} 不可用, 尝试下一候选...", file=sys.stderr)
+            _ = e
+    print("❌ auction-state 全部候选资产不可用", file=sys.stderr)
+    return 1
+
+
 def merge_files(out: Path, parts: list):
     """按 crawl_date 去重合并多个归档库。"""
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -156,6 +178,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--latest", action="store_true", help="热层 → data/crawl_data.db")
+    ap.add_argument("--auction", action="store_true",
+                    help="热层 auction-state → data/auction.db(latest 失败回退最新日快照)")
     ap.add_argument("--week", metavar="YYYY-Www")
     ap.add_argument("--month", metavar="YYYY-MM")
     ap.add_argument("--range", nargs=2, metavar=("月", "月"), help="如 2026-03 2026-08")
@@ -163,6 +187,9 @@ def main():
 
     if args.list:
         cmd_list()
+    elif args.auction:
+        if _download_what_auction() != 0:
+            sys.exit(1)
     elif args.latest:
         download_gz("db-state", "crawl-latest.db.gz", ROOT / "data" / "crawl_data.db")
     elif args.week:

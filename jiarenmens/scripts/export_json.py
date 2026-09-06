@@ -26,6 +26,21 @@ DB_PATH = ROOT / "data" / "crawl_data.db"
 # 工具函数
 # ═══════════════════════════════════════════════
 
+def _atomic_json(path: Path, obj):
+    """原子写 JSON: 先写同目录 .tmp 再 os.replace, 防进程中断留下截断文件被 git add -f 固化。"""
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
+def _atomic_text(path: Path, text: str):
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
 def safe_float(v, default=0.0):
     if v is None:
         return default
@@ -83,6 +98,9 @@ def is_quality(p):
 def export(db_path, crawl_date, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # 清理上次中断残留的 .tmp(失败班无 commit, 双保险防 git add -f 固化)
+    for t in out_dir.rglob("*.tmp"):
+        t.unlink()
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -616,22 +634,17 @@ def export(db_path, crawl_date, out_dir):
          p["stocks"]]
         for p in export_players
     ]
-    with open(latest_dir / "players_index.json", "w", encoding="utf-8") as f:
-        json.dump(players_list, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "players_index.json", players_list)
 
-    with open(latest_dir / "summary.json", "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "summary.json", summary)
 
     # 分片文件（前端按需加载）
-    with open(latest_dir / "core.json", "w", encoding="utf-8") as f:
-        json.dump(summary_slices["core"], f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "core.json", summary_slices["core"])
     for slice_name in ("copy", "stocks"):
-        with open(latest_dir / f"{slice_name}.json", "w", encoding="utf-8") as f:
-            json.dump(summary_slices[slice_name], f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_json(latest_dir / f"{slice_name}.json", summary_slices[slice_name])
 
     # name_map.json（只含当日被引用名字）
-    with open(latest_dir / "name_map.json", "w", encoding="utf-8") as f:
-        json.dump(name_map, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "name_map.json", name_map)
 
     # changes_summary.json（/copy 摘要栏用，不含明细）
     if changes_data:
@@ -646,8 +659,7 @@ def export(db_path, crawl_date, out_dir):
     else:
         changes_summary = {"hasHistory": False, "yesterday": "", "today": "",
                            "addedCount": 0, "clearedCount": 0, "changeCount": 0}
-    with open(latest_dir / "changes_summary.json", "w", encoding="utf-8") as f:
-        json.dump(changes_summary, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "changes_summary.json", changes_summary)
 
     # my_positions.json（个人纪律卡: 持仓价位表 + rtV2 自动核对 + 板块涨停统计 + 操作点评）
     build_my_positions(latest_dir, crawl_date)
@@ -673,8 +685,7 @@ def export(db_path, crawl_date, out_dir):
                 pp.get("cd", pp.get("sc", "")) for pp in pos_by_pid.get(pid, [])
             )),
         }
-        with open(players_out_dir / f"{pid}.json", "w", encoding="utf-8") as f:
-            json.dump(detail, f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_json(players_out_dir / f"{pid}.json", detail)
 
     # 清理不在导出集合的旧 JSON: 跌出"优质∪当日活跃∪被引用"集合的选手文件删除,
     # 避免目录只增不删(曾累积 23192 个/92MB 随 git 提交膨胀)。
@@ -686,18 +697,22 @@ def export(db_path, crawl_date, out_dir):
             f.unlink()
             removed_players += 1
 
-    # 15c. index.json（不变）
+    # 15c. index.json（不变; 读加防护: 旧截断文件曾会让后续每班 export 崩溃停摆）
     index_path = out_dir / "index.json"
     existing_dates = []
     if index_path.exists():
-        existing_dates = json.loads(index_path.read_text(encoding="utf-8")).get("dates", [])
+        try:
+            existing_dates = json.loads(index_path.read_text(encoding="utf-8")).get("dates", [])
+        except Exception as e:
+            print(f"⚠️ index.json 损坏({e}), 从 positions 表重建 dates", file=sys.stderr)
+            existing_dates = sorted({r["crawl_date"] for r in all_positions if r["crawl_date"]})
     if crawl_date not in existing_dates:
         existing_dates.append(crawl_date)
         existing_dates.sort()
-    index_path.write_text(
+    _atomic_text(
+        index_path,
         json.dumps({"dates": existing_dates, "crawl_time": crawl_time},
-                   ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8"
+                   ensure_ascii=False, separators=(",", ":"))
     )
 
     # ── 16. 报告 ─────────────────────────────
@@ -1142,8 +1157,7 @@ def build_my_positions(latest_dir: Path, crawl_date: str):
         "touch_count": touch_count, "positions": out_positions, "ops_review": ops_review,
         "battle_plan": battle_plan,
     }
-    with open(latest_dir / "my_positions.json", "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "my_positions.json", out)
     print(f"   my_positions.json → {len(out_positions)} 只 (触价 {touch_count}, "
           f"板块口径 {board_asof or '—'}, 调仓核对至 {trades_asof or '—'}, "
           f"点评 {ops_review['date']}: ❌{ops_review['bad']} ⚠️{ops_review['warn']} ✅{ops_review['ok']})")
@@ -1186,8 +1200,7 @@ def build_lianban_bid(latest_dir: Path, crawl_date: str):
                     bid[code] = (ratio, mv)
     except Exception as e:
         print(f"⚠️ lianban_bid: auction.db 不可读({e}), 输出空标记")
-        with open(latest_dir / "lianban_bid.json", "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_json(latest_dir / "lianban_bid.json", out)
         return
     if lianban:
         _np = os.environ.get("NO_PROXY", "")
@@ -1205,8 +1218,7 @@ def build_lianban_bid(latest_dir: Path, crawl_date: str):
         out["top"].append({**s, "hs": round(ratio, 2), "src": src})
     out["top"].sort(key=lambda x: -x["hs"])
     out["top"] = out["top"][:5]
-    with open(latest_dir / "lianban_bid.json", "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "lianban_bid.json", out)
     top_txt = " / ".join(f"{t['name']} {t['hs']:.2f}%" for t in out["top"]) or "无"
     print(f"   lianban_bid.json → {out['prev_day']}连板×{out['date']}竞价换手Top5: {top_txt}")
 
@@ -1246,7 +1258,7 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
         else:
             try:
                 cycle_today = compute_cycle(crawl_date, persist=False)
-                wzq = [{k: p[k] for k in ("code", "name", "height", "status", "reason")}
+                wzq = [{k: p.get(k) for k in ("code", "name", "height", "status", "reason", "tag", "bid_pct")}
                        for p in stage_pool(cycle_today, max_n=30, bid_date=crawl_date)]
             except Exception:
                 wzq = []
@@ -1255,9 +1267,10 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
             if not p["status"].startswith("可做(弱转强)"):
                 continue
             m = _re.search(r"昨日(\S+?)分歧, 今竞价 ([+\-\d.]+)%", p["reason"])
+            # 新存档带结构化 tag/bid_pct; 旧档(仅 reason 文本)回退 regex 解析
             out["today_wzq"].append({"code": p["code"], "name": p["name"],
-                                     "tag": m.group(1) if m else "分歧",
-                                     "bid_pct": m.group(2) if m else None, "reason": p["reason"]})
+                                     "tag": p.get("tag") or (m.group(1) if m else "分歧"),
+                                     "bid_pct": p.get("bid_pct") or (m.group(2) if m else None), "reason": p["reason"]})
         try:
             from src.analysis.six_emotions import six_scores
             out["six"] = six_scores(crawl_date)
@@ -1272,13 +1285,13 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
                 cycle_prev = compute_cycle(prev, persist=False)
                 pool = stage_pool(cycle_prev, max_n=20)
                 out["stage"], out["src"] = cycle_prev["stage"], "重算"
-                archived = [{k: p[k] for k in ("code", "name", "height", "status", "reason")} for p in pool]
+                archived = [{k: p.get(k) for k in ("code", "name", "height", "status", "reason", "tag", "bid_pct")}
+                            for p in pool]
             out["picks"] = [{**p, "bid_pct": bids.get(p["code"])}
                             for p in archived if p["status"].startswith("可做")]
     except Exception as e:
         print(f"⚠️ strike_review: 计算失败({e}), 输出空复核")
-    with open(latest_dir / "strike_review.json", "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_json(latest_dir / "strike_review.json", out)
     names = " / ".join(f"{p['name']}({p['status']})" for p in out["picks"]) or "无可买(空仓)"
     print(f"   strike_review.json → {out['prev_day']}可买复核[{out['src']}]: {names}")
 

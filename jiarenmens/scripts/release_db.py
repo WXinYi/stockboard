@@ -8,11 +8,13 @@
 
 用法(上传需 GITHUB_TOKEN/GH_TOKEN 环境变量; workflow 内用 secrets.GITHUB_TOKEN):
   python scripts/release_db.py --upload-latest          # 当前 db 快照 → 热层
+  python scripts/release_db.py --what auction --upload-latest    # auction.db → 热层 + 当日快照(留7天)
   python scripts/release_db.py --archive-weeks          # 库内最近一周 → 温层
   python scripts/release_db.py --archive-months         # 库内"已完成月" → 冷层(永久)
   python scripts/release_db.py --sync                   # 以上三条 + 清理超龄温层(收盘后 run 一次调用)
   python scripts/release_db.py --init                   # 首次迁移: 热层 + 全部已完成月
   python scripts/release_db.py --download-latest        # 拉热层 → data/crawl_data.db (workflow 恢复用)
+  python scripts/release_db.py --what auction --download-latest  # auction latest 失败自动回退最新日快照
   python scripts/release_db.py --gz-only /tmp/x.db.gz   # 无 token, 本地生成快照 gz 自检
 
 设计要点:
@@ -25,6 +27,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -41,6 +44,15 @@ API_BASE = f"https://api.github.com/repos/{REPO}"
 UPLOAD_BASE = f"https://uploads.github.com/repos/{REPO}/releases"
 HOT_TAG = "db-state"
 HOT_ASSET = "crawl-latest.db.gz"
+
+# 数据库目标注册表: crawl_data.db(热/温/冷三层 sync) / auction.db(热层 + 当日快照)
+# auction 单独成档原因: 竞价班(auction.yml)/打标班(auction-label.yml)/crawl班 三个 workflow
+# 都写它, 且 bid_pool 等竞价时点档案不可重采 —— 每班 sha 变更即传, 不能套 crawl 的收盘闸门。
+TARGETS = {
+    "crawl": {"db": DB_PATH, "tag": HOT_TAG, "asset": HOT_ASSET},
+    "auction": {"db": ROOT / "data" / "auction.db", "tag": "auction-state",
+                "asset": "auction-latest.db.gz", "prefix": "auction", "daily_keep": 7},
+}
 
 
 # ────────────────────────── GitHub API ──────────────────────────
@@ -250,6 +262,31 @@ def cmd_upload_latest():
     _upload_snapshot(HOT_TAG, HOT_ASSET)
 
 
+def cmd_upload_what(what: str):
+    """--what 分发: crawl 走原三层 sync 语义; auction 全量快照直传 + 当日快照留存。"""
+    t = TARGETS[what]
+    if what == "crawl":
+        cmd_upload_latest()
+        return
+    tmp_db = snapshot_db(t["db"])
+    try:
+        gz = Path(str(tmp_db) + ".gz")
+        make_gz(tmp_db, gz)
+        upload_asset(t["tag"], t["asset"], gz)
+        # 当日快照 + 滚动清理: 热层被后写者覆盖/损坏时, 最近 N 天任意时点可回滚
+        daily = f"{t['prefix']}-{date.today().isoformat()}.db.gz"
+        upload_asset(t["tag"], daily, gz)
+        cutoff = (date.today() - timedelta(days=t["daily_keep"])).isoformat()
+        for a in get_release(t["tag"]).get("assets", []):
+            m = re.fullmatch(rf"{re.escape(t['prefix'])}-(\d{{4}}-\d{{2}}-\d{{2}})\.db\.gz", a["name"])
+            if m and m.group(1) < cutoff:
+                _api("DELETE", a["url"], token=_token())
+        print(f"[upload] ✅ {t['tag']}/{t['asset']} + 当日快照")
+    finally:
+        tmp_db.unlink(missing_ok=True)
+        Path(str(tmp_db) + ".gz").unlink(missing_ok=True)
+
+
 def cmd_archive_weeks():
     dates = db_dates(DB_PATH)
     if not dates:
@@ -292,20 +329,19 @@ def cmd_retain_weeks(weeks: int):
             delete_release(tag)
 
 
-def cmd_download_latest(dest: Path = None, retries: int = 3):
-    """拉取热层覆盖 dest。失败返回 1(由调用方决定终止/降级), 网络错误重试。"""
-    dest = dest or DB_PATH
+def _download_asset_to_db(tag: str, asset: str, dest: Path, retries: int = 3) -> int:
+    """单个 gz 资产 → 解压覆盖 dest。失败返回 1(由调用方决定终止/降级), 网络错误重试。"""
     last_err = ""
     for i in range(retries):
-        rel = get_release(HOT_TAG)
+        rel = get_release(tag)
         if not rel:
             return 1
-        asset = next((a for a in rel.get("assets", []) if a["name"] == HOT_ASSET), None)
-        if not asset:
+        a = next((x for x in rel.get("assets", []) if x["name"] == asset), None)
+        if not a:
             return 1
         gz = Path(tempfile.mkstemp(suffix=".db.gz")[1])
         try:
-            req = urllib.request.Request(asset["browser_download_url"],
+            req = urllib.request.Request(a["browser_download_url"],
                                          headers={"User-Agent": "stockboard-release-db"})
             with urllib.request.urlopen(req, timeout=120) as r, open(gz, "wb") as f:
                 shutil.copyfileobj(r, f)
@@ -315,7 +351,7 @@ def cmd_download_latest(dest: Path = None, retries: int = 3):
             ic = sqlite3.connect(dest).execute("PRAGMA integrity_check").fetchone()[0]
             if ic != "ok":
                 sys.exit(f"❌ 热层恢复后完整性校验失败: {ic}")
-            print(f"[download] ✅ {HOT_TAG}/{HOT_ASSET} → {dest} (integrity ok)")
+            print(f"[download] ✅ {tag}/{asset} → {dest} (integrity ok)")
             return 0
         except Exception as e:   # 网络抖动重试, 不能让单次失败断链
             last_err = str(e)
@@ -324,6 +360,30 @@ def cmd_download_latest(dest: Path = None, retries: int = 3):
         finally:
             gz.unlink(missing_ok=True)
     print(f"[download] ❌ 重试耗尽: {last_err}", file=sys.stderr)
+    return 1
+
+
+def cmd_download_latest(dest: Path = None, retries: int = 3):
+    """拉取 crawl 热层覆盖 dest(默认 DB_PATH)。失败返回 1。"""
+    return _download_asset_to_db(HOT_TAG, HOT_ASSET, dest or DB_PATH, retries)
+
+
+def cmd_download_what(what: str, dest: Path = None):
+    """--what 分发下载: auction 先 latest, 失败回退最新日期快照(防 latest 被损坏/覆盖丢失)。"""
+    t = TARGETS[what]
+    if what == "crawl":
+        return cmd_download_latest(dest)
+    dest = dest or t["db"]
+    rel = get_release(t["tag"])
+    if not rel:
+        print(f"[download] ❌ Release {t['tag']} 不存在", file=sys.stderr)
+        return 1
+    daily = sorted((a["name"] for a in rel.get("assets", [])
+                    if re.fullmatch(rf"{re.escape(t['prefix'])}-\d{{4}}-\d{{2}}-\d{{2}}\.db\.gz", a["name"])),
+                   reverse=True)
+    for name in [t["asset"]] + daily:
+        if _download_asset_to_db(t["tag"], name, dest, retries=2) == 0:
+            return 0
     return 1
 
 
@@ -342,25 +402,30 @@ def cmd_init():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--what", choices=sorted(TARGETS), default="crawl",
+                    help="目标库: crawl_data.db(crawl, 默认) / auction.db(auction)")
     ap.add_argument("--upload-latest", action="store_true")
     ap.add_argument("--archive-weeks", action="store_true")
     ap.add_argument("--archive-months", action="store_true")
     ap.add_argument("--sync", action="store_true")
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--download-latest", action="store_true")
-    ap.add_argument("--dest", default=str(DB_PATH), help="--download-latest 目标路径")
+    ap.add_argument("--dest", default=None, help="--download-latest 目标路径(默认按 --what 取注册表)")
     ap.add_argument("--retain-weeks", type=int, metavar="N")
     ap.add_argument("--gz-only", metavar="OUT", help="无 token, 本地生成快照 gz 自检")
     args = ap.parse_args()
 
     if args.gz_only:
-        tmp = snapshot_db(DB_PATH)
+        tmp = snapshot_db(TARGETS[args.what]["db"])
         make_gz(tmp, Path(args.gz_only))
-        print(json.dumps(make_manifest(tmp), ensure_ascii=False))
+        if args.what == "crawl":
+            print(json.dumps(make_manifest(tmp), ensure_ascii=False))
+        else:
+            print(f"[gz-only] {args.what}: {Path(args.gz_only).stat().st_size / 1e6:.1f}MB")
         tmp.unlink()
         return
     if args.upload_latest:
-        cmd_upload_latest()
+        cmd_upload_what(args.what)
     if args.archive_weeks:
         cmd_archive_weeks()
     if args.archive_months:
@@ -372,7 +437,7 @@ def main():
     if args.init:
         cmd_init()
     if args.download_latest:
-        raise SystemExit(cmd_download_latest(Path(args.dest)))
+        raise SystemExit(cmd_download_what(args.what, Path(args.dest) if args.dest else None))
     if not any([args.upload_latest, args.archive_weeks, args.archive_months,
                 args.sync, args.init, args.download_latest, args.retain_weeks, args.gz_only]):
         ap.print_help()

@@ -33,9 +33,15 @@ def main():
             "SELECT DISTINCT date FROM limit_pool WHERE date>=? AND date<=? ORDER BY date", (args.dfrom, to_d))]
     else:
         days = [conn.execute("SELECT MAX(date) FROM limit_pool").fetchone()[0]]
-    total = 0
+    total, failed = 0, []
     for i, d in enumerate(days):
-        rows = fetch_broken_pool(d)
+        try:
+            rows = fetch_broken_pool(d)
+        except Exception as e:
+            # 单日失败跳过(保当日旧数据不删, 幂等重跑可补); 全部失败在末尾 exit 1 上抛
+            failed.append(d)
+            print(f"⚠️ {d} 拉取失败, 跳过: {e}")
+            continue
         conn.execute("DELETE FROM broken_pool WHERE date=?", (d,))
         conn.executemany("INSERT OR REPLACE INTO broken_pool VALUES (?,?,?,?,?,?,?)",
                          [(d, r["code"], r["name"], r["break_times"], r["change_pct"],
@@ -46,7 +52,11 @@ def main():
         if i < len(days) - 1:
             time.sleep(0.4)
     conn.close()
-    print(f"✅ broken_pool 完成 {len(days)} 天 {total} 条")
+    if failed:
+        print(f"⚠️ {len(failed)} 天失败未补: {', '.join(map(str, failed))} (重跑同命令可补齐)")
+    print(f"✅ broken_pool 完成 {len(days) - len(failed)}/{len(days)} 天 {total} 条")
+    if days and len(failed) == len(days):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

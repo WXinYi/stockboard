@@ -77,15 +77,15 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
     pool: list[dict] = []
     seen: set[str] = set()
 
-    def add(code, name, height, reason, status):
+    def add(code, name, height, reason, status, **extra):
         if code in seen:
             for p in pool:
                 if p["code"] == code and reason not in p["reason"]:
                     p["reason"] += f"；{reason}"
-            return
+            return  # 去重合并分支保持首见的 extra(tag/bid_pct) 不变
         seen.add(code)
         pool.append({"code": code, "name": name, "height": height,
-                     "reason": reason, "status": status})
+                     "reason": reason, "status": status, **extra})
 
     # 1) 龙头谱系: 任何阶段都盯(状态由阶段×角色定)
     lead_status = {"高潮": "可做(接力)", "发酵": "可做", "分歧": "可做(低吸)",
@@ -183,7 +183,8 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
             tag = "断板" if code in duanban else ("炸板" if code in broken_prev else "烂板")
             add(code, names_d.get(code, code) or broken_prev.get(code, code), 0,
                 f"弱转强: 昨日{tag}分歧, 今竞价 {bids[code]['change_pct']:+.1f}%, 分时确认才上",
-                "可做(弱转强)")
+                "可做(弱转强)",
+                tag=tag, bid_pct=f"{bids[code]['change_pct']:+.1f}")  # 结构化字段: build_strike_review 优先读, 免 regex 解析 reason
 
     # 3) V5 容量方向(周期闸门): 仅 发酵/高潮 开, 且只留主线板块内
     if stage in V5_STAGES:

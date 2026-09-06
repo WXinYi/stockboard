@@ -1409,7 +1409,8 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         try:
             from src.analysis.stage_candidates import stage_pool
             _pool25 = stage_pool(cycle_res, max_n=20, bid_date=date_str)
-            _picks = [{k: p[k] for k in ("code", "name", "height", "status", "reason")} for p in _pool25]
+            _picks = [{k: p.get(k) for k in ("code", "name", "height", "status", "reason", "tag", "bid_pct")}
+                      for p in _pool25]
             _conn = __import__("sqlite3").connect(store.db_path)
             try:
                 _conn.execute("CREATE TABLE IF NOT EXISTS strike_pool "

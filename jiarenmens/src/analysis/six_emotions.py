@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
 """涅槃重升 · 六情绪建模 (数据: auction.db, 全部现有表, 零新数据源)
 
-六个情绪变量, 每个归一为 0-100 历史分位数(对自身 255+ 天历史排名, 自我校准无硬编码阈值):
-  市场    = KPL情绪分(.4) + 跌停数反向(.3) + 破板率反向(.3)
+六个情绪变量, 每个归一为 0-100 历史分位数(对自身全历史排名, 自我校准无硬编码阈值):
+  市场    = KPL情绪分(.3) + 跌停数反向(.2) + 破板率反向(.2) + 指数趋势(.15) + 竞价金额(.15)
   投机    = 涨停家数(.25) + 连板高度(.2) + 晋级率(.2) + 破板率反向(.15) + 炸板数反向(.1) + 昨高位续板率(.1)
   板块    = 主线涨停家数(.35) + 主线高度(.25) + 主线扩散环比(.25) + 主线成交额(.15)
   整体市场 = 市场 3 日均值的分位数
   整体投机 = 投机 3 日均值的分位数
   整体板块 = 主线连任天数(.5) + 近5日主线切换次数反向(.5)
 
-主导条件(涅槃 5 情形 + 退潮防守, 顺序即优先级):
-  退潮防守 / 板块情绪极强 / 投机情绪极强 / 市场强但板块不强 / 分歧但情绪不差 / 混沌观察
+连板高度用 emotion_cycle.load_pool 的"连续在池反推"真实高度(解开 pid_type=5 封顶桶),
+与周期引擎口径一致 —— pid_type 原值会把 6/7/8 板全部压平成 5。
+
+主导条件(涅槃 5 情形 + 退潮防守 + 混沌过渡, 顺序即优先级):
+  混沌过渡 / 退潮防守 / 板块情绪极强 / 投机情绪极强 / 市场强但板块不强 / 分歧但情绪不差 / 混沌观察
+混沌过渡 = 退潮尾声→新周期试错初期的两极分化(2026-09-06 按用户盘面核实 8/31 校准):
+  赚钱维未收缩(涨停≥p75) + 亏钱维报警(跌停≥p60 或 炸板≥p70) + 高度从峰回落1-2级(未崩) + 未血洗(跌停/涨停≤0.25)。
 每种主导对应战术偏向(涅槃 Tactics/Position Logic 表)。
 """
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
+from src.analysis.emotion_cycle import load_pool
+
 DB = Path(__file__).resolve().parents[2] / "data" / "auction.db"
+
+# 上证日K双源(09-06 实测同构同数据; 东财 push2his 掐非浏览器 TLS、网易 502, 弃用)
+_INDEX_URLS = [
+    "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,{n},qfq",
+    "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/fqkline/get?param=sh000001,day,,,{n},qfq",
+]
 
 
 def _rows(conn, sql, args=()):
@@ -39,28 +53,39 @@ def _parse_bid_amount(raw):
 
 
 def _ensure_index(latest_date):
-    """index_daily(上证收盘) 懒加载: 落后于行情库最新日则从腾讯日K补(一次 320 根)。
-    自带可写连接(ro 主连接只读); 失败静默返回(指数分量缺失仅降级, 不阻断)"""
+    """index_daily(上证收盘) 懒加载: 落后于行情库最新日则拉日K补(一次 320 根)。
+    双腾讯主机同构轮试(常量 _INDEX_URLS); 自带可写连接(ro 主连接只读);
+    双源失败打印 stderr 告警(指数分量缺失仅降级, 不阻断)。"""
+    conn = None
     try:
         conn = sqlite3.connect(DB)
         conn.execute("CREATE TABLE IF NOT EXISTS index_daily (date TEXT PRIMARY KEY, close REAL)")
         row = conn.execute("SELECT MAX(date) FROM index_daily").fetchone()
         if row and row[0] and row[0] >= (latest_date or ""):
-            conn.close()
             return
         import json as _json
         import urllib.request
-        url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,{320},qfq"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            node = _json.load(r)["data"]["sh000001"]
-            days = node.get("qfqday") or node.get("day") or []
+        days, last_err = None, None
+        for tpl in _INDEX_URLS:
+            try:
+                req = urllib.request.Request(tpl.format(n=320), headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    node = _json.load(r)["data"]["sh000001"]
+                    days = node.get("qfqday") or node.get("day") or []
+                if days:
+                    break
+            except Exception as e:
+                last_err = e
+        if not days:
+            raise RuntimeError(f"双源均失败: {last_err}")
         conn.executemany("INSERT OR REPLACE INTO index_daily VALUES (?,?)",
                          [(x[0], float(x[2])) for x in days if x[0] <= (latest_date or "9999")])
         conn.commit()
-        conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ index_daily 指数补拉失败(六情绪指数分量缺失, 不阻断): {e}", file=sys.stderr)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _load_all():
@@ -70,31 +95,40 @@ def _load_all():
     moods = {r["date"]: r for r in _rows(conn, "SELECT date, strong, raw FROM mood_daily")}
     _ensure_index(max(breadth) if breadth else None)
     index_close = {r["date"]: r["close"] for r in _rows(conn, "SELECT * FROM index_daily ORDER BY date")}
-    pools = _rows(conn, "SELECT date, code, pid_type, plates, amount FROM limit_pool ORDER BY date")
-    broken = _rows(conn, "SELECT date, code FROM broken_pool")
+    # 复用周期引擎的池加载: 行已附真实连板高度(连续在池反推, 解开 pid_type=5 封顶)
+    pools = load_pool(days=120)
 
-    # 逐日涨停池聚合: 家数/最高板/主线(按板块关键词聚合过概念名含逗号分隔, 取池内 plates 首词统计)
     from collections import defaultdict
+    # 逐日涨停池聚合(一次遍历): 家数/真实最高板/两板以上数/主线板块计数与成交额
     day_codes = defaultdict(set)
     day_plates = defaultdict(lambda: defaultdict(int))
     day_amount = defaultdict(lambda: defaultdict(float))
+    day_max_h = defaultdict(int)
+    day_two_plus = defaultdict(int)
+    tops_by_day = defaultdict(set)
     for r in pools:
         d = r["date"]
+        h = r["height"]
         day_codes[d].add(r["code"])
+        if h > day_max_h[d]:
+            day_max_h[d] = h
+            tops_by_day[d] = {r["code"]}
+        elif h == day_max_h[d]:
+            tops_by_day[d].add(r["code"])
+        if h >= 2:
+            day_two_plus[d] += 1
         for b in str(r["plates"] or "").split("、"):
             b = b.strip()
             if b:
                 day_plates[d][b] += 1
                 day_amount[d][b] += r["amount"] or 0
-    for r in broken:
-        pass  # broken 名单单独查
 
     dates = sorted(set(breadth) | set(day_codes))
     metrics = {}
     for i, d in enumerate(dates):
         b = breadth.get(d, {})
         zt = b.get("zt") or (len(day_codes.get(d, ())) or None)
-        height = max([r["pid_type"] or 0 for r in pools if r["date"] == d], default=0)
+        height = day_max_h.get(d, 0)
         # 主线 = 当日涨停家数最多的板块
         plates = day_plates.get(d, {})
         top_board = max(plates, key=plates.get) if plates else None
@@ -102,18 +136,16 @@ def _load_all():
         top_amt = day_amount.get(d, {}).get(top_board, 0) if top_board else 0
         # 晋级率 = 今日≥2板家数 / 昨日涨停家数
         prev_d = dates[i - 1] if i > 0 else None
-        two_plus = sum(1 for r in pools if r["date"] == d and (r["pid_type"] or 0) >= 2)
-        promo = two_plus / len(day_codes.get(prev_d, ())) if prev_d and day_codes.get(prev_d) else None
-        # 昨高位续板率 = 昨日最高板股 今日仍封板比例
+        promo = day_two_plus[d] / len(day_codes[prev_d]) if prev_d and day_codes.get(prev_d) else None
+        # 昨高位续板率 = 昨日真实最高板股 今日仍封板比例
         relay = None
-        if prev_d:
-            prev_max = max((r["pid_type"] or 0) for r in pools if r["date"] == prev_d) if day_codes.get(prev_d) else 0
-            tops = {r["code"] for r in pools if r["date"] == prev_d and (r["pid_type"] or 0) == prev_max} if prev_max else set()
-            if tops:
-                relay = sum(1 for c in tops if c in day_codes.get(d, ())) / len(tops)
+        if prev_d and tops_by_day.get(prev_d):
+            tops = tops_by_day[prev_d]
+            relay = sum(1 for c in tops if c in day_codes.get(d, ())) / len(tops)
         metrics[d] = {
             "zt": zt, "dt": b.get("dt"), "broke": b.get("broke_rate"), "zhaban": b.get("zhaban"),
             "strong": (moods.get(d) or {}).get("strong"), "height": height,
+            "height_prev": (metrics[prev_d]["height"] if prev_d else None),
             "promo": promo, "relay": relay,
             "top_board": top_board, "top_cnt": top_cnt, "top_amt": top_amt,
             "top_cnt_prev": (day_plates.get(prev_d, {}).get(top_board, 0) if top_board and prev_d else None),
@@ -178,41 +210,53 @@ def compute_all():
               ("strong", "dt", "broke", "zt", "height", "promo", "relay", "zhaban",
                "top_cnt", "top_cnt_delta", "top_amt", "run_days", "switches_5d",
                "idx_trend", "bid_amt")}
+    # 反向分量与分布列表只建一次(_pct_rank 自身会再滤 None, 与逐次重建等价)
+    dt_neg = [-x for x in series["dt"] if x is not None]
+    broke_neg = [-x for x in series["broke"] if x is not None]
+    zhaban_neg = [-x for x in series["zhaban"] if x is not None]
+    switches_neg = [-x for x in series["switches_5d"] if x is not None]
     out = {}
-    spec_raw = {}
-    market_raw = {}
     for d in dates:
         m = metrics[d]
         market = _wsum([(_pct_rank(series["strong"], m["strong"]), .3),
-                        (_pct_rank([-x for x in series["dt"] if x is not None], -m["dt"] if m["dt"] is not None else None), .2),
-                        (_pct_rank([-x for x in series["broke"] if x is not None], -m["broke"] if m["broke"] is not None else None), .2),
+                        (_pct_rank(dt_neg, -m["dt"] if m["dt"] is not None else None), .2),
+                        (_pct_rank(broke_neg, -m["broke"] if m["broke"] is not None else None), .2),
                         (_pct_rank(series["idx_trend"], m["idx_trend"]), .15),
                         (_pct_rank(series["bid_amt"], m["bid_amt"]), .15)])
         spec = _wsum([(_pct_rank(series["zt"], m["zt"]), .25),
                       (_pct_rank(series["height"], m["height"]), .2),
                       (_pct_rank(series["promo"], m["promo"]), .2),
-                      (_pct_rank([-x for x in series["broke"] if x is not None], -m["broke"] if m["broke"] is not None else None), .15),
-                      (_pct_rank([-x for x in series["zhaban"] if x is not None], -m["zhaban"] if m["zhaban"] is not None else None), .1),
+                      (_pct_rank(broke_neg, -m["broke"] if m["broke"] is not None else None), .15),
+                      (_pct_rank(zhaban_neg, -m["zhaban"] if m["zhaban"] is not None else None), .1),
                       (_pct_rank(series["relay"], m["relay"]), .1)])
         sector = _wsum([(_pct_rank(series["top_cnt"], m["top_cnt"]), .35),
                         (_pct_rank(series["height"], m["height"]), .25),
                         (_pct_rank(series["top_cnt_delta"], m["top_cnt_delta"]), .25),
                         (_pct_rank(series["top_amt"], m["top_amt"]), .15)])
         out[d] = {"market": market, "spec": spec, "sector": sector}
-        market_raw[d], spec_raw[d] = market, spec
     # 整体三层 = 3 日均值的分位数; 板块整体 = 连任/切换
-    for d in dates:
-        i = dates.index(d)
+    mkt_dist = [out[x]["market"] for x in dates]
+    spec_dist = [out[x]["spec"] for x in dates]
+    sector_dist = [out[x]["sector"] for x in dates]
+    # 混沌过渡信号(两极分化判别): 涨停/跌停/炸板历史分位 + 高度回落级数(池时代才有高度)
+    zt_sorted = sorted(v for v in series["zt"] if v is not None)
+    dt_sorted = sorted(v for v in series["dt"] if v is not None)
+    zb_sorted = sorted(v for v in series["zhaban"] if v is not None)
+    for i, d in enumerate(dates):
         win3 = dates[max(0, i - 2):i + 1]
-        out[d]["m_market"] = _pct_rank([out[x]["market"] for x in dates],
+        hp = metrics[d].get("height_prev")
+        out[d]["chaos_sig"] = (_pct_rank(zt_sorted, metrics[d]["zt"]),
+                               _pct_rank(dt_sorted, metrics[d]["dt"]),
+                               _pct_rank(zb_sorted, metrics[d]["zhaban"]),
+                               (hp - metrics[d]["height"]) if (hp and metrics[d]["height"]) else None)
+        out[d]["m_market"] = _pct_rank(mkt_dist,
                                        sum(v for v in (out[x]["market"] for x in win3) if v is not None) / len(win3))
-        out[d]["m_spec"] = _pct_rank([out[x]["spec"] for x in dates],
+        out[d]["m_spec"] = _pct_rank(spec_dist,
                                      sum(v for v in (out[x]["spec"] for x in win3) if v is not None) / len(win3))
         sector3 = sum(v for v in (out[x]["sector"] for x in win3) if v is not None) / len(win3)
-        out[d]["m_sector"] = _wsum([(_pct_rank([out[x]["sector"] for x in dates], sector3), .5),
+        out[d]["m_sector"] = _wsum([(_pct_rank(sector_dist, sector3), .5),
                                     (_pct_rank(series["run_days"], metrics[d]["run_days"]), .3),
-                                    (_pct_rank([-x for x in series["switches_5d"] if x is not None],
-                                               -metrics[d]["switches_5d"]), .2)])
+                                    (_pct_rank(switches_neg, -metrics[d]["switches_5d"]), .2)])
     # 阈值自校准: 用分数自身的历史四分位(样本增长自动漂移, 无需人工重校)
     th = {
         "spec_p30": _q([out[x]["spec"] for x in dates], .30),
@@ -244,11 +288,23 @@ def _q(vals, q):
 
 def _dominant(o, m, th):
     """主导条件判定: 阈值全部来自分数分布四分位(自校准), 顺序即优先级"""
+    # 1) 混沌过渡: 退潮尾声→新周期试错初期的两极分化——赚钱维未收缩 + 亏钱维报警 +
+    #    高度从峰回落1-2级(未崩, 池时代前高度盲区不判) + 未血洗。255 天仅 8/31 一例;
+    #    先于退潮防守(动量崩塌规则在该日骑线误触发)。
+    zt_pct, dt_pct, zb_pct, drop = o.get("chaos_sig") or (None, None, None, None)
+    if (zt_pct is not None and zt_pct >= 75 and drop is not None and 1 <= drop <= 2
+            and ((dt_pct is not None and dt_pct >= 60) or (zb_pct is not None and zb_pct >= 70))
+            and m["zt"] and (m["dt"] or 0) / m["zt"] <= 0.25):
+        return "混沌过渡", "退潮尾声→新周期试错：只做辨识度/低位火种，试探仓，等放量确认再加"
+    # 2) 退潮防守
     spec_collapse = (o["m_spec"] is not None and o["spec"] is not None
                      and o["spec"] <= o["m_spec"] - 30)
-    if (o["spec"] is not None and
-            ((o["spec"] <= th["spec_p30"] and ((m["dt"] or 0) >= 5 or (m["zt"] is not None and m["zt"] <= 30)))
-             or spec_collapse)):
+    # 跌停历史极值(≥p95)独立触发: 一致性跌停潮(2026-07-17 跌停192)里炸板少/破板率中等,
+    # spec 无跌停分量会读成"健康"漏判 —— 不依赖 spec 直接触发。
+    dt_extreme = dt_pct is not None and dt_pct >= 95
+    if ((((o["spec"] is not None and o["spec"] <= th["spec_p30"]) or dt_extreme)
+          and ((m["dt"] or 0) >= 5 or (m["zt"] is not None and m["zt"] <= 30)))
+            or spec_collapse):
         return "退潮防守", "不强行交易，等新情绪确认/新核心出现"
     if (o["sector"] or 0) >= th["sector_p90"] and (o["m_sector"] or 0) >= th["m_sector_p75"]:
         return "板块情绪极强", "主攻龙头板/换手核心/中军，低位补涨前排"
