@@ -8,7 +8,7 @@
 
 用法(上传需 GITHUB_TOKEN/GH_TOKEN 环境变量; workflow 内用 secrets.GITHUB_TOKEN):
   python scripts/release_db.py --upload-latest          # 当前 db 快照 → 热层
-  python scripts/release_db.py --what auction --upload-latest    # auction.db → 热层 + 当日快照(留7天)
+  python scripts/release_db.py --what auction --upload-latest    # auction.db → 热层 + 当日快照(留7天) + 周冷层(留26周)
   python scripts/release_db.py --archive-weeks          # 库内最近一周 → 温层
   python scripts/release_db.py --archive-months         # 库内"已完成月" → 冷层(永久)
   python scripts/release_db.py --sync                   # 以上三条 + 清理超龄温层(收盘后 run 一次调用)
@@ -21,6 +21,8 @@
   - 快照用 sqlite backup API, WAL 下也一致; 上传前 PRAGMA integrity_check
   - 幂等: 同名资产先删后传, 重复执行结果一致
   - 月归档只封"已完成月"(库内存在下一月数据), 当月由周层覆盖
+  - auction 周冷层: 当前 ISO 周资产(auction-YYYY-Www.db.gz)复用同一个 gz 随每班覆盖刷新,
+    周切换后旧周资产自然冻结为周末状态, 无需按周定时; 滚动保留 26 个 ISO 周(约半年)
 """
 import argparse
 import gzip
@@ -30,6 +32,7 @@ import os
 import re
 import shutil
 import sqlite3
+import sys
 import tempfile
 import time
 import urllib.error
@@ -45,13 +48,16 @@ UPLOAD_BASE = f"https://uploads.github.com/repos/{REPO}/releases"
 HOT_TAG = "db-state"
 HOT_ASSET = "crawl-latest.db.gz"
 
-# 数据库目标注册表: crawl_data.db(热/温/冷三层 sync) / auction.db(热层 + 当日快照)
+# 数据库目标注册表: crawl_data.db(热/温/冷三层 sync) / auction.db(热层 + 日快照 + 周冷层)
 # auction 单独成档原因: 竞价班(auction.yml)/打标班(auction-label.yml)/crawl班 三个 workflow
 # 都写它, 且 bid_pool 等竞价时点档案不可重采 —— 每班 sha 变更即传, 不能套 crawl 的收盘闸门。
+# auction 保留策略: latest 覆盖写 + 日快照滚动留 daily_keep=7 天(严格< cutoff 才删)
+# + ISO 周快照滚动留 weekly_keep=26 周(cutoff 周本身删, 见 _stale_auction_assets)。
 TARGETS = {
     "crawl": {"db": DB_PATH, "tag": HOT_TAG, "asset": HOT_ASSET},
     "auction": {"db": ROOT / "data" / "auction.db", "tag": "auction-state",
-                "asset": "auction-latest.db.gz", "prefix": "auction", "daily_keep": 7},
+                "asset": "auction-latest.db.gz", "prefix": "auction",
+                "daily_keep": 7, "weekly_keep": 26},
 }
 
 
@@ -262,8 +268,40 @@ def cmd_upload_latest():
     _upload_snapshot(HOT_TAG, HOT_ASSET)
 
 
+def _stale_auction_assets(names: list[str], today: date, daily_keep: int, weekly_keep: int) -> list[str]:
+    """纯函数: 资产名列表 + 今天 + 两个保留参数 → 应删除的资产名列表(便于单测)。
+
+    只匹配 auction 前缀的两类快照, 其余(auction-latest / crawl-* / 未知名字)一律不动:
+      - 日快照 auction-YYYY-MM-DD.db.gz: 日期严格早于 today - daily_keep 天才删
+        —— 恰好等于 cutoff 的保留, 即完整保留最近 daily_keep 天(cutoff 当天仍在保留期)。
+      - 周快照 auction-YYYY-Www.db.gz: ISO 年周不晚于 today - weekly_keep 周所在
+        ISO 年周即删(cutoff 周本身删) —— 恰好保留最近 weekly_keep 个 ISO 周(含当前周)。
+        注意与日快照边界不同: 周资产在周末冻结, 满 weekly_keep 周即出保留期。
+    名字形似日期但非法(如 2026-13-45)时宁留勿删。
+    """
+    day_cutoff = today - timedelta(days=daily_keep)
+    week_cutoff = (today - timedelta(weeks=weekly_keep)).isocalendar()[:2]
+    stale: list[str] = []
+    for n in names:
+        m = re.fullmatch(r"auction-(\d{4}-\d{2}-\d{2})\.db\.gz", n)
+        if m:
+            try:
+                d = date.fromisoformat(m.group(1))
+            except ValueError:
+                continue
+            if d < day_cutoff:
+                stale.append(n)
+            continue
+        m = re.fullmatch(r"auction-(\d{4}-W\d{2})\.db\.gz", n)
+        if m:
+            y, w = m.group(1).split("-W")
+            if (int(y), int(w)) <= week_cutoff:
+                stale.append(n)
+    return stale
+
+
 def cmd_upload_what(what: str):
-    """--what 分发: crawl 走原三层 sync 语义; auction 全量快照直传 + 当日快照留存。"""
+    """--what 分发: crawl 走原三层 sync 语义; auction 全量快照直传 + 日/周快照滚动留存。"""
     t = TARGETS[what]
     if what == "crawl":
         cmd_upload_latest()
@@ -273,15 +311,23 @@ def cmd_upload_what(what: str):
         gz = Path(str(tmp_db) + ".gz")
         make_gz(tmp_db, gz)
         upload_asset(t["tag"], t["asset"], gz)
-        # 当日快照 + 滚动清理: 热层被后写者覆盖/损坏时, 最近 N 天任意时点可回滚
+        # 日快照 + 当前 ISO 周快照: 热层被后写者覆盖/损坏时, 最近 N 天任意时点与最近
+        # N 周的周末状态可回滚。周资产复用同一个 gz、同名覆盖, 每班刷新当前周,
+        # 周切换后旧周资产自然冻结为周末状态, 无需按周定时。
         daily = f"{t['prefix']}-{date.today().isoformat()}.db.gz"
         upload_asset(t["tag"], daily, gz)
-        cutoff = (date.today() - timedelta(days=t["daily_keep"])).isoformat()
-        for a in get_release(t["tag"]).get("assets", []):
-            m = re.fullmatch(rf"{re.escape(t['prefix'])}-(\d{{4}}-\d{{2}}-\d{{2}})\.db\.gz", a["name"])
-            if m and m.group(1) < cutoff:
+        y, w, _ = date.today().isocalendar()
+        upload_asset(t["tag"], f"{t['prefix']}-{y}-W{w:02d}.db.gz", gz)
+        # 滚动清理: 日快照留 daily_keep 天 + 周快照留 weekly_keep 周(纯函数可单测)
+        rel = get_release(t["tag"])
+        assets = rel.get("assets", []) if rel else []
+        stale = set(_stale_auction_assets([a["name"] for a in assets],
+                                          date.today(), t["daily_keep"], t["weekly_keep"]))
+        for a in assets:
+            if a["name"] in stale:
                 _api("DELETE", a["url"], token=_token())
-        print(f"[upload] ✅ {t['tag']}/{t['asset']} + 当日快照")
+                print(f"[cleanup] 已删除超龄快照 {a['name']}")
+        print(f"[upload] ✅ {t['tag']}/{t['asset']} + 当日快照 + 当周快照")
     finally:
         tmp_db.unlink(missing_ok=True)
         Path(str(tmp_db) + ".gz").unlink(missing_ok=True)
