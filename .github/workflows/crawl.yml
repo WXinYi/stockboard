@@ -215,12 +215,15 @@ jobs:
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          git add -f stockboard-app/public/data/ jiarenmens/data/
-          # crawl_data.db 已迁往 Release 三层存储(db-state/db-w*/db-m*), git 永不提交:
+          git add -f stockboard-app/public/data/
+          git add jiarenmens/data/
+          # crawl_data.db / auction.db 已迁 Release 存储(db-state* / auction-state), git 不再跟踪:
           # 二进制快照进 git 是仓库膨胀主因(.git 曾 721MB), 历史取数改用 scripts/fetch_db.py。
-          # 白天不持久化 db 也安全: trades/positions 按 (zh_id,crawl_date) 先删后写,
+          # auction.db 每班由下载/上传步骤走 Release(sha 门), 上传断链即 run 失败可见。
+          # 白天不持久化 crawl_data.db 也安全: trades/positions 按 (zh_id,crawl_date) 先删后写,
           # 收盘 run 会全量重采当日数据(经热层恢复后增量入库)。
           git reset -q jiarenmens/data/crawl_data.db 2>/dev/null || true
+          git reset -q jiarenmens/data/auction.db 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "数据无变化，跳过提交"
           else

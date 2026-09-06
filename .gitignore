@@ -59,5 +59,8 @@ jiarenmens/jiarenmens/
 # 数据库已迁往 Release 三层存储(db-state/db-w*/db-m*), git 不再跟踪(见 docs/DATA_PIPELINE.md)
 jiarenmens/data/crawl_data.db
 
+# auction.db 同迁 Release 热层(auction-state, 每班 sha 门下载/上传), git 不再跟踪
+jiarenmens/data/auction.db
+
 # 回测归档(fetch_db 产物), 不入库
 jiarenmens/data/archive/
