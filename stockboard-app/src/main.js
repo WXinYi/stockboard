@@ -8,7 +8,9 @@ createApp(App).use(router).mount('#app')
 
 // PWA 新版本提示: 检测到新 SW 处于 waiting 状态时弹条, 点击后 SKIP_WAITING 并自动刷新
 // (手机浏览器等待 SW 常驻不改管, 靠用户"多刷几次"不可靠 → 改为显式按钮)
-registerSW({
+// ⚠️ updateSW 必须 = registerSW 的返回值(a4fe4c2f23 引入时就漏接, 点击一直是
+// ReferenceError → 按钮永远停在"更新中…", 新 SW 不接管页面不刷新)
+const updateSW = registerSW({
   onNeedRefresh() {
     if (document.getElementById('sw-update-bar')) return
     const bar = document.createElement('div')
@@ -17,6 +19,11 @@ registerSW({
       'display:flex;align-items:center;gap:10px;background:#2b3a55;color:#fff;padding:8px 14px;' +
       'border-radius:10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25)'
     bar.innerHTML = '<span>🔄 发现新版本</span>'
+    const close = document.createElement('button')
+    close.textContent = '✕'
+    close.style.cssText = 'background:transparent;color:#93a5c4;border:0;font-size:13px;cursor:pointer;padding:2px'
+    close.addEventListener('click', () => bar.remove())  // 允许关掉提示(不更新), 下次访问再弹
+    bar.appendChild(close)
     const btn = document.createElement('button')
     btn.textContent = '立即更新'
     btn.style.cssText = 'background:#ffd166;color:#2b3a55;border:0;border-radius:7px;padding:4px 12px;font-weight:700'
