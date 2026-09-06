@@ -15,7 +15,7 @@
 
 `crawl_data.db` **不再进 git**，持久化走 GitHub Release 三层存储（热层 40 采集日 / 温层 12 周滚动 / 冷层永久），完整方案与运维手册见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
 
-`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/打标/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照滚动保留 7 天——bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
+`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/打标/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照留 7 天 + 周快照留 26 周——当前周随每班刷新、周切换自然冻结为周末状态；bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
 
 ```bash
 python3 scripts/fetch_db.py --latest          # 热层(最近40采集日) → data/crawl_data.db

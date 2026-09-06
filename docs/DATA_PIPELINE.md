@@ -52,13 +52,13 @@
 - ✅ **09-03（第2天）**：16:00 ZCode 定时自检通过——① crawl.yml 当天全 success（run #448-457，15:15 专班含在内）；② Pages 线上 summary/core/changes_summary 数据日期=09-03（当日调仓 3142 笔：新增 1263/清仓 1070），auction.json=09-03 09:25 生成；③ 热层 db-state 15:20 回传（crawl-latest.db.gz 23.5MB），温层 W36 同步更新；④ auction 09:25 扫描 + auction-label 15:05 打标均 success。manifest 复核：integrity ok，trades 216944（较 09-01 单调递增），date_range 尾部=09-03，当日 trades 3989 / positions 3172（与 09-02 量级一致）。注：钉钉推送项无法从定时任务侧直接核对（不在手机端即可见），由用户日常确认。
 - ✅ **09-04（第3天，周五）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #478 success（白天有 3 个 run 被 concurrency 取消：#473/474/476，后续 run 均 success，manifest 逐日 fingerprint 与 09-03 完全一致确认无数据缺口）；② Pages summary/core/changes_summary 数据日期=09-04（当日调仓 3260 笔：新增 1302/清仓 1115），auction.json=09-04 09:25；③ 热层 15:24 回传（23.9MB），温层 W36 15:25 同步；④ 竞价 09:25（run #25）+ 打标 15:05（run #16）均 success。manifest：integrity ok，trades 221030，date_range 尾部=09-04，当日 trades 4086 / positions 3236。**周五当周温层 tag `db-w2026-W36` 在位且当日更新**（待办 B 第4条满足）。
 
-### C.【需用户明确确认】④ git 历史重写（filter-repo）
+### C.【✅ 已完成】④ git 历史重写（filter-repo）— 09-06 执行
 
-- 现状：`.git` 772MB（size-pack 748MB），历史里有 275 份 db blob（打包前 13.7GB）；不改写则 clone 永远拖着 700MB+ 死重。
-- 操作：`git filter-repo --invert-paths --path jiarenmens/data/crawl_data.db`（可选顺带清理 latest/players/ 历史大目录）→ `git push --force`。
-- 影响：所有 commit hash 重写；本地旧 clone/fork 需重新 clone；旧 PR 引用失效。数据零损失（db 已在 Release 三层）。
-- 效果：`.git` 预计 772MB → <100MB。
-- 前置条件已满足（①归档可匿名下载已验证）。**等用户一句"做④"即可执行。**
+- 实测剔除：`crawl_data.db`（276 blob/12.4GB 未压缩）+ `auction.db`（51 blob/322MB）两路径全历史；pack 387→172MiB，本地 `.git` 398MB→**200MB**（含 gc + 删 6 个 7-8 月旧临时分支）。
+- 完整性：fsck 干净、逐提交 tree 比对零差异、仅剔 16 个剔除两库后变空的纯数据提交；新历史首 run 绿（含 run 内提交+推送闭环）。
+- 切换：强推镜像 `main`+`tags`（最小化，未发布本地旧分支）→ 本地 `fetch --tags --force` + `reset --hard` → `reflog expire` + `gc --prune=now`。
+- 回滚：`/tmp/sb-backup.git` 完整原始镜像（**临时文件，重启即失**——09-06 晚后重写即既成事实）；全部历史提交 SHA 已重写，旧 SHA 引用仅作考古。
+- 顺带：远端现在只剩 `main` 一个分支。08-31 记的"772MB"为当时快照，09-06 执行前实测 398MB（多次 gc 已缩）。
 
 ### D.【安全】PAT 更换
 
@@ -214,7 +214,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 | 库 | 写入方 | 内容 | 是否提交 git |
 |---|---|---|---|
-| `auction.db` | auction_scan.py | 竞价候选池/漏斗/连板梯队/情绪/结果标签/日K因子 8 张表 | **是**（随 crawl 提交，8MB） |
+| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价候选/漏斗/梯队/情绪/结果标签/涨停池/宽度/炸板池/指数 13 张表 | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 7 天 + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
 | `hot_rank.db` | auction_scan --hot-rank | 东财人气榜 am/pm 快照 | 是 |
 | `intraday.db` / `analysis.db` | intraday_monitor.py | 盘中信号快照 | **否**（.gitignore，本机独享） |
 | `crawl_data.db-shm/-wal` | SQLite WAL | — | 否（.gitignore） |
@@ -244,6 +244,8 @@ latest/players_index.json
 - db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（`crawl-eod` 专班或 ≥14:45 兜底）末尾 `--sync` 回传。
 - 状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会因状态回退而白天重复推送。
 - 提交信息 `📊 数据更新 YYYY-MM-DD [skip ci]`（防止 push 再触发 workflow）；push 失败重试 3 次（pull --rebase）。
+- `auction.db` 同样不进 git（09-06 迁 Release `auction-state`）：每班开头 `release_db.py --what auction --download-latest` 恢复（latest 失败自动回退最新日快照），班内 sha256 变更才上传（另存当日+当周快照）；**上传失败让 run 失败**（宁可停，不可静默丢竞价档案）。 auction.yml / auction-label.yml / crawl.yml / cycle-eod.yml 四 workflow 共写共读。
+- ⚠️ 新增调 GitHub API 的 workflow 步骤必须显式 `env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`（09-06 演练实抓：secrets 不会自动进步骤环境）。
 - `jiarenmens/data/archive/`（fetch_db 回测产物）已 ignore，勿 `git add -A` 误提交。
 
 ### 3.5 前端消费链路
