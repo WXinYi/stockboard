@@ -187,6 +187,39 @@ const MATRIX_GATE = {
 }
 const TIER_NAME = { low: '低位', mid: '中位', high: '高位' }
 
+/** 单只候选「差什么」: 只看不买时给出被哪层拦住/差多少(页面直读, 规则与 computeBattle 同源) */
+export function whyNot(c, cap, high, mid) {
+  if (!c) return ''
+  const tier = (c.level ?? c.pid ?? 0) >= 6 ? 'high' : (c.level ?? c.pid ?? 0) >= 3 ? 'mid' : 'low'
+  const capN = Number(cap)
+  if (capN === 0) return '阶段禁买(池关闭)'
+  const g = MATRIX_GATE[`${high}|${mid}`]
+  const t = g?.tier?.[tier]
+  if (t === 'ban') return `${TIER_NAME[tier]}被矩阵禁买(${high}|${mid})`
+  if (t === 'watch') return '矩阵判仅观察'
+  if (String(c.status || '').includes('跟风回避')) return '跟风回避(非核心)'
+  const score = Number(c.score) || 0
+  if (score < 55) return `评分${score} < 55(未达观察线)`
+  return ''
+}
+
+/** 首页人话结论: 阶段 + 矩阵分层禁买 + 池 + 是否有达标候选, 一句话说完(中间层数值留给依据页) */
+export function gateSentence(stage, high, mid, cap, noCandidate) {
+  const g = MATRIX_GATE[`${high}|${mid}`]
+  const parts = []
+  if (g) {
+    if (g.tier.high === 'ban') parts.push('高位禁买')
+    else if (g.tier.high === 'watch') parts.push('高位只看')
+    if (g.tier.mid === 'ban') parts.push('中位禁买')
+    else if (g.tier.mid === 'watch') parts.push('中位只看')
+    if (g.tier.low === 'care') parts.push('低位轻仓备选')
+    else if (g.tier.low === 'go') parts.push('低位可出击')
+  }
+  const poolTxt = (cap === 0 || cap == null) ? '池关闭' : (cap >= 100 ? '池全开' : `池限${cap}分`)
+  const base = `情绪${stage || '—'}${parts.length ? ' · ' + parts.join('、') : ''} · ${poolTxt}`
+  return noCandidate ? `${base} · 暂无达标候选 → 只看` : base
+}
+
 // 买点三件套(买法/触发/止损)按 mode 定制; posTxt 由阶段闸门 cap 换算, 前端 candTip 直接透传
 const TIP_BY_MODE = {
   '排板接力': { buy: '龙头接力', trigger: '竞价高开2-5%抢筹或回封排板；高开>7%只等回踩', stop: '断板即走 · 水下-2%' },
@@ -490,8 +523,11 @@ export async function loadBattleData(kpl, cd, lianbanBid = null, prevBroken = nu
     Promise.all([1, 2, 3, 4, 5].map(p => kpl.fetchLimitPool('', p, { rt: true, silent: true }))),
     Promise.all([1, 2, 4, 5].map(p => kpl.fetchUnsealedPool(p, true))),
   ])
-  return computeBattle({
+  const battle = computeBattle({
     ladderRows: cd.ladderRows, todayPool: pools.flat(),
     prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle, lianbanBid, prevBroken,
   })
+  // 六情绪实时版复用同一批已请求的 KPL 行(不重复请求), 原始数据透传给页面
+  if (battle) battle._inputs = { todayPool: pools.flat(), unsealed: unsealedLists.flat(), prevFull: cd.prevFull }
+  return battle
 }

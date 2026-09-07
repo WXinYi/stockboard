@@ -1,0 +1,57 @@
+{
+ "generated_at": "2026-09-07T15:09:35",
+ "db_as_of": "2026-09-04",
+ "note": "按日截断口径(不含未来日); 再生成: jiarenmens venv/bin/python scripts/six_parity_fixture.py",
+ "cases": [
+  {
+   "date": "2026-08-31",
+   "market": 53.5,
+   "spec": 64.8,
+   "sector": 85.1,
+   "m_market": 67.7,
+   "m_spec": 96.4,
+   "m_sector": 78.2,
+   "dominant": "混沌过渡"
+  },
+  {
+   "date": "2026-09-01",
+   "market": 71.2,
+   "spec": 83.1,
+   "sector": 92.3,
+   "m_market": 78.2,
+   "m_spec": 96.4,
+   "m_sector": 78.0,
+   "dominant": "板块情绪极强"
+  },
+  {
+   "date": "2026-09-02",
+   "market": 36.9,
+   "spec": 49.8,
+   "sector": 74.1,
+   "m_market": 56.5,
+   "m_spec": 94.1,
+   "m_sector": 77.1,
+   "dominant": "退潮防守"
+  },
+  {
+   "date": "2026-09-03",
+   "market": 32.0,
+   "spec": 38.1,
+   "sector": 74.0,
+   "m_market": 45.3,
+   "m_spec": 83.9,
+   "m_sector": 76.7,
+   "dominant": "退潮防守"
+  },
+  {
+   "date": "2026-09-04",
+   "market": 36.2,
+   "spec": 27.4,
+   "sector": 86.0,
+   "m_market": 26.7,
+   "m_spec": 53.3,
+   "m_sector": 76.2,
+   "dominant": "退潮防守"
+  }
+ ]
+}

@@ -3,7 +3,7 @@ import { useRoute } from 'vue-router'
 import { icons } from '../icons.js'
 
 const primary = [
-  { key: 'market', label: '盘面', icon: 'market' },
+  { key: 'market', label: '选股', icon: 'market' },
   { key: 'rankings', label: '排行', icon: 'rankings' },
   { key: 'stocks', label: '重仓共识', icon: 'stocks' },
 ]

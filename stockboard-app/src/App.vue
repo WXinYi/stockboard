@@ -29,7 +29,7 @@ const route = useRoute()
 const router = useRouter()
 
 const pageTitles = {
-  market: '盘面',
+  market: '选股',
   copy: '抄作业',
   rankings: '排行榜',
   stocks: '重仓共识',

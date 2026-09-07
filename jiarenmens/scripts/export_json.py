@@ -669,6 +669,8 @@ def export(db_path, crawl_date, out_dir):
 
     # strike_review.json（昨日可买复核: 前一交易日 9:25 选股的"可做"名单 + 今日竞价）
     build_strike_review(latest_dir, crawl_date)
+    # six_history.json（六情绪浏览器实时版的历史基准, 收盘数据驱动, 一天一版）
+    build_six_history(latest_dir)
 
     # players/{zh_id}.json
     players_out_dir = latest_dir / "players"
@@ -1223,6 +1225,39 @@ def build_lianban_bid(latest_dir: Path, crawl_date: str):
     print(f"   lianban_bid.json → {out['prev_day']}连板×{out['date']}竞价换手Top5: {top_txt}")
 
 
+def _synthesize_wzq(c, eff_date: str, prev: str | None, stage_word: str) -> list:
+    """存档缺弱转强条目时的合成补齐(与 stage_candidates 弱转强块同口径):
+    昨日分歧池 = 断板(前日涨停昨日未封) ∪ 烂板(封单比<0.15) ∪ 精确炸板池;
+    必要条件 = 今日竞价涨幅 +1.5~7%。阶段开放集同 Python: 启动/发酵/分歧。"""
+    if not prev:
+        return []
+    prev2 = c.execute("SELECT MAX(date) FROM limit_pool WHERE date < ?", (prev,)).fetchone()[0]
+    sealed = {r[0] for r in c.execute("SELECT code FROM limit_pool WHERE date=?", (prev,))}
+    prev2c = {r[0] for r in c.execute("SELECT code FROM limit_pool WHERE date=?", (prev2,))} if prev2 else set()
+    duan = prev2c - sealed
+    rotten = {r[0] for r in c.execute(
+        "SELECT code FROM limit_pool WHERE date=? AND max_seal>0 AND seal_amount>0 AND seal_amount*1.0/max_seal<0.15", (prev,))}
+    try:
+        broken = {r[0]: (r[1] or "") for r in c.execute("SELECT code, name FROM broken_pool WHERE date=?", (prev,))}
+    except sqlite3.OperationalError:
+        broken = {}
+    bids = {r[0]: r[1] for r in c.execute(
+        "SELECT code, MAX(change_pct) FROM bid_pool WHERE date=? GROUP BY code", (eff_date,))}
+    names = {r[0]: r[1] for r in c.execute("SELECT code, name FROM limit_pool WHERE date=?", (prev,))}
+    open_now = stage_word in ("启动", "发酵", "分歧")
+    status = "可做(弱转强)" if open_now else "观察(弱转强·禁买期)"
+    out = []
+    for code in list(duan | rotten | set(broken))[:80]:
+        b = bids.get(code)
+        if b is None or not (1.5 <= b <= 7):
+            continue
+        tag = "断板" if code in duan else ("炸板" if code in broken else "烂板")
+        out.append({"code": code, "name": names.get(code) or broken.get(code) or code, "status": status,
+                    "reason": f"弱转强: 昨日{tag}分歧, 今竞价 {b:+.1f}%, 分时确认才上",
+                    "tag": tag, "bid_pct": f"{b:+.1f}"})
+    return out
+
+
 def build_strike_review(latest_dir: Path, crawl_date: str):
     """data/latest/strike_review.json —— 出击页「昨日可买复核」数据源:
     优先读 auction.db strike_pool 表(9:26 竞价班的当时存档, 审计口径"当时说了什么"),
@@ -1232,9 +1267,12 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
         from src.analysis.emotion_cycle import compute_cycle
         from src.analysis.stage_candidates import stage_pool
         with sqlite3.connect(f"file:{ROOT / 'data' / 'auction.db'}?mode=ro", uri=True) as c:
-            # 非交易日(周末/节假日) crawl_date 是自然日, 对齐到最近交易日(否则前端日期守卫全隐藏+六情绪越界)
-            crawl_date = c.execute("SELECT MAX(date) FROM limit_pool WHERE date <= ?",
-                                   (crawl_date,)).fetchone()[0] or crawl_date
+            # 执行日锚定(2026-09-07 修): 盘中交易日 bid_pool 已有当日行 → 执行日=今日
+            # (昨日池=limit_pool 最新<今日, 复核=「昨日 9:25 选股 · 今日执行」);
+            # 非交易日/盘前无当日竞价 → 回落对齐最近交易日(否则前端日期守卫全隐藏+六情绪越界)
+            if not c.execute("SELECT 1 FROM bid_pool WHERE date=? LIMIT 1", (crawl_date,)).fetchone():
+                crawl_date = c.execute("SELECT MAX(date) FROM limit_pool WHERE date <= ?",
+                                       (crawl_date,)).fetchone()[0] or crawl_date
             out["date"] = crawl_date
             prev = c.execute("SELECT MAX(date) FROM limit_pool WHERE date < ?", (crawl_date,)).fetchone()[0]
             bids = {r[0]: r[1] for r in c.execute(
@@ -1263,14 +1301,18 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
             except Exception:
                 wzq = []
         import re as _re
+        # 全量输出改版(09-07): 可做与 观察(禁买期) 都输出, 页面按状态词标「可买/不出手」
         for p in wzq:
-            if not p["status"].startswith("可做(弱转强)"):
+            if "弱转强" not in (p.get("status") or ""):
                 continue
             m = _re.search(r"昨日(\S+?)分歧, 今竞价 ([+\-\d.]+)%", p["reason"])
-            # 新存档带结构化 tag/bid_pct; 旧档(仅 reason 文本)回退 regex 解析
             out["today_wzq"].append({"code": p["code"], "name": p["name"],
+                                     "status": p.get("status"),
                                      "tag": p.get("tag") or (m.group(1) if m else "分歧"),
                                      "bid_pct": p.get("bid_pct") or (m.group(2) if m else None), "reason": p["reason"]})
+        # 存档为旧规则(无弱转强条目)或当日重算缺位 → 合成补齐(口径同 stage_candidates 弱转强块)
+        if not out["today_wzq"]:
+            out["today_wzq"] = _synthesize_wzq(c, crawl_date, prev, out["stage"] or "")
         try:
             from src.analysis.six_emotions import six_scores
             out["six"] = six_scores(crawl_date)
@@ -1287,13 +1329,46 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
                 out["stage"], out["src"] = cycle_prev["stage"], "重算"
                 archived = [{k: p.get(k) for k in ("code", "name", "height", "status", "reason", "tag", "bid_pct")}
                             for p in pool]
-            out["picks"] = [{**p, "bid_pct": bids.get(p["code"])}
-                            for p in archived if p["status"].startswith("可做")]
+            # 全量输出改版(09-07): 不再只收「可做」; 观察(禁买期/封单衰减等)一并输出并标 buyable=False
+            out["picks"] = [{**p, "bid_pct": bids.get(p["code"]),
+                             "buyable": (p.get("status") or "").startswith("可做")}
+                            for p in archived]
     except Exception as e:
         print(f"⚠️ strike_review: 计算失败({e}), 输出空复核")
     _atomic_json(latest_dir / "strike_review.json", out)
     names = " / ".join(f"{p['name']}({p['status']})" for p in out["picks"]) or "无可买(空仓)"
     print(f"   strike_review.json → {out['prev_day']}可买复核[{out['src']}]: {names}")
+
+
+def build_six_history(latest_dir: Path):
+    """six_history.json —— 六情绪「浏览器实时版」的历史基准:
+    每日 15 个原始分量(非六情绪分数), 前端取这些序列做 0-100 历史分位,
+    与后端 six_emotions 同管线口径(先原始分量、再分位、再主导)。
+    历史序列只随收盘数据变化(每天 export 覆盖一次), 盘中保持稳定可缓存。"""
+    out = {"as_of": None, "rows": []}
+    try:
+        from src.analysis.six_emotions import compute_all
+        _, metrics = compute_all()
+        dates = sorted(metrics)
+        prev = None
+        for d in dates:
+            m = metrics[d]
+            prev = d
+            out["rows"].append({
+                "d": d,
+                "s": m.get("strong"), "dt": m.get("dt"), "broke": m.get("broke"),
+                "zt": m.get("zt"), "h": m.get("height"), "promo": m.get("promo"),
+                "relay": m.get("relay"), "zb": m.get("zhaban"),
+                "tc": m.get("top_cnt"), "tc_prev": m.get("top_cnt_prev"),
+                "ta": m.get("top_amt"), "tb": m.get("top_board"),
+                "run": m.get("run_days"), "sw": m.get("switches_5d"),
+                "idx": m.get("idx_trend"), "bid": m.get("bid_amt"),
+            })
+        out["as_of"] = dates[-1] if dates else None
+    except Exception as e:
+        print(f"⚠️ six_history: 生成失败({e}), 输出空基准")
+    _atomic_json(latest_dir / "six_history.json", out)
+    print(f"   six_history.json → {len(out['rows'])} 天 × 15分量, as_of {out['as_of']}")
 
 
 if __name__ == "__main__":

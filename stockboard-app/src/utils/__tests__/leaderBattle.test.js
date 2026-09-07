@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeBattle } from '../leaderBattle.js'
+import { computeBattle, gateSentence, whyNot } from '../leaderBattle.js'
 
 // 合成一盘 AI 主线: 6板空间锚 + 3板梯队 + 2板梯队, 全部早封09:30+封单保持95%+主力净买
 // 每只基础得分 = base + 10(封单) + 8(早封) + 4(主力) + 8(板块扩容, 今3-昨0)
@@ -83,5 +83,48 @@ describe('computeStrike 矩阵分层闸门', () => {
     expect(b.strike.gate.cap).toBe(100)
     expect(b.strike.gate.banner).not.toContain('📐')
     expect(b.strike.gate.matrix).toBeNull()
+  })
+})
+
+describe('gateSentence 首页人话结论', () => {
+  it('高潮×平衡|弱 + 无达标: 一句话给出禁买范围与只看结论', () => {
+    const t = gateSentence('高潮', '平衡', '弱', 45, true)
+    expect(t).toContain('情绪高潮')
+    expect(t).toContain('高位禁买')
+    expect(t).toContain('中位禁买')
+    expect(t).toContain('低位轻仓备选')
+    expect(t).toContain('池限45分')
+    expect(t).toContain('暂无达标候选 → 只看')
+  })
+  it('有达标候选时不追加"只看"尾巴', () => {
+    const t = gateSentence('发酵', '强', '强', 100, false)
+    expect(t).toContain('池全开')
+    expect(t).not.toContain('只看')
+  })
+  it('矩阵缺失退化为 阶段+池', () => {
+    const t = gateSentence('分歧', null, null, 60, false)
+    expect(t).toBe('情绪分歧 · 池限60分')
+  })
+  it('cap=0 显示池关闭', () => {
+    expect(gateSentence('退潮', '强', '强', 0, true)).toContain('池关闭')
+  })
+})
+
+describe('whyNot 差什么提示', () => {
+  it('池关闭优先', () => {
+    expect(whyNot({ level: 5, score: 88 }, 0, '强', '强')).toContain('阶段禁买')
+  })
+  it('矩阵禁买按梯队报', () => {
+    expect(whyNot({ level: 5, score: 88 }, 45, '平衡', '弱')).toContain('中位被矩阵禁买')
+    expect(whyNot({ level: 7, score: 88 }, 45, '平衡', '弱')).toContain('高位被矩阵禁买')
+  })
+  it('矩阵 watch / 跟风 / 评分不足', () => {
+    expect(whyNot({ level: 7, score: 88 }, 70, '平衡', '平衡')).toContain('仅观察')
+    expect(whyNot({ level: 3, score: 60, status: '观察(跟风回避)' }, 100, '强', '强')).toContain('跟风')
+    expect(whyNot({ level: 1, score: 48 }, 100, '强', '强')).toContain('48 < 55')
+  })
+  it('可买/备选返回空', () => {
+    expect(whyNot({ level: 1, score: 80 }, 100, '强', '强')).toBe('')
+    expect(whyNot({ level: 1, score: 60 }, 100, '强', '强')).toBe('')
   })
 })

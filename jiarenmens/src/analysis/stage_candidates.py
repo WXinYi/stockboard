@@ -161,7 +161,10 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
     # 3) 弱转强(陈小群): 昨日分歧(断板∪尾盘烂板) + 今日竞价超预期(+1.5~7%) → 必要条件,
     #    分时确认才上, 失败止损。烂板=收盘封单/盘中最高封单<0.15(当日最弱档, 绝对阈值不可用——
     #    封单全天被消化是常态, 09-01 实测分布校准)。
-    if stage in ("启动", "发酵", "分歧") and date_str in dates and dates.index(date_str) >= 1:
+    # 弱转强全阶段产出(2026-09-07 "全量输出"改版): 候选必产, 阶段只决定 可做/观察(禁买期)
+    #   启动/发酵/分歧 → 可做(弱转强); 高潮/退潮/冰点 → 观察(弱转强·禁买期), 页面标「不出手」。
+    wzq_status = "可做(弱转强)" if stage in ("启动", "发酵", "分歧") else "观察(弱转强·禁买期)"
+    if date_str in dates and dates.index(date_str) >= 1:
         _i = dates.index(date_str)
         prev_date2 = dates[_i - 1]
         prev2_codes = {r["code"] for r in pool_rows if r["date"] == dates[_i - 2]} if _i >= 2 else set()
@@ -178,7 +181,7 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
             tag = "断板" if code in duanban else ("炸板" if code in broken_prev else "烂板")
             add(code, names_d.get(code, code) or broken_prev.get(code, code), 0,
                 f"弱转强: 昨日{tag}分歧, 今竞价 {bids[code]['change_pct']:+.1f}%, 分时确认才上",
-                "可做(弱转强)",
+                wzq_status,
                 tag=tag, bid_pct=f"{bids[code]['change_pct']:+.1f}")  # 结构化字段: build_strike_review 优先读, 免 regex 解析 reason
 
     return _apply_matrix(_apply_shrink_filter(pool, cycle_res, cur_rows), cycle_res)[:max_n]
