@@ -350,6 +350,7 @@ def _load_strike_picks(date_str: str) -> tuple:
     import sqlite3
     db = DATA_DIR / "auction.db"
     with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+        conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT date, stage, picks FROM strike_pool WHERE date=?",
                            (date_str,)).fetchone()
     if not row:
