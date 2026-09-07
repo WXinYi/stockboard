@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.auction_scan import pick_strike_top, rank_lianban_bid  # noqa: E402
+from scripts.auction_scan import auction_pulse, pick_strike_top, rank_lianban_bid  # noqa: E402
 
 
 class TestPickStrikeTop(unittest.TestCase):
@@ -73,6 +73,47 @@ class TestRankLianbanBid(unittest.TestCase):
         top = rank_lianban_bid(rows, top_n=5)
         self.assertEqual([r["code"] for r in top], ["8", "7", "6", "5", "4"])
         self.assertEqual(top[0]["turnover"], 8.0)
+
+
+class TestAuctionPulse(unittest.TestCase):
+    def _pool(self, pcts):
+        return {str(i): {"name": f"股{i}", "bid_pct": p} for i, p in enumerate(pcts)}
+
+    def test_repair(self):
+        """均幅≥+2 且 红盘率≥70% → 情绪修复"""
+        pcts = [5, 6, 4, 3, 2, 1, -1, 3, 4, 2]
+        r = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)], self._pool(pcts))
+        self.assertEqual(r["verdict"], "情绪修复")
+        self.assertGreaterEqual(r["red_rate"], 0.7)
+
+    def test_continue_downtrend(self):
+        """均幅<0 → 退潮延续; 大面率≥30% → 退潮延续"""
+        r1 = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)],
+                           self._pool([-2, -4, -1, -3, 1, 0, -2, -1, 0, -1]))
+        self.assertEqual(r1["verdict"], "退潮延续")
+        pcts = [4, 5, -5, -6, -4, 2, 1, -7, 3, 0]  # 均幅≈-0.7? 算: 4+5-5-6-4+2+1-7+3+0=-7 → 均幅-0.7 已覆盖
+        # 大面≥3/10 且红盘率高: [5,4,6,4,5,-8,-6,-5,4,3] → 均幅1.2 红盘率0.8 大面0.3
+        r2 = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)],
+                           self._pool([5, 4, 6, 4, 5, -8, -6, -5, 4, 3]))
+        self.assertEqual(r2["verdict"], "退潮延续")
+
+    def test_divergence(self):
+        """红盘率中等且无大面 → 分化(观望)"""
+        r = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)],
+                          self._pool([3, 2, 1, 0, -1, 2, 1, 0, 1, -2]))
+        self.assertEqual(r["verdict"], "分化(观望)")
+
+    def test_sample_too_small(self):
+        r = auction_pulse([{"code": str(i), "name": "x"} for i in range(4)],
+                          self._pool([5, 6, 7, 8]))
+        self.assertIsNone(r)
+
+    def test_leader_quotes(self):
+        pool = self._pool([5, 6, 4, 3, 2, 1, -1, 3, 4, 2])
+        r = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)], pool,
+                          leaders=[{"code": "0", "name": "龙版"}, {"code": "1", "name": "亚盛"}])
+        self.assertIn("龙版+5.0%", r["lead_txt"])
+        self.assertIn("亚盛+6.0%", r["lead_txt"])
 
 
 if __name__ == "__main__":

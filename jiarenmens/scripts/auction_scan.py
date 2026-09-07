@@ -609,17 +609,87 @@ def _strike_line(i: int, p: Dict) -> List[str]:
             f"   {st} · {(p.get('reason') or '')[:60]}"]
 
 
+PULSE_OUTLOOK = {
+    # (昨收阶段组, 竞价实测) → 周期指向(9:26 当下最可能的周期状态)
+    ("低谷", "情绪修复"): "反转预期, 关注新周期方向(昨收纪律或失效)",
+    ("低谷", "退潮延续"): "低谷延续, 空仓纪律有效",
+    ("低谷", "分化(观望)"): "低谷震荡, 纪律优先",
+    ("上行", "情绪修复"): "上行延续, 按上行纪律执行",
+    ("上行", "退潮延续"): "见顶预警, 上行期竞价转弱",
+    ("上行", "分化(观望)"): "上行分化, 高位去弱留强",
+    ("高位", "情绪修复"): "分歧转一致, 龙头接力窗口",
+    ("高位", "退潮延续"): "分歧加剧, 避中位防核按钮",
+    ("高位", "分化(观望)"): "分歧延续, 只看龙头",
+}
+STAGE_GROUP = {"退潮": "低谷", "冰点": "低谷", "启动": "上行",
+               "发酵": "上行", "高潮": "上行", "分歧": "高位"}
+
+
+def auction_pulse(prev_limit: List[Dict], pool: Dict[str, Dict],
+                  leaders: Optional[List[Dict]] = None, top_leaders: int = 2,
+                  stage: Optional[str] = None) -> Optional[Dict]:
+    """竞价情绪主判据(纯函数, 单测覆盖): 9:26 推送的第一判据。
+    物理约束: 竞价时点当日涨停池不存在 → 情绪周期引擎无法运行; 竞价数据是唯一"今日"信号。
+    输出: 三档竞价实测(情绪修复/退潮延续/分化) + 周期指向(竞价实测×昨收阶段 → 当下周期语义, 见 PULSE_OUTLOOK)。
+    规则(确定性): 均幅≥+2% 且 红盘率≥70% → 情绪修复; 均幅<0 或 大面率(竞价≤-3%)≥30% → 退潮延续; 其余 → 分化(观望)。
+    阈值待竞价历史样本校准(bid_pool×limit_pool 可回测)。
+    prev_limit: 昨日涨停池行 [{code,name}]; pool: 今日竞价池(code→dict, bid_pct);
+    leaders: 周期龙头谱系; stage: 昨收周期阶段(用于周期指向)。"""
+    matched = []
+    for r in prev_limit:
+        item = pool.get(str(r["code"]))
+        if item and item.get("bid_pct") is not None:
+            matched.append(float(item["bid_pct"]))
+    if len(matched) < 5:
+        return None  # 样本不足, 不预判
+    n = len(matched)
+    red_rate = sum(1 for p in matched if p > 0) / n
+    avg_bid = sum(matched) / n
+    face_n = sum(1 for p in matched if p <= -3)
+    if avg_bid >= 2 and red_rate >= 0.7:
+        verdict = "情绪修复"
+    elif avg_bid < 0 or face_n / n >= 0.3:
+        verdict = "退潮延续"
+    else:
+        verdict = "分化(观望)"
+    lead_txt = ""
+    if leaders:
+        q = []
+        for l in leaders:
+            item = pool.get(str(l["code"]))
+            if item and item.get("bid_pct") is not None:
+                q.append(f"{l['name']}{item['bid_pct']:+.1f}%")
+            if len(q) >= top_leaders:
+                break
+        if q:
+            lead_txt = " · 龙头: " + " ".join(q)
+    outlook = ""
+    if stage:
+        outlook = PULSE_OUTLOOK.get((STAGE_GROUP.get(stage, ""), verdict), "")
+    return {"verdict": verdict, "red_rate": red_rate, "avg_bid": avg_bid,
+            "face_n": face_n, "n": n, "lead_txt": lead_txt, "outlook": outlook}
+
+
 def build_strike_message(date_str: str, crawl_time: str, cycle_res: Optional[Dict],
                          regime: Optional[Dict], env: Dict, picks: List[Dict],
-                         watch_mode: bool, bidrank: List[Dict]) -> str:
-    """09:29 推送正文: 周期+纪律+环境 → 出击选股 Top5 → 昨日连板·竞价换手 Top5"""
+                         watch_mode: bool, bidrank: List[Dict],
+                         pulse: Optional[Dict] = None) -> str:
+    """09:29 推送正文: 周期(昨收口径)+竞价预判+环境 → 出击选股 Top5 → 昨日连板·竞价换手 Top5"""
     e = env["data"]
     lines = [f"## 🎯 今日出击 {crawl_time}", f"> {date_str}"]
+    # 第一判据: 竞价实测情绪(9:26 唯一的"今日"信号) → 周期指向
+    if pulse:
+        lines.append(f"**⚡ 竞价情绪(9:26 实测): {pulse['verdict']}**(昨日涨停股竞价 红盘率{pulse['red_rate']:.0%}"
+                     f" · 均幅{pulse['avg_bid']:+.1f}% · 竞价大面{pulse['face_n']}/{pulse['n']})"
+                     + pulse.get("lead_txt", ""))
+        if pulse.get("outlook"):
+            lines.append(f"**周期指向: {pulse['outlook']}**")
+    # 参考行: 昨收口径周期判定(竞价阶段当日池不存在, 引擎只能吃到昨收数据)
     if cycle_res:
         cap, banner = STAGE_GATE_CN.get(cycle_res["stage"], (100, ""))
         cap_txt = "禁买" if cap == 0 else f"{cap}成"
         reg_txt = f" · 📡 市况{regime['regime']}" if regime else ""
-        lines.append(f"**周期: {cycle_res['stage']}**(置信度 {cycle_res['confidence']}/9)"
+        lines.append(f"**周期(昨收口径): {cycle_res['stage']}**(置信度 {cycle_res['confidence']}/9)"
                      f" · 仓位上限 {cap_txt}{reg_txt}")
         if banner:
             lines.append(f"> {banner}")
@@ -851,9 +921,27 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         print(f"✅ auction.json 已写入 {AUCTION_OUT} "
               f"(出击 {len(picks)} + 连板换手 {len(bidrank)})")
 
+    # 竞价预判(方案A, 纯展示): 昨日涨停池 × 今日竞价 → 修复/延续/分化
+    pulse = None
+    try:
+        _conn = __import__("sqlite3").connect(store.db_path)
+        try:
+            _prev_limit_rows = [{"code": r[0], "name": r[1]} for r in _conn.execute(
+                "SELECT code, name FROM limit_pool WHERE date=?", (_prev_limit_day,))] \
+                if _prev_limit_day else []
+        finally:
+            _conn.close()
+        pulse = auction_pulse(_prev_limit_rows, pool, leaders=(cycle_res or {}).get("leaders"),
+                              stage=(cycle_res or {}).get("stage"))
+        if pulse:
+            print(f"      ⚡ 竞价预判: {pulse['verdict']} (红盘率{pulse['red_rate']:.0%} "
+                  f"均幅{pulse['avg_bid']:+.1f}% 大面{pulse['face_n']}/{pulse['n']})")
+    except Exception as e:
+        print(f"      ⚠️ 竞价预判计算失败(不影响主流程): {e}")
+
     if cycle_res:
         text = build_strike_message(date_str, crawl_time, cycle_res, regime, env_res,
-                                    picks, watch_mode, bidrank)
+                                    picks, watch_mode, bidrank, pulse=pulse)
     else:
         text = (f"## 🎯 今日出击 {crawl_time}\n> {date_str}\n"
                 "**⚠️ 周期引擎不可用, 出击选股未生成**(下一交易日自动重试)\n\n"
