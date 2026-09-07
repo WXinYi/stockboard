@@ -729,7 +729,19 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         print(f"      周期: {cycle_res['stage']} (置信度 {cycle_res['confidence']}/9), "
               f"主线 {[m['board'] for m in cycle_res['mainlines'][:3]]}")
     except Exception as e:
-        print(f"      ⚠️ 周期引擎不可用({e}), 出击选股无法生成")
+        if date_str == today_str and live:
+            # 9:26 实盘口径(stage_pool.bid_date 设计注释: "盘前存档场景传当日, 9:26 竞价+昨日池"):
+            # 竞价班 live 路径不落当日涨停池 → compute_cycle(今天)必抛"not in list" →
+            # 回退池内最近一天(昨日收盘周期判定) + 今日竞价(下方 stage_pool bid_date=今日)
+            try:
+                cycle_res = compute_cycle(persist=False)
+                print(f"      周期: {cycle_res['stage']} (置信度 {cycle_res['confidence']}/9), "
+                      f"主线 {[m['board'] for m in cycle_res['mainlines'][:3]]}")
+                print(f"      (9:26 口径: 当日池未落 → 用池内最近日 {cycle_res['date']} 的周期判定 + 今日竞价)")
+            except Exception as e2:
+                print(f"      ⚠️ 周期引擎不可用({e2}), 出击选股无法生成")
+        else:
+            print(f"      ⚠️ 周期引擎不可用({e}), 出击选股无法生成")
 
     print(f"[5/5] 出击选股 + 昨日连板换手")
     picks, watch_mode, bidrank = [], False, []
