@@ -1,16 +1,16 @@
 {
  "date": "2026-09-07",
- "generated_at": "10:18",
+ "generated_at": "10:59",
  "env": {
   "pass": true,
   "reasons": [
    "环境正常"
   ],
   "data": {
-   "strong": 59,
+   "strong": 61,
    "lbgd": 6,
    "capacity_ratio": null,
-   "red_ratio": 0.5610808782135485,
+   "red_ratio": 0.5926133184107443,
    "bid_count": [
     167,
     173,
@@ -30,7 +30,7 @@
    "amount": 2448486328.0,
    "main_net": 652934667.0,
    "src": "爆量+强度",
-   "strength": 1973.0
+   "strength": 4112.0
   },
   {
    "code": "801351",
@@ -66,7 +66,7 @@
    "amount": 186328970.0,
    "main_net": 12217817.0,
    "src": "爆量+强度",
-   "strength": 6847.0
+   "strength": 7047.0
   },
   {
    "code": "801003",
@@ -93,7 +93,7 @@
    "amount": 1771961849.0,
    "main_net": 508090133.0,
    "src": "爆量+强度",
-   "strength": 9702.0
+   "strength": 11620.0
   },
   {
    "code": "801807",
@@ -102,7 +102,7 @@
    "amount": 305133094.0,
    "main_net": -10714764.0,
    "src": "爆量+强度",
-   "strength": 2501.0
+   "strength": 2092.0
   },
   {
    "code": "801695",
@@ -114,94 +114,94 @@
    "strength": 0.0
   },
   {
-   "code": "801572",
-   "name": "中报增长",
+   "code": "801220",
+   "name": "食品饮料",
    "burst": 0.0,
-   "amount": 574938667809.0,
-   "main_net": 1723637672.0,
+   "amount": 38639480113.0,
+   "main_net": 807045453.0,
    "src": "强度",
-   "strength": 3028.0
+   "strength": 2170.0
   },
   {
    "code": "801053",
    "name": "零售",
    "burst": 0.0,
-   "amount": 27392551615.0,
-   "main_net": 616479934.0,
+   "amount": 34304444379.0,
+   "main_net": 851343036.0,
    "src": "强度",
-   "strength": 2078.0
+   "strength": 2122.0
   },
   {
    "code": "801375",
    "name": "新材料概念",
    "burst": 0.0,
-   "amount": 61059973413.0,
-   "main_net": 172589849.0,
+   "amount": 79986566637.0,
+   "main_net": 140868020.0,
    "src": "强度",
-   "strength": 1675.0
-  },
-  {
-   "code": "801220",
-   "name": "食品饮料",
-   "burst": 0.0,
-   "amount": 31238746787.0,
-   "main_net": 561677831.0,
-   "src": "强度",
-   "strength": 1630.0
+   "strength": 1696.0
   },
   {
    "code": "801330",
    "name": "旅游",
    "burst": 0.0,
-   "amount": 15637026706.0,
-   "main_net": 185913870.0,
+   "amount": 18980808845.0,
+   "main_net": 216179018.0,
    "src": "强度",
-   "strength": 1584.0
-  },
-  {
-   "code": "801224",
-   "name": "3D打印",
-   "burst": 0.0,
-   "amount": 22229080300.0,
-   "main_net": 130628464.0,
-   "src": "强度",
-   "strength": 1282.0
+   "strength": 1626.0
   },
   {
    "code": "803014",
    "name": "海峡两岸",
    "burst": 0.0,
-   "amount": 70694563481.0,
-   "main_net": 29117697.0,
+   "amount": 90807623582.0,
+   "main_net": 80170197.0,
    "src": "强度",
-   "strength": 1060.0
+   "strength": 1570.0
   },
   {
    "code": "801235",
    "name": "化工",
    "burst": 0.0,
-   "amount": 103137865028.0,
-   "main_net": 137221831.0,
+   "amount": 134384222838.0,
+   "main_net": 31479404.0,
    "src": "强度",
-   "strength": 845.0
+   "strength": 1473.0
   },
   {
-   "code": "801878",
-   "name": "端侧AI",
+   "code": "801224",
+   "name": "3D打印",
    "burst": 0.0,
-   "amount": 99359348373.0,
-   "main_net": 668506379.0,
+   "amount": 28247678480.0,
+   "main_net": 124034709.0,
    "src": "强度",
-   "strength": 611.0
+   "strength": 1266.0
   },
   {
-   "code": "801314",
-   "name": "ST板块",
+   "code": "801572",
+   "name": "中报增长",
    "burst": 0.0,
-   "amount": 4946360105.0,
-   "main_net": 7642577.0,
+   "amount": 746183928212.0,
+   "main_net": 1319469208.0,
    "src": "强度",
-   "strength": 561.0
+   "strength": 1191.0
+  },
+  {
+   "code": "801070",
+   "name": "光伏",
+   "burst": 0.0,
+   "amount": 164846197844.0,
+   "main_net": 289955796.0,
+   "src": "强度",
+   "strength": 854.0
+  },
+  {
+   "code": "801088",
+   "name": "有色金属",
+   "burst": 0.0,
+   "amount": 63909172807.0,
+   "main_net": 496035998.0,
+   "src": "强度",
+   "strength": 672.0
   }
  ],
  "strike": [
@@ -272,14 +272,14 @@
    "name": "新炬网络",
    "height": 2,
    "bid_pct": 0.0,
-   "turnover": 2.7452363787921397
+   "turnover": 2.70301862575603
   },
   {
    "code": "605580",
    "name": "恒盛能源",
    "height": 2,
    "bid_pct": 5.12,
-   "turnover": 2.426123354977853
+   "turnover": 2.4553789337631153
   },
   {
    "code": "002403",
@@ -333,7 +333,7 @@
  },
  "empty_reason": "",
  "stats": {
-  "pool": 560,
+  "pool": 587,
   "boards": 20,
   "genes": 0
  },
