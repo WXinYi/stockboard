@@ -120,7 +120,7 @@ const cycle = ref(null)
 const battle = ref(null)
 const cycleDataDay = ref('')
 
-// ── 选股结论头(三层: 池判定 → 纪律上限 → 一句话结论; 口径见 utils/stockPicks.js / leaderBattle.gateSentence) ──
+// ── 选股结论头(三层: 池判定 → 仓位上限 → 一句话结论; 口径见 utils/stockPicks.js / leaderBattle.gateSentence) ──
 const verdictTier = computed(() => gateTier(battle.value?.strike?.gate?.cap))
 const sixDominant = computed(() => {
   const x = review.value?.six
@@ -300,7 +300,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
     <div v-if="battle && !battle.empty" class="pk-verdict" :class="'v-' + verdictShow.cls" :style="{ '--sc': STAGE_COLORS[cycle?.stage] || '#8a97a8' }" @click="open('cycle')">
       <div class="pk-row">
         <span class="pk-badge">{{ verdictShow.verdict }}</span>
-        <span class="pk-chip pk-cap">纪律上限 {{ discRule?.cap || '—' }}</span>
+        <span class="pk-chip pk-cap">仓位上限 {{ discRule?.cap || '—' }}</span>
         <span class="pk-more">选股依据 ›</span>
       </div>
       <div class="pk-sub" v-if="gateSentenceTxt">{{ gateSentenceTxt }}{{ stageShift ? '（' + stageShift + '）' : '' }}</div>

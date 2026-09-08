@@ -16,7 +16,7 @@
 | ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
 | ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
 | ⑦ Build Vue 提速 | ✅ **上线并双分支验证** | dist 壳按代码指纹缓存，数据班跳过 npm ci+vite 全量构建（原慢班 Build Vue 可达 425s）。09-05 两次 push 触发实测：cache-miss 全量构建分支 ✅ / cache-hit rsync 拼接分支 ✅，详见 A2 |
-| 观察期 ⑥ | ⏳ 进行中(第3/5天: 09-04 ✅) | 09-04 自检通过（定时任务 16:00 自动执行）：manifest trades 221030 单调递增(当日 +4086)、Pages 三 JSON 日期=当天、热层/温层 15:24-15:25 回传、竞价+打标 success、周五当周温层 tag W36 在位；余项见下方待办 B |
+| 观察期 ⑥ | ⏳ 进行中(第4/5天: 09-07 ✅*) | 09-07 主链路/Pages/热层全过(eod 15:15 success、热层 15:19、Pages date=09-07)；带 * 因：①14:30 班 #525 瞬时失败(下载热层库断链, 次班自愈)；②竞价 09:25 主推送发出但内容降级(周期引擎不可用→出击 0)+09:31 确认补推失败, 用户 10:59 修复后补推成功(其 weekend 迭代范围, 见 B 第4天条目) |
 
 ---
 
@@ -51,6 +51,7 @@
 - ✅ **09-02（第1天）**：三 manifest 符合预期；钉钉推送仅 2 次（14:55 修复上线基线 + 15:20 尾盘班），远端 state 键全为 str（`_k` 生效）；crawl-eod 15:15 首跑 success。上午曾发生事故③（state 不落盘→每班重复推送且全无 🆕），14:45 修复上线后恢复正常。
 - ✅ **09-03（第2天）**：16:00 ZCode 定时自检通过——① crawl.yml 当天全 success（run #448-457，15:15 专班含在内）；② Pages 线上 summary/core/changes_summary 数据日期=09-03（当日调仓 3142 笔：新增 1263/清仓 1070），auction.json=09-03 09:25 生成；③ 热层 db-state 15:20 回传（crawl-latest.db.gz 23.5MB），温层 W36 同步更新；④ auction 09:25 扫描 + auction-label 15:05 打标均 success。manifest 复核：integrity ok，trades 216944（较 09-01 单调递增），date_range 尾部=09-03，当日 trades 3989 / positions 3172（与 09-02 量级一致）。注：钉钉推送项无法从定时任务侧直接核对（不在手机端即可见），由用户日常确认。
 - ✅ **09-04（第3天，周五）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #478 success（白天有 3 个 run 被 concurrency 取消：#473/474/476，后续 run 均 success，manifest 逐日 fingerprint 与 09-03 完全一致确认无数据缺口）；② Pages summary/core/changes_summary 数据日期=09-04（当日调仓 3260 笔：新增 1302/清仓 1115），auction.json=09-04 09:25；③ 热层 15:24 回传（23.9MB），温层 W36 15:25 同步；④ 竞价 09:25（run #25）+ 打标 15:05（run #16）均 success。manifest：integrity ok，trades 221030，date_range 尾部=09-04，当日 trades 4086 / positions 3236。**周五当周温层 tag `db-w2026-W36` 在位且当日更新**（待办 B 第4条满足）。
+- ✅ **09-07（第4天，周一）**：16:00 定时自检通过，两处附带事件——① 主链路 eod 专班 #528 15:15 success、热层 15:19 回传(18.1MB)；白天 14:30 班 #525 在"下载热层库"步骤瞬时失败(18s 即败, Release 资产下载断链)，次班 #526 自愈，无数据影响；manifest integrity ok，trades 218035，range 07-27~09-07（头部滚动出 40 采集日窗口致总数较周五 221030 递减 2995，核算=剪除 07-22~24 的 14710 − 新增 09-05/06/07 的 11715，符合设计；周末 09-05/06 亦有采集落库 3844/3841）；② **竞价线 09:25 主推送发出但内容降级**：周期引擎不可用('2026-09-07' is not in list)→出击选股 0 条→strike_pool 无存档→09:31 确认补推按设计显式失败(#26)；10:18 手动重试 #27 同因失败；10:59 用户自修(e_confirm row_factory TypeError, commit 97b23ff49b)后 dispatch #28 补推成功，其后 11:38/12:31 又连推两次 9:26 推送增强(竞价实测情绪/当下周期预判)。属用户 weekend 迭代中的自发现问题，非管道故障；另注意今日 crawl 班次事件已变为 workflow_dispatch(#519-527)，仅 eod 仍 repository_dispatch（cron-job.org 触发方式疑已切换，待确认）。Pages：summary/core/changes date=09-07，auction.json=09-07 但 generated_at=10:59(重试班覆盖)。
 
 ### C.【✅ 已完成】④ git 历史重写（filter-repo）— 09-06 执行
 
