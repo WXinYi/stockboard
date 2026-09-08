@@ -32,6 +32,7 @@ const lhb = ref(null)
 // 持仓快照: 仅用于候选「已持仓」标记(纪律卡已下线 09-07)
 const mine = ref(null)
 const discRule = computed(() => STAGE_RULES[cycle.value?.stage] || null)
+const touchCount = computed(() => (mine.value?.positions || []).filter(p => p.touch).length)
 
 async function loadMine(silent = false) {
   try { mine.value = await fetchMyPositions() } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
@@ -143,6 +144,13 @@ const stageShift = computed(() => {
   return m && live && m !== live ? `早盘曾判${m}` : ''
 })
 const gateMatrix = computed(() => battle.value?.strike?.gate?.matrix || null)
+// 风险摘要: 主线切换 + 高标开板 top2(盘中"该不该收手"一眼看, 完整明细在依据页)
+const mainSwitchNote = computed(() => battle.value?.boardWars?.mainSwitch?.note || '')
+const brokenHighsTop = computed(() => (battle.value?.risks?.brokenHighs || []).slice(0, 2))
+const riskSummary = computed(() => {
+  const names = brokenHighsTop.value.map(b => b.name)
+  return (mainSwitchNote.value || names.length) ? { sw: mainSwitchNote.value, names } : null
+})
 function stWord(c) { return statusWord(c?.status) }
 function holdOf(c) { return holdInfo(c, mine.value?.positions || []) }
 // 09:25 盘前候选(昨日连板·竞价换手前5 优先, 兜底取出击选股榜); 早/盘中换序
@@ -252,13 +260,18 @@ function fmtYi(v) {
 
 // ── 今日出击 ──
 const showObs = ref(false)      // 无达标候选时, 观察卡默认折叠
+const expanded = ref({})         // 出击卡详情展开(默认精简: 结论+价+买点/触发/止损)
+function toggleExp(code) { expanded.value = { ...expanded.value, [code]: !expanded.value[code] } }
 const strikeAll = computed(() => battle.value?.strike?.candidates || [])
 const strikeTop2 = computed(() => strikeAll.value.slice(0, 2))
 const strikeRest5 = computed(() => strikeAll.value.slice(2, 5))
 const strikeBeyond = computed(() => strikeAll.value.slice(5))
 const showAllRest = ref(false)
-const wzqTop5 = computed(() => wzqRows.value.slice(0, 5))
-const wzqRest = computed(() => wzqRows.value.slice(5))
+const wzqActionable = computed(() => wzqRows.value.filter(r => r.w.txt !== '只看不买'))
+const wzqHold = computed(() => wzqRows.value.filter(r => r.w.txt === '只看不买'))
+const wzqTop5 = computed(() => wzqActionable.value.slice(0, 5))
+const wzqRest = computed(() => wzqActionable.value.slice(5))
+const showWzqHold = ref(false)
 const reviewTop5 = computed(() => reviewRows.value.slice(0, 5))
 const reviewRest = computed(() => reviewRows.value.slice(5))
 // ── 行情速览 ──
@@ -284,12 +297,19 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
       </div>
       <div class="pk-sub" v-if="gateSentenceTxt">{{ gateSentenceTxt }}{{ stageShift ? '（' + stageShift + '）' : '' }}</div>
       <div class="pk-sub muted" v-else>正在计算今日阶段与池…</div>
+      <div v-if="riskSummary" class="pk-risk">
+        <span v-if="riskSummary.sw">🔄 主线切换 {{ riskSummary.sw }}</span>
+        <span v-if="riskSummary.names.length">🚨 高标开板: {{ riskSummary.names.join('、') }}</span>
+      </div>
       <div v-if="dvg" class="pk-warn">⚠️ {{ dvg }}</div>
     </div>
     <div v-else class="pk-verdict pk-load" @click="open('cycle')">
       <span class="pk-badge">…</span>
       <span class="pk-sub muted">周期数据加载中,稍候给出「可否买入」结论</span>
     </div>
+
+    <!-- ① 持仓触价风控(纪律卡下线后的轻量回补: 有触价即红字提醒) -->
+    <div v-if="touchCount > 0" class="pk-touch">⚠️ {{ touchCount }} 只持仓触价待执行(反抽/破位线命中, 按价执行不撤单)</div>
 
     <!-- ② 出击 pane(决策流主体; 早盘盘前候选在上, 盘中在下) -->
     <div class="mt-pane">
@@ -327,19 +347,22 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
               <span v-if="holdOf(c)" class="pk-held">{{ holdOf(c).txt }}</span>
               <span class="mt-strike-score" :class="{ hi: c.score >= 75 }">{{ c.score }}</span>
               <span class="mt-strike-status">{{ stWord(c).txt }}</span>
-            </div>
-            <div class="mt-strike-mid">
-              <span v-if="c.bidTop" class="lb-bidtop" :title="`昨日${c.bidTop.prevPid}板 · 竞价实际换手 ${c.bidTop.hs.toFixed(2)}%（昨日连板股第 ${c.bidTop.rank} 名）`">🔥 竞价换手TOP{{ c.bidTop.rank }}</span>
-              <span v-if="c.roleTxt" class="lb-role" :class="{ feng: c.roleTxt === '跟风', huo: c.roleTxt === '火种' }">🏷 {{ c.roleTxt }}</span>
-              <span class="mt-strike-mode">{{ c.mode }}</span>
-              <span v-if="c.sealTxt">{{ c.sealTxt }}</span>
-              <span v-if="c.strength">💪 {{ c.strength }}</span>
+              <button class="mt-mini" @click.stop="toggleExp(c.code)">{{ expanded[c.code] ? '收起' : '详情' }}</button>
             </div>
             <div v-if="pxLineOf(c)" class="mt-now">{{ pxLineOf(c) }}</div>
-            <div class="mt-strike-logic">{{ c.logic }}</div>
             <div class="mt-strike-tip">🎯 {{ candTip(c, battle.strike.gate.cap).buy }} ｜ 触发：{{ candTip(c, battle.strike.gate.cap).trigger }} ｜ 止损：{{ candTip(c, battle.strike.gate.cap).stop }} ｜ {{ candTip(c, battle.strike.gate.cap).pos }}</div>
-            <div v-if="c.risk" class="mt-strike-risk">⚠️ {{ c.risk }}</div>
-            <div v-if="whyNot(c, battle.strike.gate.cap, gateMatrix?.high, gateMatrix?.mid)" class="mt-strike-why">🚫 {{ whyNot(c, battle.strike.gate.cap, gateMatrix?.high, gateMatrix?.mid) }}</div>
+            <template v-if="expanded[c.code]">
+              <div class="mt-strike-mid">
+                <span v-if="c.bidTop" class="lb-bidtop" :title="`昨日${c.bidTop.prevPid}板 · 竞价实际换手 ${c.bidTop.hs.toFixed(2)}%（昨日连板股第 ${c.bidTop.rank} 名）`">🔥 竞价换手TOP{{ c.bidTop.rank }}</span>
+                <span v-if="c.roleTxt" class="lb-role" :class="{ feng: c.roleTxt === '跟风', huo: c.roleTxt === '火种' }">🏷 {{ c.roleTxt }}</span>
+                <span class="mt-strike-mode">{{ c.mode }}</span>
+                <span v-if="c.sealTxt">{{ c.sealTxt }}</span>
+                <span v-if="c.strength">💪 {{ c.strength }}</span>
+              </div>
+              <div class="mt-strike-logic">{{ c.logic }}</div>
+              <div v-if="c.risk" class="mt-strike-risk">⚠️ {{ c.risk }}</div>
+              <div v-if="whyNot(c, battle.strike.gate.cap, gateMatrix?.high, gateMatrix?.mid)" class="mt-strike-why">🚫 {{ whyNot(c, battle.strike.gate.cap, gateMatrix?.high, gateMatrix?.mid) }}</div>
+            </template>
           </div>
           <div v-for="c in strikeRest5" :key="c.code" class="mt-slim" @click="goStock(c)">
             <span class="st" :class="stWord(c).cls">{{ stWord(c).txt }}</span>
@@ -387,6 +410,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           <em>{{ review.date }} 9:25 竞价口径</em>
         </div>
         <div v-if="!wzqRows.length" class="mt-hold">今日无弱转强候选（昨日无分歧股, 或竞价未达 +1.5~7%）</div>
+        <div v-if="!wzqActionable.length && wzqHold.length" class="mt-hold">今日弱转强全为不出手(禁买期, 仅观察)</div>
         <div v-for="row in wzqTop5" :key="row.code" class="mt-review" @click="goStock(row)">
           <div class="mt-strike-top wzq-top">
             <b class="nm">{{ row.name }}</b>
@@ -414,6 +438,19 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         <div v-if="wzqRest.length" class="mt-strike-toggle" @click="showMoreWzq = !showMoreWzq">
           {{ showMoreWzq ? '收起 ▲' : `展开其余 ${wzqRest.length} 只 ▾` }}
         </div>
+        <div v-if="wzqHold.length" class="mt-strike-toggle" @click="showWzqHold = !showWzqHold">
+          {{ showWzqHold ? '收起 ▲' : `展开不出手 ${wzqHold.length} 只 ▾` }}
+        </div>
+        <template v-if="showWzqHold">
+          <div v-for="row in wzqHold" :key="'h'+row.code" class="mt-review" @click="goStock(row)">
+            <div class="mt-strike-top wzq-top">
+              <b class="nm">{{ row.name }}</b>
+              <span class="mt-strike-status watch">只看不买</span>
+              <span class="rv-tag watch">不出手</span>
+            </div>
+            <div class="wzq-sub">昨日{{ row.tag }}分歧 · 竞价 {{ row.bid_pct }}%<template v-if="row.pct != null"> · 现 {{ row.pct > 0 ? '+' : '' }}{{ row.pct }}%</template></div>
+          </div>
+        </template>
       </section>
       <section v-if="reviewValid && review" class="mt-sec">
         <div class="mt-sec-head">
@@ -531,6 +568,8 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .pk-more { margin-left: auto; font-size: 11px; color: #b7c0cc; flex: none; }
 .pk-sub { margin-top: 7px; font-size: 11.5px; color: #43505e; line-height: 1.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-sub.muted { color: #a6afbd; }
+.pk-touch { font-size: 12px; font-weight: 700; color: #fff; background: #e67e22; border-radius: 10px; padding: 7px 13px; margin-bottom: 8px; }
+.pk-risk { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; font-size: 11px; color: #b9770e; background: #fff7e8; border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
 .pk-warn { margin-top: 7px; font-size: 11px; color: #b06020; background: #fff7e8; border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
 .pk-empty { border: 1px dashed #cbd5e0; border-radius: 12px; background: #f7f9fc; padding: 14px 12px; text-align: center; margin-bottom: 6px; }
 .pk-empty b { font-size: 13.5px; color: #5b6daa; }
@@ -577,6 +616,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .mt-strike-toggle { text-align: center; font-size: 12px; color: #667; padding: 8px 0 2px; cursor: pointer; user-select: none; }
 .mt-strike-toggle:active { opacity: .6; }
 .mt-strike-note { font-size: 10px; color: #a0aab8; margin-top: 4px; }
+.mt-mini { margin-left: auto; font-size: 10px; color: #2980b9; background: none; border: none; padding: 0; cursor: pointer; flex: none; }
 
 /* ── 弱转强/复核(移动端两行布局: 首行 名称+状态+结果徽标, 次行数据整行不挤压) ── */
 .wzq-top { flex-wrap: wrap; row-gap: 4px; }

@@ -101,7 +101,7 @@ describe('divergenceNote 双引擎背离提示', () => {
   const TIER = { verdict: '仅观察', pool: '限45分', cls: 'warn' }
   it('六情绪极强+池未开/无达标 → 提示背离与豁免出路', () => {
     const t = divergenceNote('板块情绪极强', TIER, 0)
-    expect(t).toContain('双引擎背离')
+    expect(t).toContain('按更严执行')
     expect(t).toContain('人工豁免')
   })
   it('六情绪非极强 / 有达标候选 / 已可买 → 不提示', () => {

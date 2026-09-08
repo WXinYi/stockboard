@@ -80,6 +80,66 @@ const matrixCells = computed(() => {
   }))
 })
 
+// 涅槃六情绪定性(周期页 hero): 实时版优先(与首页同引擎, 复用本页已拉数据);
+// 实时不可得时回落日终存档, 且数据日≠实时周期日时不展示(不冒充当日)
+const sixInfo = ref(null)
+const sixLive = ref(null)
+// 阶段轨迹(当日, sessionStorage): 早盘→盘中演进一目了然, 防止阶段切换看着像矛盾
+const stageTrail = ref('')
+function saveTrail(stage) {
+  if (!stage) return
+  try {
+    const key = `sb-stage-trail-${cycle.value?.date || dayLabel.value}`
+    const now = new Date().toTimeString().slice(0, 5)
+    const raw = JSON.parse(sessionStorage.getItem(key) || 'null')
+    if (!raw) { sessionStorage.setItem(key, JSON.stringify([{ stage, at: now }])); stageTrail.value = ''; return }
+    const last = raw[raw.length - 1]
+    if (last.stage !== stage) raw.push({ stage, at: now })
+    sessionStorage.setItem(key, JSON.stringify(raw.slice(-4)))
+    stageTrail.value = raw.length > 1 ? raw.map(x => `${x.stage}(${x.at})`).join(' → ') : ''
+  } catch { /* 隐私模式丢弃 */ }
+}
+async function refreshSixLive(cdCycle, battleObj) {
+  try {
+    const [hist, au] = await Promise.all([
+      fetchSixHistory(),
+      fetchAuction().catch(() => null),
+    ])
+    const rows = normHistory(hist)
+    if (!rows.length) return
+    if (!sixMood.value) sixMood.value = await fetchMarketMood(true).catch(() => null)
+    const inp = battleObj?._inputs || {}
+    const idxT = await fetchIndexTrend()
+    const live = buildLiveRow({
+      todayPool: inp.todayPool || [], prevFull: inp.prevFull || [], unsealed: inp.unsealed || [],
+      history: rows, mood: { strong: sixMood.value?.[0]?.strong, df: sixMood.value?.[0]?.df },
+      cycle: cdCycle || null, bidAmt: parseBidYi(au?.env?.data?.bid_total),
+      idxTrend: idxT, date: cdCycle?.date || dayLabel.value || '',
+    })
+    if (live.date) sixLive.value = computeSixLive(rows, live)
+  } catch (e) { /* 六情绪失败不影响主结论 */ }
+}
+const sixMood = ref(null)
+const sixTxt = computed(() => {
+  const s = sixLive.value
+  if (s?.dominant) {
+    const tag = isTradingTime() ? '实时' : '最近快照'
+    return `主导 ${s.dominant}${s.note ? ' · ' + s.note : ''}（${tag}）`
+  }
+  const x = sixInfo.value
+  if (!x?.dominant || !sameDataDay(x.date, cycle.value?.date)) return ''
+  return `市场${x.market ?? '—'} 投机${x.spec ?? '—'} 板块${x.sector ?? '—'}（整体 ${x.m_market ?? '—'}/${x.m_spec ?? '—'}/${x.m_sector ?? '—'}）→ 主导: ${x.dominant} · ${x.note}`
+})
+// 双引擎背离: 六情绪极强 vs 矩阵禁高/中位(取严) → 明示 + 人工豁免出路
+const dvgTxt = computed(() => {
+  const b = data.value?.battle
+  if (!b || b.empty) return ''
+  const cap = b.strike?.gate?.cap
+  const tier = cap == null ? null : { verdict: cap === 0 ? '禁买' : (cap >= 100 ? '可买' : '谨慎可买') }
+  const act = (b.strike?.candidates || []).filter(c => statusWord(c.status).txt !== '只看不买').length
+  return divergenceNote(sixLive.value?.dominant, tier, act)
+})
+
 async function load(silent = false) {
   const s = section.value
   if (s === 'auction') { loading.value = false; return }

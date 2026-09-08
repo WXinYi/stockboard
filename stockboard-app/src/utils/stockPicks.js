@@ -77,7 +77,7 @@ const STRONG_SIX = ['板块情绪极强', '投机情绪极强']
 export function divergenceNote(dominant, tier, actCount) {
   if (!STRONG_SIX.includes(dominant)) return ''
   if (!tier || tier.verdict === '可买' || (Number(actCount) || 0) > 0) return ''
-  return '双引擎背离: 六情绪判' + dominant + '(主攻龙头/核心), 但矩阵禁高/中位 → 系统按更严执行; 空间锚/总龙头可人工豁免(参考≤1成)'
+  return '情绪(' + dominant + ')与梯队禁买背离 → 系统按更严执行(仅观察); 空间锚/总龙头可人工豁免(参考≤1成)'
 }
 
 /** 涨停幅度: 创业/科创 20%, 北交 30%, 其余 10%(与页面历史口径 limOf 一致) */
