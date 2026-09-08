@@ -137,11 +137,19 @@ const gateSentenceTxt = computed(() => gateSentence(
   cycle.value?.stage || '', gateMatrix.value?.high, gateMatrix.value?.mid,
   battle.value?.strike?.gate?.cap, noCandidate.value))
 const dvg = computed(() => divergenceNote(sixLive.value?.dominant, verdictShow.value, actCount.value))
-// 早盘存档阶段 vs 实时阶段: 不一致时在副行括注
-const morningStage = computed(() => auction.value?.cycle?.stage || '')
+// 存档阶段 vs 实时阶段: 仅同一天才标注(跨日不冒充"今日早盘"); 措辞按快照时刻
+const morningStage = computed(() => {
+  const a = auction.value
+  if (!a?.cycle?.stage || !cycleDataDay.value || a.date !== cycleDataDay.value) return ''
+  return a.cycle.stage
+})
+const snapTxt = computed(() => {
+  const h = parseInt(String(auction.value?.generated_at || '').slice(11, 13)) || 9
+  return h >= 12 ? '盘中曾判' : '早盘曾判'
+})
 const stageShift = computed(() => {
   const m = morningStage.value, live = cycle.value?.stage || ''
-  return m && live && m !== live ? `早盘曾判${m}` : ''
+  return m && live && m !== live ? `${snapTxt.value}${m}` : ''
 })
 const gateMatrix = computed(() => battle.value?.strike?.gate?.matrix || null)
 // 风险摘要: 主线切换 + 高标开板 top2(盘中"该不该收手"一眼看, 完整明细在依据页)
