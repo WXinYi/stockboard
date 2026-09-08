@@ -1,207 +1,207 @@
 {
- "date": "2026-09-07",
- "generated_at": "10:59",
+ "date": "2026-09-08",
+ "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
    "环境正常"
   ],
   "data": {
-   "strong": 61,
-   "lbgd": 6,
+   "strong": 37,
+   "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.5926133184107443,
+   "red_ratio": 0.506,
    "bid_count": [
-    167,
-    173,
+    151,
+    153,
     50,
-    61,
-    2
+    40,
+    1
    ],
-   "bid_total": "164亿",
-   "bid_total_prev": "154亿"
+   "bid_total": "145亿",
+   "bid_total_prev": "164亿"
   }
  },
  "boards": [
   {
+   "code": "801088",
+   "name": "有色金属",
+   "burst": 10.1,
+   "amount": 392359237.0,
+   "main_net": 70840225.0,
+   "src": "爆量+强度",
+   "strength": 45.0
+  },
+  {
+   "code": "801054",
+   "name": "金属铜",
+   "burst": 7.3,
+   "amount": 214159181.0,
+   "main_net": 43148553.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
    "code": "801001",
    "name": "芯片",
-   "burst": 21.3,
-   "amount": 2448486328.0,
-   "main_net": 652934667.0,
+   "burst": 7.3,
+   "amount": 1179932007.0,
+   "main_net": 20655911.0,
    "src": "爆量+强度",
-   "strength": 4112.0
-  },
-  {
-   "code": "801351",
-   "name": "科创板",
-   "burst": 9.8,
-   "amount": 383106070.0,
-   "main_net": 69926053.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801722",
-   "name": "存储",
-   "burst": 9.7,
-   "amount": 927609244.0,
-   "main_net": 298082381.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801062",
-   "name": "军工",
-   "burst": 9.3,
-   "amount": 435059335.0,
-   "main_net": 10361146.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "strength": 505.0
   },
   {
    "code": "801159",
    "name": "机器人概念",
-   "burst": 9.0,
-   "amount": 186328970.0,
-   "main_net": 12217817.0,
+   "burst": 7.0,
+   "amount": 238316928.0,
+   "main_net": -16949344.0,
    "src": "爆量+强度",
-   "strength": 7047.0
+   "strength": 508.0
   },
   {
    "code": "801003",
    "name": "5G",
-   "burst": 6.4,
-   "amount": 617178264.0,
-   "main_net": 227675945.0,
+   "burst": 6.5,
+   "amount": 632932046.0,
+   "main_net": 38352235.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801031",
-   "name": "文化传媒",
-   "burst": 6.1,
-   "amount": 409204867.0,
-   "main_net": 80340222.0,
+   "code": "801055",
+   "name": "有机硅",
+   "burst": 6.3,
+   "amount": 105276012.0,
+   "main_net": 20293548.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801199",
+   "name": "汽车零部件",
+   "burst": 5.0,
+   "amount": 332726475.0,
+   "main_net": 58526088.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801660",
    "name": "通信",
-   "burst": 5.8,
-   "amount": 1771961849.0,
-   "main_net": 508090133.0,
+   "burst": 5.0,
+   "amount": 1595867340.0,
+   "main_net": 187018245.0,
    "src": "爆量+强度",
-   "strength": 11620.0
+   "strength": 1018.0
   },
   {
    "code": "801807",
    "name": "算力",
-   "burst": 5.5,
-   "amount": 305133094.0,
-   "main_net": -10714764.0,
-   "src": "爆量+强度",
-   "strength": 2092.0
+   "burst": 5.0,
+   "amount": 371560817.0,
+   "main_net": 57610927.0,
+   "src": "爆量L2",
+   "strength": 0.0
   },
   {
-   "code": "801695",
-   "name": "CPO/MPO",
-   "burst": 5.1,
-   "amount": 1007786481.0,
-   "main_net": 423146856.0,
+   "code": "801081",
+   "name": "证券",
+   "burst": 4.5,
+   "amount": 89084807.0,
+   "main_net": -4158322.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801220",
-   "name": "食品饮料",
+   "code": "801464",
+   "name": "农业",
    "burst": 0.0,
-   "amount": 38639480113.0,
-   "main_net": 807045453.0,
+   "amount": 1607207508.0,
+   "main_net": 76335931.0,
    "src": "强度",
-   "strength": 2170.0
+   "strength": 1536.0
   },
   {
-   "code": "801053",
-   "name": "零售",
+   "code": "803023",
+   "name": "AI应用",
    "burst": 0.0,
-   "amount": 34304444379.0,
-   "main_net": 851343036.0,
+   "amount": 1835573225.0,
+   "main_net": 41813022.0,
    "src": "强度",
-   "strength": 2122.0
+   "strength": 1335.0
   },
   {
-   "code": "801375",
-   "name": "新材料概念",
+   "code": "801031",
+   "name": "文化传媒",
    "burst": 0.0,
-   "amount": 79986566637.0,
-   "main_net": 140868020.0,
+   "amount": 1028591449.0,
+   "main_net": 26529808.0,
    "src": "强度",
-   "strength": 1696.0
+   "strength": 1033.0
   },
   {
-   "code": "801330",
-   "name": "旅游",
+   "code": "801048",
+   "name": "黄金",
    "burst": 0.0,
-   "amount": 18980808845.0,
-   "main_net": 216179018.0,
+   "amount": 552199283.0,
+   "main_net": 32699668.0,
    "src": "强度",
-   "strength": 1626.0
+   "strength": 74.0
   },
   {
-   "code": "803014",
-   "name": "海峡两岸",
+   "code": "801471",
+   "name": "免税",
    "burst": 0.0,
-   "amount": 90807623582.0,
-   "main_net": 80170197.0,
+   "amount": 244023566.0,
+   "main_net": 30581504.0,
    "src": "强度",
-   "strength": 1570.0
+   "strength": 44.0
   },
   {
-   "code": "801235",
-   "name": "化工",
+   "code": "801422",
+   "name": "小金属概念",
    "burst": 0.0,
-   "amount": 134384222838.0,
-   "main_net": 31479404.0,
+   "amount": 757504554.0,
+   "main_net": 198108.0,
    "src": "强度",
-   "strength": 1473.0
+   "strength": 35.0
   },
   {
-   "code": "801224",
-   "name": "3D打印",
+   "code": "801873",
+   "name": "首发经济",
    "burst": 0.0,
-   "amount": 28247678480.0,
-   "main_net": 124034709.0,
+   "amount": 113556486.0,
+   "main_net": 1204839.0,
    "src": "强度",
-   "strength": 1266.0
+   "strength": 35.0
   },
   {
-   "code": "801572",
-   "name": "中报增长",
+   "code": "801396",
+   "name": "云游戏",
    "burst": 0.0,
-   "amount": 746183928212.0,
-   "main_net": 1319469208.0,
+   "amount": 78563546.0,
+   "main_net": 387858.0,
    "src": "强度",
-   "strength": 1191.0
+   "strength": 25.0
   },
   {
-   "code": "801070",
-   "name": "光伏",
+   "code": "801193",
+   "name": "知识产权",
    "burst": 0.0,
-   "amount": 164846197844.0,
-   "main_net": 289955796.0,
+   "amount": 192582873.0,
+   "main_net": 13537672.0,
    "src": "强度",
-   "strength": 854.0
+   "strength": 23.0
   },
   {
-   "code": "801088",
-   "name": "有色金属",
+   "code": "801694",
+   "name": "非金属材料",
    "burst": 0.0,
-   "amount": 63909172807.0,
-   "main_net": 496035998.0,
+   "amount": 254734451.0,
+   "main_net": 4127691.0,
    "src": "强度",
-   "strength": 672.0
+   "strength": 19.0
   }
  ],
  "strike": [
@@ -254,50 +254,50 @@
  "strike_watch": true,
  "bidrank": [
   {
+   "code": "002403",
+   "name": "爱仕达",
+   "height": 2,
+   "bid_pct": 9.99,
+   "turnover": 4.66
+  },
+  {
    "code": "605577",
    "name": "龙版传媒",
    "height": 5,
-   "bid_pct": 6.5,
-   "turnover": 4.62
-  },
-  {
-   "code": "600865",
-   "name": "百大集团",
-   "height": 2,
-   "bid_pct": 9.87,
-   "turnover": 3.17
-  },
-  {
-   "code": "605398",
-   "name": "新炬网络",
-   "height": 2,
-   "bid_pct": 0.0,
-   "turnover": 2.70301862575603
+   "bid_pct": 6.25,
+   "turnover": 3.06
   },
   {
    "code": "605580",
    "name": "恒盛能源",
    "height": 2,
-   "bid_pct": 5.12,
-   "turnover": 2.4553789337631153
+   "bid_pct": -1.6,
+   "turnover": 1.7083398179936686
   },
   {
-   "code": "002403",
-   "name": "爱仕达",
+   "code": "605398",
+   "name": "新炬网络",
    "height": 2,
-   "bid_pct": 9.04,
-   "turnover": 1.78
+   "bid_pct": -4.61,
+   "turnover": 1.09
+  },
+  {
+   "code": "600865",
+   "name": "百大集团",
+   "height": 2,
+   "bid_pct": 10.01,
+   "turnover": 0.81
   }
  ],
  "regime": {
   "regime": "过渡",
   "relay": 0.1590909090909091,
   "max_board": 5,
-  "top1_days": 2,
+  "top1_days": 1,
   "detail": [
    "昨日再板率16%",
    "最高5板",
-   "TOP1连续2日"
+   "TOP1连续1日"
   ]
  },
  "cycle": {
@@ -333,7 +333,7 @@
  },
  "empty_reason": "",
  "stats": {
-  "pool": 587,
+  "pool": 513,
   "boards": 20,
   "genes": 0
  },
