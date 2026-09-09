@@ -14,6 +14,7 @@ import argparse
 import sqlite3
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -96,32 +97,40 @@ def trading_days(start: str, end: str):
     return days
 
 
-def _insert_pool(spider: KPLSpider, conn: sqlite3.Connection, d: str, pid: int, use_rt: bool) -> int:
-    """抓取并落库某日某板位桶。use_rt=True 走当日实时(HomeDingPan), 否则走 His(历史)。
-    返回写入行数; 异常返回 -1(用于区分"接口未定稿/非交易日"与"成功但 0 条")。"""
-    try:
-        data = spider.zt_pool_rt(pid_type=pid, st=500) if use_rt else spider.zt_pool(d, pid_type=pid, st=500)
-        rows = [r for g in data.get("info", []) if isinstance(g, list)
-                for r in g if isinstance(r, list) and len(r) >= 14]
-        for r in rows:
-            conn.execute(
-                """INSERT OR REPLACE INTO limit_pool
-                (date, code, name, pid_type, zt_time, reason, seal_amount,
-                 max_seal, main_net, amount, plates, circ_mv, tag)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (d, str(r[0]), str(r[1]), pid,
-                 r[4] if isinstance(r[4], (int, float)) else None,
-                 str(r[5]), r[6], r[7], r[8], r[11],
-                 str(r[12]), r[13], f"{pid}连板"))
-        return len(rows)
-    except Exception as e:
-        print(f"  ⚠️ {d} P{pid} {'实时' if use_rt else 'His'} 失败: {e}")
-        time.sleep(0.5)
-        return -1
+def _fetch_day(spider: KPLSpider, d: str, use_rt: bool) -> tuple:
+    """并发单元: 抓取某日 5 个板位桶(纯网络, 不碰 sqlite 连接) → ({pid: rows}, any_err)。
+    2026-09-09 优化: 串行 1250 次请求要 40-60 分钟(经 SCF 中转), 并发 6 日 ≈ 5-8 分钟。"""
+    by_pid, any_err = {}, False
+    for pid in PIDS:
+        try:
+            data = spider.zt_pool_rt(pid_type=pid, st=500) if use_rt else spider.zt_pool(d, pid_type=pid, st=500)
+            rows = [r for g in data.get("info", []) if isinstance(g, list)
+                    for r in g if isinstance(r, list) and len(r) >= 14]
+            by_pid[pid] = rows
+        except Exception as e:
+            any_err = True
+            by_pid[pid] = []
+            print(f"  ⚠️ {d} P{pid} {'实时' if use_rt else 'His'} 失败: {e}")
+    return by_pid, any_err
+
+
+def _insert_rows(conn: sqlite3.Connection, d: str, pid: int, rows: list) -> int:
+    for r in rows:
+        conn.execute(
+            """INSERT OR REPLACE INTO limit_pool
+            (date, code, name, pid_type, zt_time, reason, seal_amount,
+             max_seal, main_net, amount, plates, circ_mv, tag)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (d, str(r[0]), str(r[1]), pid,
+             r[4] if isinstance(r[4], (int, float)) else None,
+             str(r[5]), r[6], r[7], r[8], r[11],
+             str(r[12]), r[13], f"{pid}连板"))
+    return len(rows)
 
 
 def backfill_pool(spider: KPLSpider, start: str, end: str,
-                 strict: bool = False, retries: int = 30, retry_wait: int = 180) -> int:
+                 strict: bool = False, retries: int = 30, retry_wait: int = 180,
+                 workers: int = 6, skip_existing: bool = False) -> int:
     """涨停池全字段回补: r[0]代码 r[1]名称 r[4]涨停时间 r[5]原因 r[6]封单 r[7]最大封单
        r[8]主力净额 r[11]成交额 r[12]板块 r[13]实际流通; PidType=板高
 
@@ -131,35 +140,45 @@ def backfill_pool(spider: KPLSpider, start: str, end: str,
     """
     total = 0
     got_by_day: dict = {}
+    days = trading_days(start, end)
+    today_cn = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    is_today_end = (end == today_cn)   # 仅当 end 就是"今天"才走实时接口; 历史 end 走 His
     with sqlite3.connect(DB) as conn:
-        for d in trading_days(start, end):
-            is_end = (d == end)
+        # 跳过已有数据的日期(重跑/自愈窗口时省掉绝大部分请求)
+        if skip_existing:
+            have = {r[0] for r in conn.execute("SELECT DISTINCT date FROM limit_pool")}
+            days = [d for d in days if (is_today_end and d == end) or d not in have]
+            print(f"  ⏭ 跳过已回补日期, 剩余 {len(days)} 天待抓")
+        hist_days = [d for d in days if not (is_today_end and d == end)]
+        # 历史日: 并发抓取(纯网络) → 串行落库(sqlite 连接不跨线程)
+        if hist_days:
+            with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+                for d, (by_pid, _err) in zip(hist_days, ex.map(lambda x: _fetch_day(spider, x, False), hist_days)):
+                    got = sum(_insert_rows(conn, d, pid, rows) for pid, rows in by_pid.items())
+                    conn.commit()
+                    got_by_day[d] = got
+                    print(f"  ✓ {d}: {got} 条涨停(板位1-5)")
+                    total += got
+        # 当日(仅当 end 就是今天): 优先实时(收盘后 His 未定稿), 空则 His 探测; 带重试
+        if is_today_end:
             got = 0
             his_err = False
-            attempts = retries if is_end else 0
-            for attempt in range(attempts + 1):
+            for attempt in range(retries + 1):
                 got = 0
-                # 口径(2026-09-09 用户拍板): 当日优先实时接口(收盘后 His 未定稿, 实时已含全天);
-                # 历史一律 His。当日实时为空时再用 His 探测(区分节假日 errcode=1020 与真异常)。
-                order = [True, False] if is_end else [False]
-                for use_rt in order:
-                    for pid in PIDS:
-                        n = _insert_pool(spider, conn, d, pid, use_rt)
-                        if n < 0:
-                            his_err = True
-                        else:
-                            got += n
-                        time.sleep(0.15)
+                for use_rt in (True, False):
+                    by_pid, any_err = _fetch_day(spider, end, use_rt)
+                    his_err = his_err or any_err
+                    got = sum(_insert_rows(conn, end, pid, rows) for pid, rows in by_pid.items())
+                    conn.commit()
                     if got > 0:
                         break
-                conn.commit()
-                if got > 0 or (is_end and his_err):
+                if got > 0 or his_err:
                     break
-                if attempt < attempts:
-                    print(f"  ⏳ {d} 无数据(实时/His 均空), {retry_wait}s 后重试 {attempt + 1}/{attempts}")
+                if attempt < retries:
+                    print(f"  ⏳ {end} 无数据(实时/His 均空), {retry_wait}s 后重试 {attempt + 1}/{retries}")
                     time.sleep(retry_wait)
-            got_by_day[d] = got
-            print(f"  ✓ {d}: {got} 条涨停(板位1-5)")
+            got_by_day[end] = got
+            print(f"  ✓ {end}: {got} 条涨停(板位1-5)")
             total += got
     print(f"  💾 limit_pool 全字段落库 {total} 条")
     # strict: 末尾日为工作日、0 条、且窗口内其它日有数据、且 His 未报"未定稿/非交易日" → 判为漏补
@@ -176,6 +195,8 @@ def main():
     ap.add_argument("--strict", action="store_true", help="末尾交易日 0 条且窗口内其它日有数据 → 非零退出")
     ap.add_argument("--retries", type=int, default=30, help="末尾日/宽度无数据重试次数(默认30)")
     ap.add_argument("--retry-wait", type=int, default=180, help="重试间隔秒(默认180=3min)")
+    ap.add_argument("--workers", type=int, default=6, help="历史日并发抓取数(默认6; 串行 1250 请求需 40-60min)")
+    ap.add_argument("--skip-existing", action="store_true", help="跳过已有数据的日期(重跑/自愈窗口省请求)")
     args = ap.parse_args()
     if not args.breadth and not args.pool:
         ap.error("至少指定 --breadth 或 --pool")
@@ -184,7 +205,8 @@ def main():
         backfill_breadth(spider, strict=args.strict, retries=args.retries, retry_wait=args.retry_wait)
     if args.pool:
         backfill_pool(spider, args.pool[0], args.pool[1], strict=args.strict,
-                      retries=args.retries, retry_wait=args.retry_wait)
+                      retries=args.retries, retry_wait=args.retry_wait,
+                      workers=args.workers, skip_existing=args.skip_existing)
 
 
 if __name__ == "__main__":

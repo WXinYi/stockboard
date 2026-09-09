@@ -22,6 +22,7 @@ on:
   push:
     paths:
       - '.github/workflows/backfill-pool-history.yml'
+      - 'jiarenmens/scripts/backfill_emotion.py'
 
 permissions:
   contents: write
@@ -63,7 +64,9 @@ jobs:
           START="${INPUT_START:-2025-09-01}"
           END="${INPUT_END:-$(TZ=Asia/Shanghai date +%F)}"
           echo "回补区间: $START → $END"
-          python scripts/backfill_emotion.py --pool "$START" "$END" --retries 2 --retry-wait 30
+          # --skip-existing: 已回补日期直接跳过(CI 恢复的热层里 7 月起已有数据);
+          # --workers 8: 串行 1250 请求需 40-60min(经 SCF 中转), 并发后约 5min。
+          python scripts/backfill_emotion.py --pool "$START" "$END" --workers 8 --skip-existing --retries 2 --retry-wait 30
 
       - name: 上传 auction.db(热层 + 当日/当周快照)
         env:
