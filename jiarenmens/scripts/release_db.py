@@ -95,9 +95,15 @@ def _api(method: str, url: str, *, token: str = "", data=None, ctype: str = "app
         return e.code, json.loads(e.read() or b"{}")
 
 
-def get_release(tag: str):
+def get_release(tag: str, warn: bool = False):
     st, rel = _api("GET", f"{API_BASE}/releases/tags/{tag}", token=_opt_token())
-    return rel if st == 200 else None
+    if st != 200:
+        # 静默返回 None 曾导致整班 workflow 在"下载热层库"步骤秒挂且日志无任何线索
+        # (2026-09-09 09:30 首班): 403 多为匿名读被限流, 调用方务必带 GITHUB_TOKEN。
+        if warn:
+            print(f"[release] ⚠️ GET {tag} → HTTP {st}(403=匿名读被限流, 需 GITHUB_TOKEN)", file=sys.stderr)
+        return None
+    return rel
 
 
 def ensure_release(tag: str, title: str, body: str) -> dict:
@@ -379,11 +385,17 @@ def _download_asset_to_db(tag: str, asset: str, dest: Path, retries: int = 3) ->
     """单个 gz 资产 → 解压覆盖 dest。失败返回 1(由调用方决定终止/降级), 网络错误重试。"""
     last_err = ""
     for i in range(retries):
-        rel = get_release(tag)
+        rel = get_release(tag, warn=True)
         if not rel:
-            return 1
+            # Release 读失败多为瞬时(限流/网络), 重试而不是直接返回——直接返回会让
+            # 整个 workflow 在"下载热层库"步骤秒挂, 且日志里只有一行 exit 1。
+            last_err = f"Release {tag} 不可访问"
+            time.sleep(3 * (i + 1))
+            continue
         a = next((x for x in rel.get("assets", []) if x["name"] == asset), None)
         if not a:
+            names = [x["name"] for x in rel.get("assets", [])][:5]
+            print(f"[download] ❌ {tag} 无资产 {asset}(现有: {names})", file=sys.stderr)
             return 1
         gz = Path(tempfile.mkstemp(suffix=".db.gz")[1])
         try:

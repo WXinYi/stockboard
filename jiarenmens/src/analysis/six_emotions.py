@@ -18,6 +18,7 @@
   赚钱维未收缩(涨停≥p75) + 亏钱维报警(跌停≥p60 或 炸板≥p70) + 高度从峰回落1-2级(未崩) + 未血洗(跌停/涨停≤0.25)。
 每种主导对应战术偏向(涅槃 Tactics/Position Logic 表)。
 """
+import math
 import sqlite3
 import sys
 from datetime import datetime
@@ -169,7 +170,7 @@ def _load_all():
     idx_ma = {}
     for k, d in enumerate(idx_dates):
         win = idx_dates[max(0, k - 4):k + 1]
-        ma5 = sum(index_close[x] for x in win) / len(win)
+        ma5 = _fsum_naive(index_close[x] for x in win) / len(win)
         idx_ma[d] = (index_close[d] / ma5 - 1) * 100 if ma5 else None
     for d in dates:
         metrics[d]["run_days"] = run_days[d]
@@ -180,6 +181,36 @@ def _load_all():
     return dates, metrics
 
 
+def _fsum_naive(vals) -> float:
+    """朴素左到右浮点求和(跳过 None)。
+
+    不要用内置 sum(): CPython 3.12 起对 float 改用补偿求和, 结果与 3.11 的朴素累加
+    差 1 个 ULP; 前端 JS 用 reduce 朴素累加, CI 跑的是 Python 3.11。若用 sum(),
+    本机(3.12)生成的按日截断夹具会与 JS/生产分叉——2026-09-09 对拍定位到:
+    3 日均值 52.699999999999996(3.12 sum) vs 52.70000000000001(3.11/JS),
+    正好落在基期重复值 52.7 两侧 → bisect 差 2 档 → m_sector 差 0.4。
+    """
+    total = 0.0
+    for v in vals:
+        if v is not None:
+            total += v
+    return total
+
+
+def _round_half_up(y: float) -> float:
+    """四舍五入到整数(0.5 一律进位, 即 JS Math.round 语义)。
+
+    Python 内置 round() 是银行家舍入(round-half-even): round(81.25, 1)=81.2,
+    而 JS Math.round(812.5)/10=81.3。前端六情绪引擎逐日复刻本管线, 两边舍入口径
+    必须一致, 否则并列值上分位排名会分叉(2026-09-09 对拍定位: 2026-05-19 sector
+    81.2(Py)/81.3(JS); 3 日均值 52.699999999999996(Py)/52.70000000000001(JS) 落在
+    基期重复值 52.7 两侧 → bisect 计数差 2 档 → m_sector 差 0.4)。
+    口径统一为"Python 对齐 JS", 线上 JS 输出不变。
+    """
+    n = math.floor(y)
+    return n + 1 if y - n >= 0.5 else n
+
+
 def _pct_rank(series, value):
     """value 在 series 中的历史分位数(0-100); 值缺失返回 None"""
     if value is None:
@@ -188,7 +219,7 @@ def _pct_rank(series, value):
     if not vals:
         return None
     import bisect
-    return round(bisect.bisect_left(vals, value) / len(vals) * 100, 1)
+    return _round_half_up(bisect.bisect_left(vals, value) / len(vals) * 1000) / 10
 
 
 def _wsum(parts):
@@ -199,7 +230,7 @@ def _wsum(parts):
             continue
         num += v * w
         den += w
-    return round(num / den, 1) if den else None
+    return _round_half_up(num / den * 10) / 10 if den else None
 
 
 def compute_all():
@@ -252,10 +283,10 @@ def compute_all():
                                _pct_rank(zb_sorted, metrics[d]["zhaban"]),
                                (hp - metrics[d]["height"]) if (hp and metrics[d]["height"]) else None)
         out[d]["m_market"] = _pct_rank(mkt_dist,
-                                       sum(v for v in (out[x]["market"] for x in win3) if v is not None) / len(win3))
+                                       _fsum_naive(out[x]["market"] for x in win3) / len(win3))
         out[d]["m_spec"] = _pct_rank(spec_dist,
-                                     sum(v for v in (out[x]["spec"] for x in win3) if v is not None) / len(win3))
-        sector3 = sum(v for v in (out[x]["sector"] for x in win3) if v is not None) / len(win3)
+                                     _fsum_naive(out[x]["spec"] for x in win3) / len(win3))
+        sector3 = _fsum_naive(out[x]["sector"] for x in win3) / len(win3)
         out[d]["m_sector"] = _wsum([(_pct_rank(sector_dist, sector3), .5),
                                     (_pct_rank(series["run_days"], metrics[d]["run_days"]), .3),
                                     (_pct_rank(switches_neg, -metrics[d]["switches_5d"]), .2)])

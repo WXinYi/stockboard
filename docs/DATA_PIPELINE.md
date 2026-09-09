@@ -16,7 +16,7 @@
 | ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
 | ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
 | ⑦ Build Vue 提速 | ✅ **上线并双分支验证** | dist 壳按代码指纹缓存，数据班跳过 npm ci+vite 全量构建（原慢班 Build Vue 可达 425s）。09-05 两次 push 触发实测：cache-miss 全量构建分支 ✅ / cache-hit rsync 拼接分支 ✅，详见 A2 |
-| 观察期 ⑥ | ⏳ 进行中(第4/5天: 09-07 ✅*) | 09-07 主链路/Pages/热层全过(eod 15:15 success、热层 15:19、Pages date=09-07)；带 * 因：①14:30 班 #525 瞬时失败(下载热层库断链, 次班自愈)；②竞价 09:25 主推送发出但内容降级(周期引擎不可用→出击 0)+09:31 确认补推失败, 用户 10:59 修复后补推成功(其 weekend 迭代范围, 见 B 第4天条目) |
+| 观察期 ⑥ | ✅ **观察期结束(5/5天全过) + 追加日 09-09 ✅** | 观察期 09-02~09-08 五天全部通过；09-09 定时任务第5/5次(末次)继续全绿：主链路 eod #574 success、热层 18:15 更新、Pages 四 JSON 日期=09-09、竞价 #30(09:25) + 涨停池回补 #19(15:05) 均 success、manifest integrity ok (trades 214304, range 07-29~09-09)。定时自检任务到期结束，详细逐日记录见 B |
 
 ---
 
@@ -52,6 +52,8 @@
 - ✅ **09-03（第2天）**：16:00 ZCode 定时自检通过——① crawl.yml 当天全 success（run #448-457，15:15 专班含在内）；② Pages 线上 summary/core/changes_summary 数据日期=09-03（当日调仓 3142 笔：新增 1263/清仓 1070），auction.json=09-03 09:25 生成；③ 热层 db-state 15:20 回传（crawl-latest.db.gz 23.5MB），温层 W36 同步更新；④ auction 09:25 扫描 + auction-label 15:05 打标均 success。manifest 复核：integrity ok，trades 216944（较 09-01 单调递增），date_range 尾部=09-03，当日 trades 3989 / positions 3172（与 09-02 量级一致）。注：钉钉推送项无法从定时任务侧直接核对（不在手机端即可见），由用户日常确认。
 - ✅ **09-04（第3天，周五）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #478 success（白天有 3 个 run 被 concurrency 取消：#473/474/476，后续 run 均 success，manifest 逐日 fingerprint 与 09-03 完全一致确认无数据缺口）；② Pages summary/core/changes_summary 数据日期=09-04（当日调仓 3260 笔：新增 1302/清仓 1115），auction.json=09-04 09:25；③ 热层 15:24 回传（23.9MB），温层 W36 15:25 同步；④ 竞价 09:25（run #25）+ 打标 15:05（run #16）均 success。manifest：integrity ok，trades 221030，date_range 尾部=09-04，当日 trades 4086 / positions 3236。**周五当周温层 tag `db-w2026-W36` 在位且当日更新**（待办 B 第4条满足）。
 - ✅ **09-07（第4天，周一）**：16:00 定时自检通过，两处附带事件——① 主链路 eod 专班 #528 15:15 success、热层 15:19 回传(18.1MB)；白天 14:30 班 #525 在"下载热层库"步骤瞬时失败(18s 即败, Release 资产下载断链)，次班 #526 自愈，无数据影响；manifest integrity ok，trades 218035，range 07-27~09-07（头部滚动出 40 采集日窗口致总数较周五 221030 递减 2995，核算=剪除 07-22~24 的 14710 − 新增 09-05/06/07 的 11715，符合设计；周末 09-05/06 亦有采集落库 3844/3841）；② **竞价线 09:25 主推送发出但内容降级**：周期引擎不可用('2026-09-07' is not in list)→出击选股 0 条→strike_pool 无存档→09:31 确认补推按设计显式失败(#26)；10:18 手动重试 #27 同因失败；10:59 用户自修(e_confirm row_factory TypeError, commit 97b23ff49b)后 dispatch #28 补推成功，其后 11:38/12:31 又连推两次 9:26 推送增强(竞价实测情绪/当下周期预判)。属用户 weekend 迭代中的自发现问题，非管道故障；另注意今日 crawl 班次事件已变为 workflow_dispatch(#519-527)，仅 eod 仍 repository_dispatch（cron-job.org 触发方式疑已切换，待确认）。Pages：summary/core/changes date=09-07，auction.json=09-07 但 generated_at=10:59(重试班覆盖)。
+- ✅ **09-08（第5天，周二）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #553 success、热层 15:21 回传；白天 12 班 workflow_dispatch + 2 班 push 全 success（其中 #541/#546 为 push 触发的班次被后续 dispatch 并发取消，属正常）；② Pages summary/core/changes_summary 数据日期=09-08；③ 竞价 09:25 run #29 success + 涨停池回补 #18 15:05 success。manifest：integrity ok，trades 218434，range 07-28~09-08。**观察期 5/5 天全过，观察期结束**。
+- ✅ **09-09（追加日，定时任务第5/5次即末次运行）**：16:00 定时自检通过——① crawl 白天多班 push+workflow_dispatch 全 success，eod 专班 #574 15:15 success、热层 18:15 再更新（18:11 班 #580 又回传一次）；② Pages 四 JSON 日期=09-09，auction.json=09-09 09:25；③ 竞价 #30(09:25) + 涨停池回补 #19(15:05) 均 success；manifest integrity ok，trades 214304，range 07-29~09-09（头部继续滚动剪窗）。**5 次定时自检任务到此全部完成**，后续监控若需要可再挂新任务。
 
 ### C.【✅ 已完成】④ git 历史重写（filter-repo）— 09-06 执行
 
@@ -76,6 +78,8 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 ### 📌 cron-job.org 收盘专班 — ✅ 已配置（09-01，jobId 8364216）
 
 `StockBoard 收盘sync 15:15`：工作日 15:15（Asia/Shanghai）发 `repository_dispatch: crawl-eod`，触发的 run 无条件执行 Release sync（真收盘数据，含尾盘竞价）。API 用法沉淀在 `~/.claude/reference/cron-job-org-api.md`。兜底：14:45 闸门保证专班失效时末班车也能落盘。
+
+**盘中班次**：20 个 job 逐个 `workflow_dispatch crawl.yml`（`{"ref":"main"}`），首班 jobId **8167465**（2026-09-09 由 09:30 改为 09:26）、末班 8239185（14:51）；其余 09:45~14:40 每 10–20 分钟一班。改时间用 `PATCH /jobs/{id}`（可只传改动字段，如 `{"job":{"title":…,"schedule":{…}}}`）。
 
 ---
 
@@ -111,10 +115,18 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 - **修复**：键一律 `str()`——加载时 `{str(x) for x in v}` 归一旧 int 键，写入时 `str(t.get("_k") or t.get("_id"))`。**09-02 自检确认生产生效**：修复上线后全天仅推送 2 次，远端 state 键全为 str。
 - **教训**：①"推送成功但状态没落盘"是最危险的静默失败（下次还重复推），`continue-on-error` 步骤必须在日志里能看出它失败了——本例靠 state 文件的 git 提交时间线反推；②给持久化结构的键换类型时，必须考虑与旧数据的**混合读取**，不是只保证新写入正确。
 
+**④ 首班"下载热层库"缺 GITHUB_TOKEN：匿名 API 被限流 → 整班静默秒挂（09-09 用户反馈"钉钉推送了但排行页还是昨天数据"，已修复）**
+
+- **现象**：09-09 09:30 首班 #554 失败在"下载热层库"，其后 20 个步骤全 skipped，当天第一份 09-09 数据直到 09:51 才提交（前一份是 09-08 15:21）。用户在 09:26 收到钉钉《竞价跟单快报》（直连东财实时接口）后打开页面，看到的自然是 09-08。
+- **根因**：该步骤漏写 `env: GITHUB_TOKEN`（上一行"下载 auction.db 热层"有，它没有）→ `_opt_token()` 返回空 → 匿名调 `GET /releases/tags/db-state`，撞上 60 次/小时/IP 的匿名限额 → `get_release()` 拿 403 返回 None → `_download_asset_to_db` **直接 return 1 且不打印任何东西** → 步骤 0.15 秒 exit 1。日志里只有一行"❌ 热层下载失败"，无法定位。
+- **修复**：① 该步骤补 `GITHUB_TOKEN`（顺带补 db_upload.yml 的同类步骤）；② `release_db.py`：非 200 打 stderr 日志并重试（限流是瞬时的），资产缺失时打印现有资产名，不再静默返回。
+- **教训**：①"公开仓可匿名读"是给本机用的，CI 里一律带 token——runner 出口 IP 共享，匿名额度随时被别的 workflow 吃光；②**静默失败比失败更贵**：这个 bug 从 09-01 迁移起就存在，只是首次撞上限流，代价是一天数据晚到 20 分钟。
+- **同时做了**：首班从 09:30 提前到 09:26（cron-job.org jobId 8167465，见 2.1），并在页面页脚显式标注"数据日期 + 采集时刻"，让快照时点一眼可辨。
+
 ### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
 
 1. **同一 commit 删库导致 checkout 无 db** → init 工作流改为"优先热层恢复，否则从 git 历史最后一个含 db 提交检出"（`git rev-list | cat-file -e` 探测）。
-2. **读操作强制要 token** → `release_db.py` 拆分 `_token()`（写）/`_opt_token()`（读，公开仓匿名 GET）。
+2. **读操作强制要 token** → `release_db.py` 拆分 `_token()`（写）/`_opt_token()`（读，公开仓匿名 GET）。**注意**：`_opt_token()` 只是给本机调试留的后路，**CI 步骤必须显式传 `GITHUB_TOKEN`**——匿名读撞限额会让整个 run 秒挂（见事故④）。
 3. **actions/checkout@v4 默认 shallow**（fetch-depth:1）→ rev-list 查不到历史，init 工作流加 `fetch-depth: 0`。
 4. **cd 子目录后 git pathspec 失效**：`cd jiarenmens` 后 `git rev-list -- jiarenmens/data/...` 相对 cwd 解析不到 → fatal，`bash -e` 直接终止步骤。git 命令必须在仓库根目录执行。
 5. 本机 keychain 里的 GitHub token 属于另一账号（无本仓写权限），不可用；改用仓库 GITHUB_TOKEN 跑 init。
@@ -131,8 +143,8 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 ## 一、全流程总览（✅ 08-31 起为现状）
 
 ```
-cron-job.org (交易日 12 次/天, 每次 dispatch)
-        │ repository_dispatch: crawl
+cron-job.org (交易日 20 班/天, 首班 09:26, 末班 14:51, 全部 workflow_dispatch)
+        │ repository_dispatch: crawl-eod (15:15 收盘专班)
         ▼
 GitHub Actions crawl.yml (job: crawl)
         │
@@ -168,7 +180,8 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 | 触发方式 | 说明 |
 |---|---|
-| `repository_dispatch: crawl` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 12 次**（盘前竞价~收盘后） |
+| `workflow_dispatch: crawl.yml` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 20 班**（**首班 09:26**~末班 14:51）。首班与钉钉《竞价跟单快报》(09:26) 同批：快报直连东财实时接口，站点数据必须跟上，否则用户先收到推送、再打开页面却是昨天的数据（2026-09-09 反馈，首班由 09:30 提前，cron-job.org jobId 8167465） |
+| `repository_dispatch: crawl-eod` | 收盘专班，cron-job.org 15:15 触发，必做 Release sync |
 | `push: main` | 每次推送也会跑一遍（数据照采，JSON 照导出） |
 | `workflow_dispatch` | 手动触发（Actions 页面 Run workflow） |
 
@@ -253,6 +266,7 @@ latest/players_index.json
 - **历史盲区已补齐**：线上 `limit_pool` **2025-09-01 → 2026-09-09 / 249 天 / 17,200 行**（此前仅 7 月起 48 天）。
 - **一次性回补 workflow** `.github/workflows/backfill-pool-history.yml`：push 自身或脚本即触发；**先 sleep 20min 等并发 crawl 完成**再恢复热层→回补→上传（否则 crawl 的 EOD 上传会用无回补的库覆盖，09-09 实测踩坑）；带"MIN≤2025-09-01 即跳过"幂等守卫。
 - **六情绪窗口**：`six_emotions.load_pool` 120→400 日——历史补齐后窗口边界差会让"全量导出 vs 按日截断参考"分位偏差 0.3~0.7（对拍抓出）。
+- **六情绪舍入口径对齐（2026-09-09）**：`six_emotions.py` 的分数舍入改用 `_round_half_up`（对齐 JS `Math.round`，Python 内置 `round` 是银行家舍入）、窗口均值改用 `_fsum_naive`（朴素左到右，不用内置 `sum`——CPython 3.12 起对 float 补偿求和，与 CI 3.11/JS 差 1 ULP）。两者不一致会让按日截断对拍在并列值上分叉（09-03 m_sector 差 0.4：3 日均值落在基期重复值 52.7 两侧）。改六情绪公式须沿用这两个助手，前端 `sixParity.test.js` 为回归闸门。
 
 ### auction-label 涨停池回补班加固（2026-09-09）
 
@@ -303,7 +317,7 @@ latest/players_index.json
 ### 5.2 取数/存数闭环（✅ 已上线，08-31 全链路验证通过）
 
 ```
-每个 crawl run(白天 12 次 + 收盘, 一律执行):
+每个 crawl run(白天 20 班 + 收盘, 一律执行):
   1. 下载热层 crawl-latest.db.gz → 解压为 data/crawl_data.db   ← 取数(状态回放, 3次重试)
      失败且本地无 db → run 终止(宁可停, 不可空库断链)
   2. main.py 采集 → 幂等写入当日数据                            ← 存数
@@ -357,7 +371,7 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 | 前端页面 | **零影响**。JSON 导出链路不动，行情/K线/竞价本就不走这条管道 |
 | 钉钉推送 | 零影响。notify_daily 依赖的 last_notify_state.json 照常提交 |
 | 竞价扫描/盘中监控 | 零影响。auction.db/hot_rank.db 独立于 crawl_data.db |
-| 白天 12 次采集 | 零影响。只有收盘后那次做"下载→采集→上传"；白天 run 依旧只采+导出 JSON |
+| 白天 20 班采集 | 零影响。只有收盘后那次做"下载→采集→上传"；白天 run 依旧只采+导出 JSON |
 | 回测 | **变好**：fetch_db.py 按周/月直取，不再依赖 git 历史里的 db 快照；支持任意历史日期 |
 | 数据安全 | **变好**：三层窗口首尾相接 + manifest + integrity_check + 失败即告警；git 历史不再是唯一备份 |
 | 仓库体积 | 721MB → <100MB（做完④）；之后 git 增量仅 JSON，恒定低速 |

@@ -24,6 +24,12 @@ const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices
 const { loadChangesSummary } = stockHistory
 const { relativeTime } = useRelativeTime()
 const crawlTimeRelative = computed(() => relativeTime(crawlTime.value))
+// 数据时点显式化: 页脚直接给出"数据日期 + 采集时刻"(排行等页面的数据是采集快照,
+// 不是实时行情; 只有把时点摊开写, 才能一眼看出是不是昨天的数据)
+const crawlTimeShort = computed(() => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(crawlTime.value || '')
+  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : ''
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -153,7 +159,9 @@ onMounted(async () => {
       </PullToRefresh>
     </main>
 
-    <footer class="footer">StockBoard · {{ currentDate || '—' }}</footer>
+    <footer class="footer" :title="crawlTime ? `数据采集于 ${crawlTime}` : ''">
+      StockBoard · 数据日期 {{ currentDate || '—' }}<template v-if="crawlTimeShort"> · 采集 {{ crawlTimeShort }}</template>
+    </footer>
 
     <!-- 全局股票搜索浮层 -->
     <StockSearch v-if="showSearch" @close="showSearch = false" />

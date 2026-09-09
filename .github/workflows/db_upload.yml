@@ -20,6 +20,8 @@ jobs:
           fetch-depth: 0   # 需从 git 历史检出最后一次 db 提交(浅克隆查不到)
 
       - name: 恢复库文件
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # 匿名读会被限流, 见 crawl.yml 同名步骤
         run: |
           # 注意: git 命令必须在仓库根目录执行(pathspec 相对 cwd)
           SHA=$(git rev-list HEAD -- jiarenmens/data/crawl_data.db | \
