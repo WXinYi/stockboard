@@ -99,9 +99,13 @@ def trading_days(start: str, end: str):
 
 
 def _fetch_day(spider: KPLSpider, d: str, use_rt: bool) -> tuple:
-    """并发单元: 抓取某日 5 个板位桶(纯网络, 不碰 sqlite 连接) → ({pid: rows}, any_err)。
-    2026-09-09 优化: 串行 1250 次请求要 40-60 分钟(经 SCF 中转), 并发 6 日 ≈ 5-8 分钟。"""
-    by_pid, any_err = {}, False
+    """并发单元: 抓取某日 5 个板位桶(纯网络, 不碰 sqlite 连接)。
+
+    返回 (by_pid, net_err, nontrading):
+      - net_err: 出现网络/超时类错误(通道可能不可用) → 用于通道切换与连续失败中止;
+      - nontrading: His 返回 errcode=1020(该日非交易日/未定稿) → 不算通道故障(节假日大段 0 条)。
+    """
+    by_pid, net_err, nontrading = {}, False, False
     for pid in PIDS:
         try:
             data = spider.zt_pool_rt(pid_type=pid, st=500) if use_rt else spider.zt_pool(d, pid_type=pid, st=500)
@@ -109,10 +113,13 @@ def _fetch_day(spider: KPLSpider, d: str, use_rt: bool) -> tuple:
                     for r in g if isinstance(r, list) and len(r) >= 14]
             by_pid[pid] = rows
         except Exception as e:
-            any_err = True
             by_pid[pid] = []
-            print(f"  ⚠️ {d} P{pid} {'实时' if use_rt else 'His'} 失败: {e}")
-    return by_pid, any_err
+            if "errcode=1020" in str(e):
+                nontrading = True
+            else:
+                net_err = True
+                print(f"  ⚠️ {d} P{pid} {'实时' if use_rt else 'His'} 失败: {e}")
+    return by_pid, net_err, nontrading
 
 
 def _insert_rows(conn: sqlite3.Connection, d: str, pid: int, rows: list) -> int:
@@ -155,27 +162,31 @@ def backfill_pool(spider: KPLSpider, start: str, end: str,
         # CI 侧曾出现"中转瞬时连不上"导致每请求 10s 超时、空转数小时 → 直连优先 + 连续失败中止。
         if hist_days:
             spider.his_proxy = None
-            by_pid, err = _fetch_day(spider, hist_days[0], False)
-            if err and sum(len(v) for v in by_pid.values()) == 0:
+            # 探针日优先取"库内已有数据的日期"(必为交易日), 避免节假日 1020 误判通道故障
+            probe_candidates = sorted(d for d in (have if skip_existing else set(hist_days)) if start <= d <= end)
+            probe_day = probe_candidates[0] if probe_candidates else hist_days[0]
+            by_pid, net_err, nontrading = _fetch_day(spider, probe_day, False)
+            got_probe = sum(len(v) for v in by_pid.values())
+            if got_probe == 0 and (net_err or not nontrading):
                 proxy = os.environ.get("KPL_HIS_PROXY") or None
                 if not proxy:
                     raise SystemExit("❌ His 直连失败且无 KPL_HIS_PROXY 兜底, 中止")
-                print("  ℹ️ His 直连不可用, 切换 SCF 中转")
+                print(f"  ℹ️ His 直连探针({probe_day})不可用, 切换 SCF 中转")
                 spider.his_proxy = proxy
-                by_pid, err = _fetch_day(spider, hist_days[0], False)
-                if err and sum(len(v) for v in by_pid.values()) == 0:
+                by_pid, net_err, nontrading = _fetch_day(spider, probe_day, False)
+                if sum(len(v) for v in by_pid.values()) == 0 and net_err:
                     raise SystemExit("❌ His 直连与中转均失败, 中止")
         # 历史日: 并发抓取(纯网络) → 串行落库(sqlite 连接不跨线程)
         if hist_days:
             consec = 0
             with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-                for d, (by_pid, err) in zip(hist_days, ex.map(lambda x: _fetch_day(spider, x, False), hist_days)):
+                for d, (by_pid, net_err, _nt) in zip(hist_days, ex.map(lambda x: _fetch_day(spider, x, False), hist_days)):
                     got = sum(_insert_rows(conn, d, pid, rows) for pid, rows in by_pid.items())
                     conn.commit()
                     got_by_day[d] = got
                     print(f"  ✓ {d}: {got} 条涨停(板位1-5)")
                     total += got
-                    consec = consec + 1 if (got == 0 and err) else 0
+                    consec = consec + 1 if (got == 0 and net_err) else 0
                     if consec >= 5:
                         raise SystemExit(f"❌ 连续 {consec} 天抓取失败, 中止(避免空转)")
         # 当日(仅当 end 就是今天): 优先实时(收盘后 His 未定稿), 空则 His 探测; 带重试
@@ -185,8 +196,8 @@ def backfill_pool(spider: KPLSpider, start: str, end: str,
             for attempt in range(retries + 1):
                 got = 0
                 for use_rt in (True, False):
-                    by_pid, any_err = _fetch_day(spider, end, use_rt)
-                    his_err = his_err or any_err
+                    by_pid, net_err, _nt = _fetch_day(spider, end, use_rt)
+                    his_err = his_err or net_err
                     got = sum(_insert_rows(conn, end, pid, rows) for pid, rows in by_pid.items())
                     conn.commit()
                     if got > 0:
