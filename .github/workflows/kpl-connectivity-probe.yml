@@ -1,0 +1,30 @@
+name: KPL 连通性探针(His 直连 vs SCF 中转)
+
+# 背景(2026-09-09): GitHub Actions 出口连 SCF 中转超时(ConnectTimeout 10s), 而本地两条路都通。
+# 本探针从 CI 侧分别测试 直连 apphis / 经 SCF 中转, 输出 HTTP 码与耗时, 用于决定回补走哪条路。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/kpl-connectivity-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 直连 apphis(8s 超时)
+        run: |
+          URL='https://apphis.longhuvip.com/w1/api/index.php?a=DailyLimitPerformance&c=HisHomeDingPan&Day=2026-06-30&PidType=1&Type=4&Index=0&Order=0&st=500'
+          curl -s -o /tmp/direct.json -w "direct HTTP %{http_code} in %{time_total}s\n" --max-time 8 "$URL" || echo "direct FAILED(exit $?)"
+          head -c 160 /tmp/direct.json 2>/dev/null; echo
+      - name: 经 SCF 中转(8s 超时)
+        run: |
+          URL='https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com/kpl-his?a=DailyLimitPerformance&c=HisHomeDingPan&Day=2026-06-30&PidType=1&Type=4&Index=0&Order=0&st=500'
+          curl -s -o /tmp/proxy.json -w "proxy HTTP %{http_code} in %{time_total}s\n" --max-time 8 "$URL" || echo "proxy FAILED(exit $?)"
+          head -c 160 /tmp/proxy.json 2>/dev/null; echo
+      - name: 经 Cloudflare Worker(若配置)
+        run: |
+          echo "worker 备用通道未配置, 跳过"
