@@ -44,6 +44,12 @@ jobs:
       - name: 安装依赖
         run: cd jiarenmens && pip install -r requirements.txt
 
+      # ⚠️ 每次 push 到 main 也会触发 crawl.yml(它恢复→写宽度→上传 auction 热层)。
+      # 若本任务与 crawl 并发, crawl 后上传会用"无回补"的库覆盖结果(2026-09-09 实测踩坑)。
+      # 因此先等 crawl 跑完(~15-20min)再恢复热层, 保证本任务最后上传且不丢 crawl 的当日写入。
+      - name: 等待并发 crawl 完成(防热层后写覆盖)
+        run: sleep 1200
+
       - name: 恢复 auction.db 热层
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,7 +61,20 @@ jobs:
             echo "❌ auction 热层恢复失败"; exit 1
           fi
 
+      - name: 判断是否已回补(幂等守卫)
+        id: need
+        run: |
+          cd jiarenmens
+          MIN=$(python3 -c "import sqlite3;print(sqlite3.connect('data/auction.db').execute('SELECT MIN(date) FROM limit_pool').fetchone()[0])")
+          echo "当前 limit_pool 最早日期: $MIN"
+          if [[ "$MIN" < "2025-09-01" || "$MIN" == "2025-09-01" ]]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"; echo "⏭ 已回补, 跳过"
+          else
+            echo "skip=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 历史回补(limit_pool 全字段)
+        if: steps.need.outputs.skip == '0'
         env:
           INPUT_START: ${{ inputs.start }}
           INPUT_END: ${{ inputs.end }}
@@ -69,11 +88,13 @@ jobs:
           python scripts/backfill_emotion.py --pool "$START" "$END" --workers 8 --skip-existing --retries 2 --retry-wait 30
 
       - name: 上传 auction.db(热层 + 当日/当周快照)
+        if: steps.need.outputs.skip == '0'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cd jiarenmens && python3 scripts/release_db.py --what auction --upload-latest
 
       - name: 校验覆盖
+        if: steps.need.outputs.skip == '0'
         run: |
           cd jiarenmens
           python3 - <<'PY'
@@ -83,4 +104,5 @@ jobs:
           print(f'limit_pool: {mn} → {mx}, {n} 行')
           assert mn <= '2025-09-01', f'回补未生效: MIN={mn}'
           print('✅ 回补覆盖校验通过')
+          PY
           PY
