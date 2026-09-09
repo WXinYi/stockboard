@@ -96,7 +96,9 @@ def _load_all():
     _ensure_index(max(breadth) if breadth else None)
     index_close = {r["date"]: r["close"] for r in _rows(conn, "SELECT * FROM index_daily ORDER BY date")}
     # 复用周期引擎的池加载: 行已附真实连板高度(连续在池反推, 解开 pid_type=5 封顶)
-    pools = load_pool(days=120)
+    # 池窗口取 400 日(>250 天宽度窗): 历史回补后若窗口过窄, "全量导出"与"按日截断参考"
+    # 的窗口边界不同 → 分位基准出现 0.3~0.7 级偏差(2026-09-09 对拍实测)。放宽后两者一致。
+    pools = load_pool(days=400)
 
     from collections import defaultdict
     # 逐日涨停池聚合(一次遍历): 家数/真实最高板/两板以上数/主线板块计数与成交额

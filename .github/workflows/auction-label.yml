@@ -50,10 +50,12 @@ jobs:
           fi
           sha256sum data/auction.db | awk '{print $1}' > /tmp/auction_sha_start
 
-      - name: 涨停池全字段落库(周期引擎数据源, 修复当日断档)
+      # 2026-09-09 加固: 原单日 + continue-on-error → His 未定稿时静默 0 行、次日不回头
+      # (09-07/08 漏补事故)。改 7 天滚动窗口(幂等 INSERT OR REPLACE 自愈) + --strict(末尾日
+      # 0 条且窗口内其它日有数据 → 失败可见); 去掉 continue-on-error 让断档暴露。
+      - name: 涨停池全字段落库(7 天滚动自愈, 周期引擎数据源)
         if: success()
-        continue-on-error: true
-        run: cd jiarenmens && python scripts/backfill_emotion.py --pool $(TZ=Asia/Shanghai date +%F) $(TZ=Asia/Shanghai date +%F)
+        run: cd jiarenmens && python scripts/backfill_emotion.py --pool $(TZ=Asia/Shanghai date -d '7 days ago' +%F) $(TZ=Asia/Shanghai date +%F) --strict
 
       # auction.db 上传闸门(Release 迁移): sha 变更才传; 失败即失败不吞
       - name: 上传 auction.db 热层

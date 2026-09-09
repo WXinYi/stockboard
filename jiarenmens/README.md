@@ -93,7 +93,7 @@ stockboard/
 
 - **周期引擎** `src/analysis/emotion_cycle.py`：六段量化判定（冰点/启动/发酵/高潮/分歧/退潮）。⚠️ 涨停池 `PidType=5` 是"≥5板"封顶桶，真实连板高度按个股逐日连续在池反推。阈值在 `CYCLE_CFG`，**待回测校准**。
 - **存量评分漏斗与 V5 已整链删除**（2026-09-06）：`auction_funnel.py`/`screen_v5`/v5_results 等回测表/打标(`--label`)全部移除，出击名单的"周期闸门"语义由 `stage_candidates.py`(Python) 与 `leaderBattle.js`(JS) 镜像实现；`env_check`/`board_select` 迁至 `src/analysis/auction_env.py` 继续服役。
-- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补。⚠️ `auction-label.yml`(涨停池回补班) 收盘只续 `--pool` **不含宽度**（2026-09-05 发现宽度停在 8/28 致 9/4 误判"分歧"），宽度日常更新已挂 `crawl.yml` 收盘班（≥15:00 班次），`cycle_brief.py` 计算前另有断档自愈兜底。
+- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补。⚠️ `auction-label.yml`(涨停池回补班) 收盘只续 `--pool` **不含宽度**（2026-09-05 发现宽度停在 8/28 致 9/4 误判"分歧"），宽度日常更新已挂 `crawl.yml` 收盘班（≥15:00 班次），`cycle_brief.py` 计算前另有断档自愈兜底。**2026-09-09 加固**：该班原单日+`continue-on-error` → His 当日未定稿(`errcode=1020`)时静默 0 行、次日不回头（09-07/08 漏补事故）；现改 **7 天滚动窗口**(幂等)+`--strict`(末尾工作日 0 条且窗口内其它日有数据→非零退出)+末尾日无数据重试 3×60s，断档可见且次日自愈；历史盲区已用 `--pool 2025-09-01 2026-06-30` 补齐。
 - **常用命令**：
   ```bash
   python scripts/cycle_brief.py                        # 当前格局报告

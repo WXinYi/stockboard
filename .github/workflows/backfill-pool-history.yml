@@ -1,0 +1,83 @@
+name: 涨停池历史回补(CI 一次性/手动)
+
+# 背景(2026-09-09): 本地 keychain 凭据对 Release 只读(上传 404), 历史回补数据无法从本地推上
+# auction-state 热层; CI 用 secrets.GITHUB_TOKEN 有写权限 → 由本 workflow 执行并上传。
+#
+# 触发:
+#   1) 推送本文件(push paths)即自动跑一次(用于本次 2025-09 起的历史回补);
+#   2) 之后可 workflow_dispatch 指定区间复用(幂等 INSERT OR REPLACE)。
+# 口径: 历史日走 His(KPL_HIS_PROXY 中转), 当日走实时接口(见 backfill_emotion.py)。
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: '起始日 YYYY-MM-DD'
+        required: false
+        default: '2025-09-01'
+      end:
+        description: '结束日 YYYY-MM-DD(留空=今天)'
+        required: false
+        default: ''
+  push:
+    paths:
+      - '.github/workflows/backfill-pool-history.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    env:
+      # His 域名对 Actions 出口 IP 风控, 走 SCF 中转(同 auction-label.yml)
+      KPL_HIS_PROXY: https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装依赖
+        run: cd jiarenmens && pip install -r requirements.txt
+
+      - name: 恢复 auction.db 热层
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd jiarenmens
+          if python3 scripts/release_db.py --what auction --download-latest; then
+            echo "✅ 已恢复 auction 热层"
+          else
+            echo "❌ auction 热层恢复失败"; exit 1
+          fi
+
+      - name: 历史回补(limit_pool 全字段)
+        env:
+          INPUT_START: ${{ inputs.start }}
+          INPUT_END: ${{ inputs.end }}
+        run: |
+          cd jiarenmens
+          START="${INPUT_START:-2025-09-01}"
+          END="${INPUT_END:-$(TZ=Asia/Shanghai date +%F)}"
+          echo "回补区间: $START → $END"
+          python scripts/backfill_emotion.py --pool "$START" "$END" --retries 2 --retry-wait 30
+
+      - name: 上传 auction.db(热层 + 当日/当周快照)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd jiarenmens && python3 scripts/release_db.py --what auction --upload-latest
+
+      - name: 校验覆盖
+        run: |
+          cd jiarenmens
+          python3 - <<'PY'
+          import sqlite3
+          c = sqlite3.connect('data/auction.db')
+          mn, mx, n = c.execute('SELECT MIN(date), MAX(date), COUNT(*) FROM limit_pool').fetchone()
+          print(f'limit_pool: {mn} → {mx}, {n} 行')
+          assert mn <= '2025-09-01', f'回补未生效: MIN={mn}'
+          print('✅ 回补覆盖校验通过')
+          PY

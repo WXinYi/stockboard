@@ -4,21 +4,21 @@ import { normHistory, computeSixLive, buildLiveRow, parseBidYi } from '../sixEmo
 
 const hist = JSON.parse(readFileSync(new URL('../../../public/data/latest/six_history.json', import.meta.url), 'utf8'))
 
-describe('sixEmotion 实时引擎 · 与 Python six_scores 对拍', () => {
-  it('以 six_history 最后一日(09-04)作实时输入, 结果与后端一致', () => {
+describe('sixEmotion 实时引擎 · 结构自检', () => {
+  // 精确数值对拍由 sixParity.test.js(按日截断夹具)负责; 此处只做与数据同步的结构断言,
+  // 避免把"最后一日"写死(历史回补/新增交易日后必然过期)。
+  it('以 six_history 最后一日作实时输入, 输出结构完整', () => {
     const rows = normHistory(hist)
     const live = { ...rows[rows.length - 1] }
     const res = computeSixLive(rows.slice(0, -1), live)
-    const close = (got, want, tol = 0.15) => Math.abs((got ?? -999) - want) <= tol
-    expect(res.date).toBe('2026-09-04')
-    expect(close(res.market, 36.2)).toBe(true)
-    expect(close(res.spec, 27.4)).toBe(true)
-    expect(close(res.sector, 86.0)).toBe(true)
-    expect(close(res.m_market, 26.7)).toBe(true)
-    expect(close(res.m_spec, 53.3)).toBe(true)
-    expect(close(res.m_sector, 76.2)).toBe(true)
-    expect(res.dominant).toBe('退潮防守')
-    expect(res.note).toContain('不强行交易')
+    expect(res.date).toBe(rows[rows.length - 1].date)
+    for (const k of ['market', 'spec', 'sector', 'm_market', 'm_spec', 'm_sector']) {
+      expect(typeof res[k]).toBe('number')
+      expect(res[k]).toBeGreaterThanOrEqual(0)
+      expect(res[k]).toBeLessThanOrEqual(100)
+    }
+    expect(res.dominant).toBeTruthy()
+    expect(typeof res.note).toBe('string')
   })
 })
 

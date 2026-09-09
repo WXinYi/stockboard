@@ -51,13 +51,13 @@ HOT_ASSET = "crawl-latest.db.gz"
 # 数据库目标注册表: crawl_data.db(热/温/冷三层 sync) / auction.db(热层 + 日快照 + 周冷层)
 # auction 单独成档原因: 竞价班(auction.yml)/打标班(auction-label.yml)/crawl班 三个 workflow
 # 都写它, 且 bid_pool 等竞价时点档案不可重采 —— 每班 sha 变更即传, 不能套 crawl 的收盘闸门。
-# auction 保留策略: latest 覆盖写 + 日快照滚动留 daily_keep=7 天(严格< cutoff 才删)
+# auction 保留策略: latest 覆盖写 + 日快照滚动留 daily_keep=30 天(严格< cutoff 才删; 09-09 由 7 提升, >7天误删风险)
 # + ISO 周快照滚动留 weekly_keep=26 周(cutoff 周本身删, 见 _stale_auction_assets)。
 TARGETS = {
     "crawl": {"db": DB_PATH, "tag": HOT_TAG, "asset": HOT_ASSET},
     "auction": {"db": ROOT / "data" / "auction.db", "tag": "auction-state",
                 "asset": "auction-latest.db.gz", "prefix": "auction",
-                "daily_keep": 7, "weekly_keep": 26},
+                "daily_keep": 30, "weekly_keep": 26},
 }
 
 

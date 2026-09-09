@@ -215,7 +215,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 | 库 | 写入方 | 内容 | 是否提交 git |
 |---|---|---|---|
-| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/情绪/梯队/涨停池/宽度/炸板池/指数/出击存档 8 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 7 天 + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
+| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/情绪/梯队/涨停池/宽度/炸板池/指数/出击存档 8 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 **30 天**(09-09 由 7 提升) + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
 | `hot_rank.db` | auction_scan --hot-rank | 东财人气榜 am/pm 快照 | 是 |
 | `intraday.db` / `analysis.db` | intraday_monitor.py | 盘中信号快照 | **否**（.gitignore，本机独享） |
 | `crawl_data.db-shm/-wal` | SQLite WAL | — | 否（.gitignore） |
@@ -245,6 +245,15 @@ latest/players_index.json
 - db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（`crawl-eod` 专班或 ≥14:45 兜底）末尾 `--sync` 回传。
 - 状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会因状态回退而白天重复推送。
 - 提交信息 `📊 数据更新 YYYY-MM-DD [skip ci]`（防止 push 再触发 workflow）；push 失败重试 3 次（pull --rebase）。
+### auction-label 涨停池回补班加固（2026-09-09）
+
+事故：09-07/09-08 两日 `limit_pool` 未落库（max 停在 09-04），而 workflow 显示 success——原因是步骤带 `continue-on-error: true` + 只补「今天」单日：His `DailyLimitPerformance` 对未定稿的当日返回 `errcode=1020`，脚本逐板位 catch 后 0 行、退出码 0；sha 未变 → 上传步骤跳过 → 假绿。
+
+加固：
+- `backfill_emotion.py --pool` 支持 `--strict`，且**仅对末尾日做无数据重试**(默认 3×60s，等 His 定稿)；末尾日为工作日且 0 条、窗口内其它日有数据 → 非零退出(节假日全 0 不误报)。
+- `auction-label.yml` 改为**7 天滚动窗口**(`date -d '7 days ago'` → today，INSERT OR REPLACE 幂等)，去掉 `continue-on-error`——任何一天漏补次日自动追平，且断档会显式失败。
+- 历史回补：`--pool 2025-09-01 2026-06-30` 补齐六情绪 250 日高度/主线盲区(2026-09-09 执行)。
+
 - `auction.db` 同样不进 git（09-06 迁 Release `auction-state`）：每班开头 `release_db.py --what auction --download-latest` 恢复（latest 失败自动回退最新日快照），班内 sha256 变更才上传（另存当日+当周快照）；**上传失败让 run 失败**（宁可停，不可静默丢竞价档案）。 auction.yml / auction-label.yml / crawl.yml / cycle-eod.yml 四 workflow 共写共读。
 - ⚠️ 新增调 GitHub API 的 workflow 步骤必须显式 `env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`（09-06 演练实抓：secrets 不会自动进步骤环境）。
 - `jiarenmens/data/archive/`（fetch_db 回测产物）已 ignore，勿 `git add -A` 误提交。
