@@ -97,12 +97,12 @@ jobs:
         if: steps.need.outputs.skip == '0'
         run: |
           cd jiarenmens
-          python3 - <<'PY'
+          python3 -c "
           import sqlite3
           c = sqlite3.connect('data/auction.db')
           mn, mx, n = c.execute('SELECT MIN(date), MAX(date), COUNT(*) FROM limit_pool').fetchone()
-          print(f'limit_pool: {mn} → {mx}, {n} 行')
+          print(f'limit_pool: {mn} -> {mx}, {n} 行')
           assert mn <= '2025-09-01', f'回补未生效: MIN={mn}'
           print('✅ 回补覆盖校验通过')
-          PY
+          "
           PY

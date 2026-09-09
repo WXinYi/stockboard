@@ -245,6 +245,15 @@ latest/players_index.json
 - db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（`crawl-eod` 专班或 ≥14:45 兜底）末尾 `--sync` 回传。
 - 状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会因状态回退而白天重复推送。
 - 提交信息 `📊 数据更新 YYYY-MM-DD [skip ci]`（防止 push 再触发 workflow）；push 失败重试 3 次（pull --rebase）。
+### 涨停池当日实时化 + 历史回补落地（2026-09-09 最终态）
+
+- **口径（用户拍板）**：**当天用实时接口**（`zt_pool_rt`/`rise_fall_rt`，收盘后即含全天，His 当天 15:05 仍 `errcode=1020`）；**历史用 His**（`zt_pool`，`Day=` 参数）。
+- **通道**：直连 `apphis` 优先，探针（取库内已确认交易日）失败才切 `KPL_HIS_PROXY`（SCF 中转）；双通道皆败或**连续 5 个交易日网络失败**即非零退出（节假日 `1020` 不计入，避免国庆段误中止）。
+- **性能**：历史回补并发 8 日抓取 + 串行落库；`--skip-existing` 跳过已有日期（1250 次串行请求 40-60min → 并发约 5min）。
+- **历史盲区已补齐**：线上 `limit_pool` **2025-09-01 → 2026-09-09 / 249 天 / 17,200 行**（此前仅 7 月起 48 天）。
+- **一次性回补 workflow** `.github/workflows/backfill-pool-history.yml`：push 自身或脚本即触发；**先 sleep 20min 等并发 crawl 完成**再恢复热层→回补→上传（否则 crawl 的 EOD 上传会用无回补的库覆盖，09-09 实测踩坑）；带"MIN≤2025-09-01 即跳过"幂等守卫。
+- **六情绪窗口**：`six_emotions.load_pool` 120→400 日——历史补齐后窗口边界差会让"全量导出 vs 按日截断参考"分位偏差 0.3~0.7（对拍抓出）。
+
 ### auction-label 涨停池回补班加固（2026-09-09）
 
 事故：09-07/09-08 两日 `limit_pool` 未落库（max 停在 09-04），而 workflow 显示 success——原因是步骤带 `continue-on-error: true` + 只补「今天」单日：His `DailyLimitPerformance` 对未定稿的当日返回 `errcode=1020`，脚本逐板位 catch 后 0 行、退出码 0；sha 未变 → 上传步骤跳过 → 假绿。
