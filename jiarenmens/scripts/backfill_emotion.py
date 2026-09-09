@@ -11,6 +11,7 @@
   python scripts/backfill_emotion.py --breadth --pool 2026-08-22 2026-08-28
 """
 import argparse
+import os
 import sqlite3
 import sys
 import time
@@ -150,15 +151,33 @@ def backfill_pool(spider: KPLSpider, start: str, end: str,
             days = [d for d in days if (is_today_end and d == end) or d not in have]
             print(f"  ⏭ 跳过已回补日期, 剩余 {len(days)} 天待抓")
         hist_days = [d for d in days if not (is_today_end and d == end)]
+        # 通道选择(2026-09-09): 直连 apphis 优先; 直连不可用才切 SCF 中转。
+        # CI 侧曾出现"中转瞬时连不上"导致每请求 10s 超时、空转数小时 → 直连优先 + 连续失败中止。
+        if hist_days:
+            spider.his_proxy = None
+            by_pid, err = _fetch_day(spider, hist_days[0], False)
+            if err and sum(len(v) for v in by_pid.values()) == 0:
+                proxy = os.environ.get("KPL_HIS_PROXY") or None
+                if not proxy:
+                    raise SystemExit("❌ His 直连失败且无 KPL_HIS_PROXY 兜底, 中止")
+                print("  ℹ️ His 直连不可用, 切换 SCF 中转")
+                spider.his_proxy = proxy
+                by_pid, err = _fetch_day(spider, hist_days[0], False)
+                if err and sum(len(v) for v in by_pid.values()) == 0:
+                    raise SystemExit("❌ His 直连与中转均失败, 中止")
         # 历史日: 并发抓取(纯网络) → 串行落库(sqlite 连接不跨线程)
         if hist_days:
+            consec = 0
             with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-                for d, (by_pid, _err) in zip(hist_days, ex.map(lambda x: _fetch_day(spider, x, False), hist_days)):
+                for d, (by_pid, err) in zip(hist_days, ex.map(lambda x: _fetch_day(spider, x, False), hist_days)):
                     got = sum(_insert_rows(conn, d, pid, rows) for pid, rows in by_pid.items())
                     conn.commit()
                     got_by_day[d] = got
                     print(f"  ✓ {d}: {got} 条涨停(板位1-5)")
                     total += got
+                    consec = consec + 1 if (got == 0 and err) else 0
+                    if consec >= 5:
+                        raise SystemExit(f"❌ 连续 {consec} 天抓取失败, 中止(避免空转)")
         # 当日(仅当 end 就是今天): 优先实时(收盘后 His 未定稿), 空则 His 探测; 带重试
         if is_today_end:
             got = 0

@@ -34,11 +34,14 @@ class KPLSpider:
         self.user_id = user_id
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": KPL_UA})
+        # His 通道可运行时切换(2026-09-09): None=直连 apphis; 设值=经 SCF 中转。
+        # 回补脚本据此做"直连优先、中转兜底"(CI 侧曾出现中转瞬时连不上而空转数小时)。
+        self.his_proxy = KPL_HIS_PROXY or None
 
     def _url(self, host: str) -> str:
-        """His 域名被风控时(设了 KPL_HIS_PROXY)走 SCF 中转, 其余直连"""
-        if host == KPL_HOST_HIS and KPL_HIS_PROXY:
-            return KPL_HIS_PROXY + "/kpl-his"
+        """His 域名被风控时(设了 his_proxy)走 SCF 中转, 其余直连"""
+        if host == KPL_HOST_HIS and getattr(self, "his_proxy", None):
+            return self.his_proxy + "/kpl-his"
         return host + API
 
     def _get(self, params: Dict[str, Any], host: str = KPL_HOST_RT, retries: int = 2) -> Dict:
