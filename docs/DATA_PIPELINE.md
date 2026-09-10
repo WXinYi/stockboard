@@ -168,7 +168,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 ```
 
 另有独立机器：
-- **竞价扫描** `auction_scan.py`（09:25 cron 单独触发，写 `auction.db`，钉钉推**出击选股Top5 + 昨日连板·竞价换手Top5**，09:31 `--confirm` 补推出击开盘确认；存量评分漏斗与 V5 首枪 2026-09-06 **整链删除**——代码/回测表/打标全移除，活函数迁 `src/analysis/auction_env.py`）；
+- **竞价扫描** `auction_scan.py`（09:25 cron 单独触发，写 `auction.db`，钉钉推**出击选股Top5 + 昨日连板·竞价换手Top5**；2026-09-10 起**提交 auction.json 后直接 build+部署上线**，不再等 09:31 开盘确认——`--confirm` 入口及整套 E 层确认函数**已整链删除**；存量评分漏斗与 V5 首枪 2026-09-06 **整链删除**——代码/回测表/打标全移除，活函数迁 `src/analysis/auction_env.py`）；
 - **盘中监控** `intraday_monitor.py`（本机 LaunchAgent 09:26–15:10，写 `intraday.db`，本地独享不提交）；
 - **尾盘格局** `cycle_push.py --session eod`（14:30–14:55 窗口，搭 crawl dispatch 便车）。
 

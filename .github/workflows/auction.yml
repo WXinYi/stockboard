@@ -1,6 +1,9 @@
-name: 竞价扫描 + 推送
+name: 竞价扫描 + 推送 + 发版
 # 由 cron-job.org 09:25(北京时间) repository_dispatch 触发。
-# 只扫描 + 推送, 不构建前端不部署 Pages(Pages 部署 2-3 分钟赶不上 09:30)。
+# 只扫描 + 推送 + 提交 auction.json, 然后直接 build+部署 Pages(不再等 09:31 开盘确认)。
+# 2026-09-10 重构: 原「等至 09:31 开盘确认 + --confirm 补推」整链移除 —— 用户拍板
+# 「不需要开盘确认了, 只要获取到新数据就直接发版」。这样竞价数据约 09:28 就上线,
+# 不再搭 crawl 便车(09:32)晚 7 分钟(此前 09:25 推送后线上竞价页仍显示昨日数据)。
 
 on:
   repository_dispatch:
@@ -90,26 +93,47 @@ jobs:
             echo "❌ 推送失败"; exit 1
           fi
 
-      - name: 等至 09:31 开盘确认
-        run: |
-          python3 - <<'EOF'
-          import time
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
-          now = datetime.now(ZoneInfo("Asia/Shanghai"))
-          target = now.replace(hour=9, minute=31, second=0)
-          if (target - now).total_seconds() > 0:
-              print(f"⏳ sleep {int((target - now).total_seconds())}s 至 09:31")
-              time.sleep((target - now).total_seconds())
-          else:
-              print("已过 09:31, 直接确认")
-          EOF
+      # 拿到数据直接发版: 复用 crawl 的 dist 壳缓存机制, 代码未变时 cache 命中则跳过 build,
+      # 只 rsync 拼接最新 public/data(含刚生成的 auction.json) 到 dist。
+      - name: 恢复 dist 壳
+        id: dist
+        uses: actions/cache@v4
+        with:
+          path: stockboard-app/dist
+          key: dist-shell-${{ hashFiles('stockboard-app/src/**', 'stockboard-app/index.html', 'stockboard-app/vite.config.js', 'stockboard-app/package-lock.json') }}
 
-      - name: 出击开盘确认 + 钉钉补推
-        if: always()
-        env:
-          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
-          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
-        # 修复 KeyError 后不再吞错: 确认失败应使 workflow 失败(可见), 且不影响已提交的 auction.db
-        # 候选读 strike_pool 当时存档(与 09:29 推送同一份), 不再依赖 /tmp 中转
-        run: cd jiarenmens && python scripts/auction_scan.py --confirm
+      - name: Setup Node
+        if: steps.dist.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: stockboard-app/package-lock.json
+
+      - name: Build Vue
+        if: steps.dist.outputs.cache-hit != 'true'
+        run: cd stockboard-app && npm ci && npm run build
+
+      - name: 拼接最新数据
+        if: steps.dist.outputs.cache-hit == 'true'
+        run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: stockboard-app/dist
+
+  deploy:
+    needs: auction
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

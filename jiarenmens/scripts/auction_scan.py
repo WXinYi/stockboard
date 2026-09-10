@@ -11,9 +11,9 @@
   python scripts/auction_scan.py --probe            # T1 探测: 验证竞价接口可用性
   python scripts/auction_scan.py --dry-run          # 完整扫描, 不推钉钉不写生产快照(本地验证用)
   python scripts/auction_scan.py --date 2026-08-07  # 回放指定日期(历史数据)
-  python scripts/auction_scan.py --confirm          # 出击选股开盘确认(09:31, 读 strike_pool)
 
-时序: 09:25 cron 触发 → 扫描 → 09:29 钉钉出击推送 → 09:31 --confirm 补推开盘确认。
+时序: 09:25 cron 触发 → 扫描 → 09:29 钉钉出击推送 → 09:2x build+部署上线(2026-09-10 起直接发版,
+开盘确认机制已整链移除——不再等 09:31, auction.json 提交后立即部署)。
 
 数据源(2026-08-13 改造): 开盘啦 His 接口(板块/量能/涨停池)只服务**已完成**交易日,
 09:25 对"今天"一律 1020 → 当天扫描走**实时路径**(apphwhq 主机, 无日期参数):
@@ -317,115 +317,8 @@ def collect_boards(spider, date_str, live=False):
 
 
 # =============================================================================
-# E 层开盘确认(09:31, 腾讯分时)
+# 钉钉消息
 # =============================================================================
-
-def _qq_symbol(code):
-    if code.startswith(("6", "5")):
-        return f"sh{code}"
-    if code.startswith(("4", "8")):
-        return f"bj{code}"
-    return f"sz{code}"
-
-
-def qq_minute(code):
-    """腾讯分时: [[0930, 价, 量], ...] 首根 09:30 为开盘分钟。
-    返回结构 data[sym]['data']['data'] 是双层, 每行是空格分隔字符串 → split 解析。
-    ⚠️ 用 ifzq 主机(web. 曾被 501 风控)。"""
-    sym = _qq_symbol(code)
-    r = requests.get(
-        f"https://ifzq.gtimg.cn/appstock/app/minute/query?code={sym}",
-        timeout=10,
-        headers={"User-Agent": "Mozilla/5.0"},
-    )
-    r.raise_for_status()
-    rows = r.json()["data"][sym]["data"]["data"]
-    return [row.split() for row in rows]
-
-
-def _load_strike_picks(date_str: str) -> tuple:
-    """读 strike_pool 当时存档(9:26 口径, 与 09:29 推送同一份): (date, stage, picks)。
-    只认 date_str 当日存档: scheduled 09:31 确认在 scan 失败/无周期时跳过(宁可无推送,
-    不拿上一交易日名单+旧竞价价误判"守住/跌破"); 复盘历史用 --date YYYY-MM-DD 显式指定。"""
-    import sqlite3
-    db = DATA_DIR / "auction.db"
-    with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT date, stage, picks FROM strike_pool WHERE date=?",
-                           (date_str,)).fetchone()
-    if not row:
-        return None, None, []
-    return row["date"], row["stage"], json.loads(row["picks"])
-
-
-def e_confirm(date_str: str) -> int:
-    """出击选股开盘确认(09:31) → 钉钉补推。
-    候选 = strike_pool 存档的出击 Top5(pick_strike_top 与 09:29 推送同口径),
-    竞价价取 bid_pool(merged) 撮合价。
-    走强标准: 09:31 最新价 ≥ 竞价价 → 守住(兑现); 跌破 → 诱多回落。
-    ⚠️ A 股开盘价=集合竞价撮合价, "开盘价>竞价价"机制上恒不成立(2026-08-13 修正, 沿用)。
-    存量 E1(首分钟放量 vs 竞价末分钟量)随全池竞价分时采集一并停跑(无 bid_vol 数据源)。"""
-    a_date, stage, picks_all = _load_strike_picks(date_str)
-    if not picks_all:
-        print(f"⚠️ strike_pool 无 {date_str} 当日存档(扫描未跑/周期引擎不可用/非交易日), 跳过确认推送; "
-              f"复盘历史: python scripts/auction_scan.py --confirm --date <YYYY-MM-DD>")
-        return 1
-    picks, watch_mode = pick_strike_top(picks_all)
-    if watch_mode:
-        print("⚠️ 当日无出击/备选候选(纪律优先), 跳过确认推送")
-        return 0
-    store = AuctionStore()
-    bid_px_map = {}
-    for r in store.load_bid_pool(a_date):
-        bid_px_map.setdefault(r["code"], r.get("price"))
-    rows = []
-    for p in picks:
-        try:
-            minute = qq_minute(p["code"])
-            last_px = float(minute[min(1, len(minute) - 1)][1])
-        except Exception as e:
-            print(f"⚠️ 腾讯分时失败 {p['code']}: {e}")
-            continue
-        bid_px = bid_px_map.get(p["code"])
-        # 09:31 最新价 ≥ 竞价价 → 守住(未跌破)
-        e2 = bool(bid_px and last_px >= bid_px)
-        rows.append({"code": p["code"], "name": p["name"], "last_px": last_px,
-                     "bid_px": bid_px, "bid_pct": p.get("bid_pct"),
-                     "height": p.get("height"), "reason": p.get("reason"), "E2": e2})
-    if not rows:
-        print("⚠️ 无可用分时数据, 跳过推送")
-        return 1
-    text = _confirm_text(rows, a_date, stage)
-    resp = DingTalk().send_markdown(f"🎯 出击开盘确认 {a_date}", text)
-    print(f"📣 钉钉推送: {resp}")
-    return 0
-
-
-def _confirm_text(rows: List[Dict], date_str: str, stage: Optional[str]) -> str:
-    """E 层确认消息文本: 09:31 最新价 vs 竞价价(守住/跌破) + 当日身位/理由"""
-    ok = [r for r in rows if r["E2"]]
-    text = [
-        "## ⚡ 出击开盘确认 09:31",
-        f"> {date_str}" + (f" · {stage}期" if stage else "") + f" · {len(ok)}/{len(rows)} 只守住竞价价",
-        "",
-    ]
-    for r in rows[:STRIKE_TOP]:
-        mark = "🟢" if r["E2"] else "🔴"
-        line = f"- {mark} {_stock_link(r['name'], r['code'])} 最新{r['last_px']:.2f}"
-        if r["bid_px"]:
-            chg = (r["last_px"] - r["bid_px"]) / r["bid_px"] * 100
-            line += f" (较竞价{chg:+.2f}%)"
-        if r.get("bid_pct") is not None:
-            line += f" · 竞价{r['bid_pct']:+.1f}%"
-        h = r.get("height") or 0
-        if h >= 1:
-            line += f" · {h}板"
-        text.append(line)
-        if r.get("reason"):
-            text.append("    " + str(r["reason"])[:60])
-    text.append("")
-    text.append("📈 [复盘页面](https://WXinYi.github.io/stockboard/#/auction)")
-    return "\n".join(text)
 
 
 # =============================================================================
@@ -818,8 +711,7 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     print(f"[5/5] 出击选股 + 昨日连板换手")
     picks, watch_mode, bidrank = [], False, []
     if cycle_res:
-        # 出击选股(9:26 口径): stage_pool(当日周期+当日竞价) → Top5。
-        # strike_pool 原样存档(复核/审计读"当时说了什么"; 09:31 --confirm 也读本表)。
+        # 出击选股(9:26 口径): stage_pool(当日周期+当日竞价) → Top5。strike_pool 原样存档供复核。
         try:
             from src.analysis.stage_candidates import stage_pool
             _pool25 = stage_pool(cycle_res, max_n=20, bid_date=date_str)
@@ -992,7 +884,6 @@ def main():
     ap = argparse.ArgumentParser(description="竞价抢筹扫描")
     ap.add_argument("--date", help="扫描日期 YYYY-MM-DD(默认今天)")
     ap.add_argument("--probe", action="store_true", help="接口探测模式(T1)")
-    ap.add_argument("--confirm", action="store_true", help="出击选股开盘确认(09:31, 读 strike_pool)")
     ap.add_argument("--hot-rank", action="store_true",
                     help="东财人气榜快照(TOP100)落 hot_rank.db; snap 自动判定 am/pm(crawl.yml 午后调用)")
     ap.add_argument("--dry-run", action="store_true", help="演练: 不推钉钉不写生产快照, 正文打印供核验")
@@ -1003,8 +894,6 @@ def main():
         return probe(date_str)
     if args.hot_rank:
         return hot_rank_job()
-    if args.confirm:
-        return e_confirm(date_str)
     return scan(date_str, dry_run=args.dry_run)
 
 
