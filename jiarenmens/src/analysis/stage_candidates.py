@@ -83,8 +83,11 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
                      "reason": reason, "status": status, **extra})
 
     # 1) 龙头谱系: 任何阶段都盯(状态由阶段×角色定)
+    # ⚠️ 2026-09-11 与 JS leaderBattle.leadMode 统一: 启动期龙头=可做(低吸不追高)。
+    #    此前 Python 写 观察 而 JS 写 '低吸不追高'(可做), 同一天同一只票两端结论相反。
+    #    以 JS STAGE_GATE(带 banner 的完整设计意图)为准: 启动期 cap=100, 新周期低位龙头可低吸。
     lead_status = {"高潮": "可做(接力)", "发酵": "可做", "分歧": "可做(低吸)",
-                   "退潮": "观察(只看最强)", "冰点": "观察", "启动": "观察"}
+                   "退潮": "观察(只看最强)", "冰点": "观察", "启动": "可做(低吸)"}
     for l in cycle_res["leaders"]:
         role = l["role"]
         note = l["note"] or ""
@@ -125,11 +128,13 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
 
     if stage in ("冰点", "启动"):
         # 1进2 候选: 昨日首板 + 今日竞价强势
+        # 2026-09-11 与 JS STAGE_GATE 统一: 冰点 cap=60(最多"备选"), 故首板套利在冰点期
+        # 定为"备选"级(待确认、轻仓)而非"可做"(可买) —— 对齐 banner"仓位轻、确认才上"。
         for code, r in list(prev_first.items())[:40]:
             if bid_strong(code):
                 b = bids[code]
-                add(code, r["name"], 2, f"1进2: 昨日首板, 今竞价 {b['change_pct']:+.1f}%",
-                    "可做(首板套利)")
+                st = "备选(首板套利)" if stage == "冰点" else "可做(首板套利)"
+                add(code, r["name"], 2, f"1进2: 昨日首板, 今竞价 {b['change_pct']:+.1f}%", st)
         if stage == "启动":
             # 首板试错: 今日主线首板 + 竞价强(JS 端 leaderBattle.computeStrike 用 早封+主力净买 过滤, 口径互补)
             for r in cur_rows:
@@ -152,11 +157,15 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
                 add(r["code"], r["name"], r["height"],
                     f"主线梯队 {r['height']}板", "可做")
     elif stage == "高潮":
-        # 接力对象: 主线内最高梯队(龙头谱系之外的次高)
+        # 接力对象: 主线内最高梯队(龙头谱系之外的次高)。
+        # 2026-09-11 与 JS 统一: 观察(谨慎接力) → 可做(谨慎接力)。依据 STAGE_PLAYBOOK 高潮条
+        # "板块爆炸买跟风但去弱留强" —— 评分分层(JS 出击≥75)即"去弱留强"的实现; 该 mode 在 JS
+        # 有完整买点三件套(秒板接力/只排板不追高/断板即走), 且 cap 排序(高潮100>分歧60)要求可买。
+        # 缩量板/封单衰减仍会在后续过滤里降级, 弱票出不了"可做"。
         for r in sorted(cur_rows, key=lambda x: -x["height"])[:6]:
             in_main = any(m["board"] in str(r["plates"] or "") for m in cycle_res["mainlines"])
             if in_main and r["height"] >= 3:
-                add(r["code"], r["name"], r["height"], "主线高位(秒板接力对象)", "观察(谨慎接力)")
+                add(r["code"], r["name"], r["height"], "主线高位(秒板接力对象)", "可做(谨慎接力)")
 
     # 3) 弱转强(陈小群): 昨日分歧(断板∪尾盘烂板) + 今日竞价超预期(+1.5~7%) → 必要条件,
     #    分时确认才上, 失败止损。烂板=收盘封单/盘中最高封单<0.15(当日最弱档, 绝对阈值不可用——

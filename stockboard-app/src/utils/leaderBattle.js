@@ -164,7 +164,10 @@ function computeDuels(todayJoined, prevFull, boardWars) {
 /* ============ 🎯 今日出击(阶段闸门+确定性评分) ============ */
 const STAGE_GATE = {
   退潮: { cap: 0, banner: '空仓纪律：退潮期不出击，高位接力亏损率最高，只观察空间锚' },
-  冰点: { cap: 30, banner: '冰点期：只做 1进2 套利与新周期火种观察，仓位轻' },
+  // 冰点 cap60(2026-09-11 由 30 修正): 30 会把分数钳死在 55(备选线)之下, 结构性封死一切可买,
+  // 与本行 banner"只做 1进2 套利"/STAGE_PLAYBOOK"首板套利只在最强板块"自相矛盾。
+  // 60 = 最多"备选(待确认)"、给不出"出击" —— 精确表达"仓位轻、分时确认才上"。
+  冰点: { cap: 60, banner: '冰点期：只做 1进2 套利与新周期火种观察，仓位轻' },
   启动: { cap: 100, banner: '启动期：打低位首板/1进2 为主，情绪低点做龙头' },
   发酵: { cap: 100, banner: '发酵期：上主线龙头/同梯队强者，五板封住定龙头' },
   高潮: { cap: 100, banner: '高潮期：只做龙头接力(秒板/放量分歧板)，跟风不碰' },
@@ -379,8 +382,9 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
     c.risk = ''
     const ratio = sealRatio(row)
     // 封单衰减对齐 emotion_cycle.py 口径: ≥5板 且 当前封单<5000万
+    let sealDecay = false
     if ((row.level || 0) >= 5 && (row.seal || 0) > 0 && row.seal < 5e7) {
-      score -= 15; c.risk = '封单衰减随时开板'
+      score -= 15; sealDecay = true; c.risk = '封单衰减随时开板'
     } else if (ratio !== null && ratio > 0) {
       if (ratio >= 0.9) { score += 10; strengths.push('封单保持90%+') }
       else if (ratio >= 0.7) score += 5
@@ -396,8 +400,9 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
     }
     // 换手检验(著名刺客: 换手连板优于缩量板——换手才证明真实承接, 最强的板让次日接力者赚钱)
     const to = row.turnover || 0
+    let shrink = false
     if ((row.level || 0) >= 2 && (row.seal > 0 || (row.amount || 0) > 0)) {
-      if (to > 0 && to < 3) { score -= 12; if (!c.risk) c.risk = '缩量板·换手未检验(次日接力存疑)' }
+      if (to > 0 && to < 3) { score -= 12; shrink = true; if (!c.risk) c.risk = '缩量板·换手未检验(次日接力存疑)' }
       else if (to >= 5) { score += 4; strengths.push(`换手${to.toFixed(1)}%`) }
     }
     // 弱转强(陈小群): 昨日烂板(封单保持<0.15)或昨日炸板 今日回封 = 分歧转一致
@@ -409,13 +414,27 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
     c.score = Math.max(0, Math.min(cap, score))
     const tierAct = mtx ? (mtx.tier[tierOf(c.level)] || 'go') : 'go'
     if (tierAct === 'care') c.score = Math.min(c.score, 70)
-    const buyable = c.mode !== '观察' && !c.mode.startsWith('观察')
-    c.status = cap === 0 || !buyable ? '观察' + (cap === 0 ? '(阶段禁买)' : '') : c.score >= 75 ? '出击' : c.score >= 55 ? '备选' : '观察'
+    // 不可买模式: 前缀"观察"的, 加上语义同样是观察但不带前缀的(冰点/退潮火种)。
+    // ⚠️ 2026-09-11 核对: 高潮期 mode='谨慎接力' **不是**观察 —— STAGE_PLAYBOOK 高潮条
+    //    "板块爆炸买跟风但去弱留强", 评分分层(出击≥75)就是"去弱留强"的实现, 且该 mode 有
+    //    完整买点三件套(秒板接力/只排板不追高/断板即走), cap 排序(高潮100>分歧60)也要求它可买。
+    //    最初误统一为观察(与 Python 旧词一致), 已改回: Python 侧同步改"可做(谨慎接力)"。
+    const OBSERVE_LABEL = { 火种观察: '观察(火种)' }
+    const observeLabel = OBSERVE_LABEL[c.mode]
+    const buyable = !observeLabel && c.mode !== '观察' && !c.mode.startsWith('观察')
+    c.status = cap === 0 ? '观察(阶段禁买)'
+      : observeLabel ? observeLabel
+        : !buyable ? '观察'
+          : c.score >= 75 ? '出击' : c.score >= 55 ? '备选' : '观察'
     if (buyable && tierAct === 'watch') c.status = '观察(矩阵)'
     if (buyable && tierAct === 'ban') {
       c.status = '观察(矩阵禁买)'
       c.risk = c.risk ? `${c.risk}；矩阵${TIER_NAME[tierOf(c.level)]}禁买` : `矩阵${TIER_NAME[tierOf(c.level)]}禁买`
     }
+    // 缩量板降级(与 stage_candidates.py 的 观察(缩量板) 对齐): ≥2板 换手<3% 即使评分够也不给可买
+    if (shrink && c.status !== '观察' && !String(c.status).startsWith('观察')) c.status = '观察(缩量板)'
+    // 封单衰减降级(与 stage_candidates.py 的 观察(封单衰减) 对齐): ≥5板 封单<5000万 随时开板, 不给可买
+    if (sealDecay && c.status !== '观察' && !String(c.status).startsWith('观察')) c.status = '观察(封单衰减)'
     // 定位标签 + 跟风回避 + 买点三件套/建议仓位(状态语义与 stage_candidates.py 对齐)
     c.roleTxt = classify(row)
     if (c.roleTxt === '跟风') {

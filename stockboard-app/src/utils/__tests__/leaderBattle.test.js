@@ -57,13 +57,13 @@ describe('computeStrike 矩阵分层闸门', () => {
     const b = makeBattle('高潮', { high: '平衡', mid: '弱' })
     expect(b.strike.gate.cap).toBe(45)
     expect(byCode(b, '300001').status).toBe('观察(矩阵禁买)') // 6板=高位
-    expect(byCode(b, '300002').status).toBe('观察(矩阵禁买)') // 3板=中位
+    expect(byCode(b, '300002').status).toBe('观察(矩阵禁买)') // 3板=中位被矩阵禁买(谨慎接力可买, 但矩阵更严)
   })
 
-  it('高潮×弱|强: 高位只观察, 中位仍可做(受 cap70 限制)', () => {
+  it('高潮×弱|强: 高位只观察, 中位谨慎接力按评分可做(受 cap70 限制)', () => {
     const b = makeBattle('高潮', { high: '弱', mid: '强' })
     expect(byCode(b, '300001').status).toBe('观察(矩阵)') // 6板=高位 watch
-    expect(byCode(b, '300002').status).toBe('备选') // 3板=中位 go, 75→cap70
+    expect(byCode(b, '300002').status).toBe('备选') // 3板=中位 go, 75→cap70 → 备选(去弱留强)
   })
 
   it('分歧×平衡|强: 阶段 cap60 与矩阵 cap100 取更严', () => {
@@ -83,6 +83,57 @@ describe('computeStrike 矩阵分层闸门', () => {
     expect(b.strike.gate.cap).toBe(100)
     expect(b.strike.gate.banner).not.toContain('📐')
     expect(b.strike.gate.matrix).toBeNull()
+  })
+})
+
+describe('两端状态一致性(2026-09-11 与 stage_candidates.py 统一)', () => {
+  it('高潮期"谨慎接力"按评分去弱留强: 满加成可出击(板块爆炸买跟风但去弱留强)', () => {
+    const b = makeBattle('高潮', { high: '强', mid: '强' })
+    const c = byCode(b, '300002')            // 3板主线高位 → mode 谨慎接力, 满加成 base45+30=75
+    expect(c.mode).toBe('谨慎接力')
+    expect(c.status).toBe('出击')            // 评分达标 → 可买("去弱留强"的实现)
+    expect(c.buyTip.buy).toBe('秒板接力')     // 买点三件套在位
+  })
+
+  it('缩量板(≥2板 换手<3%)评分够也降级为 观察(缩量板)', () => {
+    const todayPool = [
+      { code: '300001', name: '锚哥', pid: 6, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9, turnover: 2 },
+    ]
+    const ladderRows = todayPool.map(r => ({ code: r.code, name: r.name, level: r.pid, bkName: 'AI', cap: 0, seal: 0, plates: ['AI'] }))
+    const b = computeBattle({ ladderRows, todayPool, prevFull: [], unsealed: [], cycle: makeCycle('发酵', { high: '强', mid: '强' }) })
+    const c = byCode(b, '300001')
+    expect(c.score).toBeGreaterThanOrEqual(75)   // 评分本身够"出击"
+    expect(c.status).toBe('观察(缩量板)')          // 但缩量板被降级
+  })
+
+  it('冰点期 cap60: 1进2 最多"备选"(待确认), 火种保持观察', () => {
+    const todayPool = [
+      { code: '300001', name: '锚哥', pid: 6, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9, turnover: 8 },
+      { code: '300002', name: '梯队三', pid: 3, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9, turnover: 8 },
+      { code: '300004', name: '首板哥', pid: 2, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9, turnover: 8 },
+    ]
+    const ladderRows = todayPool.map(r => ({ code: r.code, name: r.name, level: r.pid, bkName: 'AI', cap: 0, seal: 0, plates: ['AI'] }))
+    const prevFull = [{ code: '300004', name: '首板哥', pid: 1, seal: 5e8, maxSeal: 5e8 }]
+    const b = computeBattle({ ladderRows, todayPool, prevFull, unsealed: [], cycle: makeCycle('冰点', { high: '强', mid: '强' }) })
+    expect(b.strike.gate.cap).toBe(60)
+    const jin12 = byCode(b, '300004')            // 昨日首板今晋级2板 → 1进2排板, 满加成 75→cap60
+    expect(jin12.status).toBe('备选')             // 待确认, 给不出"出击"
+    expect(byCode(b, '300002').status).toBe('观察(火种)')  // 冰点火种保持观察
+  })
+
+  it('封单衰减(≥5板 封单<5000万)评分够也降级为 观察(封单衰减)', () => {
+    // 满配三只票保证 板块扩容+8 生效; 空间锚封单 4e7(<5000万) 触发衰减
+    const todayPool = [
+      { code: '300001', name: '锚哥', pid: 6, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 4e7, maxSeal: 1e9, turnover: 8 },
+      { code: '300002', name: '梯队三', pid: 3, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9, turnover: 8 },
+      { code: '300003', name: '梯队二', pid: 2, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9, turnover: 8 },
+    ]
+    const ladderRows = todayPool.map(r => ({ code: r.code, name: r.name, level: r.pid, bkName: 'AI', cap: 0, seal: 0, plates: ['AI'] }))
+    const b = computeBattle({ ladderRows, todayPool, prevFull: [], unsealed: [], cycle: makeCycle('发酵', { high: '强', mid: '强' }) })
+    const c = byCode(b, '300001')
+    expect(c.score).toBeGreaterThanOrEqual(75)
+    expect(c.status).toBe('观察(封单衰减)')
+    expect(c.risk).toContain('封单衰减')
   })
 })
 
