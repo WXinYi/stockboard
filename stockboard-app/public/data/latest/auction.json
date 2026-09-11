@@ -1,207 +1,127 @@
 {
- "date": "2026-09-10",
+ "date": "2026-09-11",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 19% < 40% (参考)"
+   "情绪值20 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
+   "红盘占比 11% < 40% (参考)"
   ],
   "data": {
-   "strong": 25,
+   "strong": 20,
    "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.18742318721835313,
+   "red_ratio": 0.11171136407486013,
    "bid_count": [
-    101,
-    167,
+    124,
+    196,
     50,
-    43,
-    1
+    59,
+    3
    ],
-   "bid_total": "147亿",
-   "bid_total_prev": "174亿"
+   "bid_total": "179亿",
+   "bid_total_prev": "147亿"
   }
  },
  "boards": [
   {
+   "code": "801073",
+   "name": "网络安全",
+   "burst": 10.5,
+   "amount": 107077877.0,
+   "main_net": 23594419.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
    "code": "801001",
    "name": "芯片",
-   "burst": 11.3,
-   "amount": 589197098.0,
-   "main_net": 113743365.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801660",
-   "name": "通信",
-   "burst": 8.3,
-   "amount": 574732766.0,
-   "main_net": 104928625.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801045",
-   "name": "医药",
-   "burst": 7.8,
-   "amount": 128137932.0,
-   "main_net": -2308784.0,
+   "burst": 9.8,
+   "amount": 922619509.0,
+   "main_net": 275368863.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801062",
-   "name": "军工",
-   "burst": 7.0,
-   "amount": 219938928.0,
-   "main_net": 66109800.0,
+   "code": "801718",
+   "name": "AI安全",
+   "burst": 6.0,
+   "amount": 41048740.0,
+   "main_net": 5001551.0,
    "src": "爆量L1",
    "strength": 0.0
+  },
+  {
+   "code": "801004",
+   "name": "锂电池",
+   "burst": 5.0,
+   "amount": 34441324.0,
+   "main_net": 1029414.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801093",
+   "name": "天然气",
+   "burst": 4.0,
+   "amount": 217347443.0,
+   "main_net": 14124413.0,
+   "src": "爆量+强度",
+   "strength": 3.0
   },
   {
    "code": "801216",
    "name": "PCB",
-   "burst": 6.6,
-   "amount": 131276872.0,
-   "main_net": 25109261.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801346",
-   "name": "智能电网",
-   "burst": 5.0,
-   "amount": 47168478.0,
-   "main_net": -4771660.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801723",
-   "name": "创新药",
-   "burst": 4.8,
-   "amount": 96813561.0,
-   "main_net": 706995.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801328",
-   "name": "消费电子",
-   "burst": 4.5,
-   "amount": 104332048.0,
-   "main_net": 20278868.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801080",
-   "name": "煤炭",
    "burst": 4.0,
-   "amount": 162449112.0,
-   "main_net": 7979010.0,
+   "amount": 159752086.0,
+   "main_net": 40022359.0,
    "src": "爆量L1",
    "strength": 0.0
-  },
-  {
-   "code": "801234",
-   "name": "航运",
-   "burst": 4.0,
-   "amount": 186683712.0,
-   "main_net": 413175.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801117",
-   "name": "港口",
-   "burst": 0.0,
-   "amount": 62416226.0,
-   "main_net": 11056352.0,
-   "src": "强度",
-   "strength": 542.0
-  },
-  {
-   "code": "801330",
-   "name": "旅游",
-   "burst": 0.0,
-   "amount": 384959552.0,
-   "main_net": 14113223.0,
-   "src": "强度",
-   "strength": 515.0
-  },
-  {
-   "code": "801606",
-   "name": "成渝经济圈",
-   "burst": 0.0,
-   "amount": 8436354.0,
-   "main_net": 760374.0,
-   "src": "强度",
-   "strength": 24.0
-  },
-  {
-   "code": "801137",
-   "name": "醋酸",
-   "burst": 0.0,
-   "amount": 6867845.0,
-   "main_net": 775005.0,
-   "src": "强度",
-   "strength": 13.0
-  },
-  {
-   "code": "801035",
-   "name": "酿酒",
-   "burst": 0.0,
-   "amount": 392486542.0,
-   "main_net": 23214428.0,
-   "src": "强度",
-   "strength": -10.0
   }
  ],
  "strike": [
   {
-   "code": "600865",
-   "name": "百大集团",
-   "height": 5,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 5连板 | 零售主线空间龙, 封单 0.60亿；逆市连板(火种观察) 5板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002470",
-   "name": "金正大",
-   "height": 3,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[农业] 10只涨停, 封单 1.75亿；逆市连板(火种观察) 3板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "600540",
-   "name": "新赛股份",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(农业)] 成交 12.9亿 容量核心",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "000523",
-   "name": "红棉股份",
-   "height": 2,
-   "status": "观察",
-   "reason": "龙头谱系[补涨/卡位(农业)] 龙头被关时的板块内补涨位",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
    "code": "000978",
    "name": "桂林旅游",
-   "height": 3,
+   "height": 4,
    "status": "观察(只看最强)",
-   "reason": "龙头谱系[板块龙头(国有企业)] 主线[国有企业] 7只涨停, 封单 0.35亿",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | AI应用主线空间龙, 封单 0.70亿；逆市连板(火种观察) 4板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "603421",
+   "name": "鼎信通讯",
+   "height": 2,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[总龙头] 主线[通信] 4只涨停, 封单 0.65亿",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002636",
+   "name": "金安国纪",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(通信)] 成交 47.9亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "000993",
+   "name": "闽东电力",
+   "height": 2,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[板块龙头(绿色电力)] 主线[绿色电力] 4只涨停, 封单 1.22亿",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "600744",
+   "name": "华银电力",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(绿色电力)] 成交 13.4亿 容量核心",
    "tag": null,
    "bid_pct": null
   }
@@ -209,50 +129,50 @@
  "strike_watch": true,
  "bidrank": [
   {
-   "code": "600865",
-   "name": "百大集团",
-   "height": 5,
-   "bid_pct": 8.8,
-   "turnover": 2.9946263230594976
+   "code": "600792",
+   "name": "云煤能源",
+   "height": 3,
+   "bid_pct": 9.43,
+   "turnover": 4.133681945056447
   },
   {
    "code": "000978",
    "name": "桂林旅游",
-   "height": 3,
-   "bid_pct": 9.99,
-   "turnover": 2.96
+   "height": 4,
+   "bid_pct": 3.2,
+   "turnover": 3.32
+  },
+  {
+   "code": "000993",
+   "name": "闽东电力",
+   "height": 2,
+   "bid_pct": 9.98,
+   "turnover": 2.66
   },
   {
    "code": "002790",
    "name": "瑞尔特",
-   "height": 2,
-   "bid_pct": 10.01,
-   "turnover": 2.79
-  },
-  {
-   "code": "600792",
-   "name": "云煤能源",
-   "height": 2,
-   "bid_pct": 9.55,
-   "turnover": 2.47
-  },
-  {
-   "code": "603042",
-   "name": "华脉科技",
    "height": 3,
-   "bid_pct": -0.96,
-   "turnover": 2.2749240215881152
+   "bid_pct": 10.05,
+   "turnover": 2.34
+  },
+  {
+   "code": "600359",
+   "name": "新农开发",
+   "height": 2,
+   "bid_pct": 7.68,
+   "turnover": 2.146017664080242
   }
  ],
  "regime": {
   "regime": "过渡",
-  "relay": 0.2054794520547945,
-  "max_board": 5,
-  "top1_days": 2,
+  "relay": 0.1875,
+  "max_board": 4,
+  "top1_days": 1,
   "detail": [
-   "昨日再板率21%",
-   "最高5板",
-   "TOP1连续2日"
+   "昨日再板率19%",
+   "最高4板",
+   "TOP1连续1日"
   ]
  },
  "cycle": {
@@ -260,62 +180,50 @@
   "confidence": 7,
   "gate": "closed",
   "mainlines": [
-   "农业",
-   "国有企业",
    "通信",
-   "煤炭",
-   "零售",
-   "有色金属"
+   "绿色电力",
+   "AI应用",
+   "天然气",
+   "农业",
+   "电力"
   ],
   "leaders": [
    {
-    "code": "600865",
-    "name": "百大集团",
-    "pid": 5,
+    "code": "000978",
+    "name": "桂林旅游",
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "002470",
-    "name": "金正大",
-    "pid": 3,
+    "code": "603421",
+    "name": "鼎信通讯",
+    "pid": 2,
     "role": "总龙头"
    },
    {
-    "code": "600540",
-    "name": "新赛股份",
+    "code": "002636",
+    "name": "金安国纪",
     "pid": 1,
-    "role": "中军(农业)"
+    "role": "中军(通信)"
    },
    {
-    "code": "000523",
-    "name": "红棉股份",
+    "code": "000993",
+    "name": "闽东电力",
     "pid": 2,
-    "role": "补涨/卡位(农业)"
+    "role": "板块龙头(绿色电力)"
    },
    {
-    "code": "000978",
-    "name": "桂林旅游",
-    "pid": 3,
-    "role": "板块龙头(国有企业)"
-   },
-   {
-    "code": "600121",
-    "name": "郑州煤电",
+    "code": "600744",
+    "name": "华银电力",
     "pid": 1,
-    "role": "中军(国有企业)"
-   },
-   {
-    "code": "002349",
-    "name": "精华制药",
-    "pid": 2,
-    "role": "补涨/卡位(国有企业)"
+    "role": "中军(绿色电力)"
    }
   ]
  },
  "empty_reason": "",
  "stats": {
-  "pool": 372,
-  "boards": 15,
+  "pool": 282,
+  "boards": 6,
   "genes": 0
  },
  "candidates": [],
