@@ -164,6 +164,11 @@ function holdOf(c) { return holdInfo(c, mine.value?.positions || []) }
 // 09:25 盘前候选(昨日连板·竞价换手前5 优先, 兜底取出击选股榜); 早/盘中换序
 const preRows = computed(() => (auction.value?.bidrank || auction.value?.strike || []).slice(0, 5))
 
+// 大模型独立选股(影子): auction.json.llm, 与引擎结论互不影响; 允许空仓输出
+const llm = computed(() => auction.value?.llm || null)
+const llmRegimeCls = computed(() => ({ '攻击': 'go', '试错': 'warn', '观察': 'watch', '空仓': 'ban' }[llm.value?.regime] || 'plain'))
+const showLlm = ref(true)
+
 // ── 六情绪实时版(battle 同源输入 + six_history 历史分位), 打开页面/30s 刷新即最新 ──
 const sixLive = ref(null)
 async function refreshSix() {
@@ -460,6 +465,32 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           </div>
         </template>
       </section>
+      <!-- 大模型独立选股(影子): 每日 09:25 DeepSeek 只看原始竞价数据独立分析, 与引擎结论互不影响 -->
+      <section v-if="llm" class="mt-sec">
+        <div class="mt-sec-head">
+          <h3>🤖 大模型选股<Hint text="DeepSeek 独立分析: 只喂 09:25 原始竞价数据(昨日涨停池/炸板/宽度/竞价额), 不参考引擎结论; 允许空仓输出。影子运行仅供对照, 不构成引擎结论。"/></h3>
+          <em>{{ llm.model }} · {{ llm.prompt_ver }} · {{ (llm.generated_at || '').slice(11, 16) }}</em>
+          <button class="mt-more" @click="showLlm = !showLlm">{{ showLlm ? '收起 ▲' : '展开 ▾' }}</button>
+        </div>
+        <template v-if="!llm.degraded">
+          <div class="mt-llm-head">
+            <span :class="['llm-regime', llmRegimeCls]">{{ llm.regime || '—' }}</span>
+            <span class="llm-pos">{{ llm.position_today }}</span>
+          </div>
+          <div class="mt-llm-why">{{ llm.why }}</div>
+          <div v-if="!(llm.picks || []).length" class="mt-hold">今日 {{ llm.regime }} —— 空仓等待 ✓（不满足出手条件，空仓即正确）</div>
+          <div v-for="k in llm.picks" :key="k.code" class="mt-review" @click="goStock(k)">
+            <div class="mt-strike-top">
+              <b class="nm">{{ k.name }}</b>
+              <span class="llm-action">{{ k.action }}</span>
+              <span class="llm-pos-tag">{{ k.pos }}</span>
+            </div>
+            <div class="wzq-sub">{{ k.reason }}<template v-if="k.entry"> · 买法: {{ k.entry }}</template><template v-if="k.stop"> · 止损: {{ k.stop }}</template></div>
+          </div>
+          <div class="mt-llm-avoid">🚫 回避: {{ llm.avoid }}</div>
+        </template>
+        <div v-else class="mt-hold">今日无有效输出（模型输出异常，已降级存档待回测）</div>
+      </section>
       <section v-if="reviewValid && review" class="mt-sec">
         <div class="mt-sec-head">
           <h3>📋 昨日可买复核<Hint text="昨日 9:25 选股单逐只对今日行情: 封板=持有 · 涨3%+=兑现 · 平盘弱=减半 · 水下=开盘走; 转退潮/冰点=全清。"/></h3>
@@ -631,6 +662,19 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .wzq-top .nm { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wzq-top .rv-tag { margin-left: auto; }
 .wzq-sub { font-size: 11px; color: #78839a; line-height: 1.6; margin: 3px 0 0; word-break: break-all; }
+/* ── 大模型选股(影子) ── */
+.mt-llm-head { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; }
+.llm-regime { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 10px; }
+.llm-regime.go { color: #0a7d34; background: rgba(42,168,92,.12); }
+.llm-regime.warn { color: #b06a00; background: rgba(230,146,26,.14); }
+.llm-regime.watch { color: #2980b9; background: rgba(41,128,185,.1); }
+.llm-regime.ban { color: #c0392b; background: rgba(192,57,43,.1); }
+.llm-regime.plain { color: #8e8e9a; background: rgba(0,0,0,.05); }
+.llm-pos { font-size: 11px; color: #78839a; }
+.mt-llm-why { font-size: 11px; color: #5b6a85; line-height: 1.6; padding: 4px 0 8px; border-bottom: 0.5px solid rgba(0,0,0,.04); }
+.mt-llm-avoid { font-size: 11px; color: #a05a4a; line-height: 1.6; padding: 8px 0 2px; border-top: 0.5px solid rgba(0,0,0,.04); margin-top: 4px; }
+.llm-action { font-size: 11px; color: #5b6daa; font-weight: 600; }
+.llm-pos-tag { font-size: 10px; color: #8e8e9a; margin-left: auto; }
 .mt-strike-top { flex-wrap: wrap; row-gap: 4px; }
 .mt-strike-top .mt-strike-score { margin-left: auto; }
 

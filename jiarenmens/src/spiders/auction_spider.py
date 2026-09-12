@@ -254,6 +254,12 @@ class AuctionStore:
                 main_net REAL, amount REAL, plates TEXT, circ_mv REAL, tag TEXT,
                 PRIMARY KEY (date, code)
             );
+            CREATE TABLE IF NOT EXISTS llm_review (
+                date TEXT NOT NULL, prompt_ver TEXT NOT NULL, regime TEXT, why TEXT,
+                position TEXT, picks TEXT, avoid TEXT, model TEXT,
+                degraded INTEGER DEFAULT 0, latency_s REAL, raw TEXT, created_at TEXT,
+                PRIMARY KEY (date, prompt_ver)
+            );
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_bid_pool_date ON bid_pool(date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_limit_pool_date ON limit_pool(date)")

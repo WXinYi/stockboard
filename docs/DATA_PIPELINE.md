@@ -268,6 +268,18 @@ latest/players_index.json
 - **六情绪窗口**：`six_emotions.load_pool` 120→400 日——历史补齐后窗口边界差会让"全量导出 vs 按日截断参考"分位偏差 0.3~0.7（对拍抓出）。
 - **六情绪舍入口径对齐（2026-09-09）**：`six_emotions.py` 的分数舍入改用 `_round_half_up`（对齐 JS `Math.round`，Python 内置 `round` 是银行家舍入）、窗口均值改用 `_fsum_naive`（朴素左到右，不用内置 `sum`——CPython 3.12 起对 float 补偿求和，与 CI 3.11/JS 差 1 ULP）。两者不一致会让按日截断对拍在并列值上分叉（09-03 m_sector 差 0.4：3 日均值落在基期重复值 52.7 两侧）。改六情绪公式须沿用这两个助手，前端 `sixParity.test.js` 为回归闸门。
 
+### 大模型竞价独立选股（影子，2026-09-12 上线）
+
+每日 09:25 竞价班内（auction_scan.scan 末段），DeepSeek 只看**当日竞价 + 前一日原始数据**做独立分析，与规则引擎完全隔离（不喂阶段标签/闸门/出击名单/状态词/六情绪结论词），**允许空仓输出**。
+
+- **模块**：`src/analysis/llm_review.py`（提示词 v2：游资操盘手人设 + 两级决策闸"先判环境(攻击/试错/观察/空仓)再选股"+ 高开>5% 不做 + 主净为正非安全证明 + 弱转强分环境）；未配 `DEEPSEEK_API_KEY` 时静默跳过，dry-run 跳过。
+- **健壮性四层**：输出压缩(reason≤60字/picks≤3) → 括号配对双模式解析(字符串感知+纯深度, 容忍围栏/尾串/杂引号, 部分截断可提取前半对象) → 解析失败自动重试1次 → 两次失败 degraded 落档不阻塞链路。
+- **双写存档**：`auction.db.llm_review`（PK=date+prompt_ver，回测真相源，随 Release 三层存档、`fetch_db.py --auction` 可取）+ `auction.json.llm`（页面读）。
+- **前端**：选股页「🤖 大模型选股」模块（regime 徽章/仓位/逐只理由/回避清单；空仓日显示"空仓等待✓"；降级显示"今日无有效输出"）。
+- **回测**：`scripts/llm_picks_review.py`（LLM picks 竞价买→收盘，`--compare-engine` 对照引擎 strike_pool Top5 同口径）。
+- **种子数据**：2026-09-07~09-11 五天 × v1/v2 两版已回填（v1=旧契约 chat 模型 -0.94%/天；v2=两级决策闸 flash 模型，4天空仓+09-07攻击日 +4.81% 3/3 全胜；同期引擎 Top5 -0.44%/天）。**样本仅 5 天且阈值属内样本设计，转正与否等影子跑 10-20 个交易日数据说话。**
+- 密钥：GitHub secrets `DEEPSEEK_API_KEY`（手动配置）；模型 `deepseek-flash`（可用 `LLM_MODEL` 覆盖）。
+
 ### 选股引擎两端状态统一（2026-09-11）
 
 Python `jiarenmens/src/analysis/stage_candidates.py`（09:25 存档 + 钉钉推送）与 JS `utils/leaderBattle.js`（页面实时）是同一套阶段/矩阵规则的双实现，此前有 4 处结论相反，已统一：

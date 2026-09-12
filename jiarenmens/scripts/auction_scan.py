@@ -770,6 +770,18 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         except Exception as e:
             print(f"      ⚠️ 昨日连板换手排名失败(不影响主流程): {e}")
 
+    # 大模型竞价独立选股(影子, 2026-09-12): 与规则引擎完全隔离, 只喂原始数据;
+    # 未配置 DEEPSEEK_API_KEY 时静默跳过; dry-run 跳过(演练不花钱不落档)。
+    # 双写: auction.db.llm_review(回测真相源, 随 Release 三层存档) + auction.json.llm(页面展示)。
+    llm_payload = None
+    if not dry_run and (os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("LLM_API_KEY")):
+        print("      大模型独立选股(影子)…")
+        try:
+            from src.analysis.llm_review import run as llm_run
+            llm_payload = llm_run(date_str)
+        except Exception as e:
+            print(f"      ⚠️ 大模型选股失败(不影响主流程): {e}")
+
     # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
     if not dry_run:
         print(f"      东财人气榜快照(am)")
@@ -799,6 +811,7 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                          "pid": l["pid"], "role": l["role"]} for l in cycle_res["leaders"]],
         } if cycle_res else None),
         "empty_reason": "" if env_res["pass"] else "; ".join(env_res["reasons"]),
+        "llm": llm_payload,
         "stats": {"pool": len(pool), "boards": len(boards), "genes": 0},
         # ── 过渡兼容键(老 Pages 构建的 AuctionTab 读 candidates.length/watch 会崩,
         #    新 UI 要等 crawl 班 npm run build 部署; 新 UI 上线后本组可删) ──
