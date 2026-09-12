@@ -58,6 +58,9 @@ jobs:
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          # 大模型独立选股(影子, src/analysis/llm_review.py): 缺失时脚本内静默跳过
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          LLM_MODEL: deepseek-flash
         run: cd jiarenmens && python scripts/auction_scan.py
 
       # auction.db 上传闸门(Release 迁移): sha 变更才传; 竞价档案易逝, 失败即失败不吞
