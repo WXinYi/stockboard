@@ -27,7 +27,8 @@ const pass = computed(() => !!env.value?.pass)
 const boards = computed(() => auction.value?.boards || [])
 const strike = computed(() => auction.value?.strike || [])
 const bidrank = computed(() => auction.value?.bidrank || [])
-const reasons = computed(() => (pass.value ? (env.value?.reasons || []).slice(0, 1) : (env.value?.reasons || [])))
+// 快照态全量展示当日读数备注(此前通过时只显 1 条, 信息被截)
+const reasons = computed(() => (env.value?.reasons || []))
 const metrics = computed(() => {
   const d = env.value?.data || {}
   return [
@@ -51,18 +52,19 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
     <div v-else-if="error" class="sd-error">⚠️ 暂无竞价数据(非交易时段无快照)</div>
 
     <template v-else-if="auction">
-      <!-- 环境结论 -->
-      <div class="at-env" :class="pass ? 'ok' : 'no'">
+      <!-- 竞价环境快照(2026-09-13 改版): env.pass 恒为 True(auction_env.py 2026-08-13 设计:
+           竞价情绪/量能/红盘全部只备注不阻塞, 出击收敛交由周期闸门), 本页不显示任何
+           通过/不通过判定 —— 可买性判定权在选股首页结论头, 这里只是当日 09:25 读数 -->
+      <div class="at-env snapshot">
         <div class="r1">
-          <!-- 词汇统一(2026-09-13): 全站 可买/谨慎可买/禁买 三档; 竞价闸门是二值通过性判定,
-               不冒充仓位档位, 通过≠可买, 最终以选股首页结论为准 -->
-          <span class="badge" :class="pass ? 'ok' : 'no'">{{ pass ? '✅ 闸门通过' : '❌ 禁买(闸门未通过)' }}</span>
+          <span class="badge snap-badge">📊 竞价环境快照 · 仅供对照</span>
           <span class="time">{{ auction.generated_at }}</span>
         </div>
         <div class="rs"><div v-for="(r, i) in reasons" :key="i">· {{ r }}</div></div>
-        <div v-if="pass" class="mts">
+        <div class="mts">
           <span v-for="m in metrics" :key="m.k"><i>{{ m.k }}</i>{{ m.v }}</span>
         </div>
+        <div class="snap-note">本页无判定权 · 可买/禁买以选股首页结论为准</div>
       </div>
 
       <div v-if="!pass" class="hold">
@@ -134,6 +136,10 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
 .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 100px; }
 .badge.ok { background: #2980b9; color: #fff; }
 .badge.no { background: #c0392b; color: #fff; }
+/* 环境快照态(2026-09-13): 无判定语义, 中性灰蓝, 不用绿/红暗示通过与否 */
+.at-env.snapshot { background: #f7f9fc; border-color: #dbe3ee; }
+.snap-badge { background: #eef2f8; color: #5b6a85; }
+.snap-note { margin-top: 8px; font-size: 11px; color: #8a97a8; border-top: 0.5px dashed #dbe3ee; padding-top: 6px; }
 .rs { margin-top: 7px; font-size: 12px; color: #43505e; line-height: 1.7; }
 .mts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .mts span { font-size: 11px; color: #1a1a2e; background: rgba(255,255,255,.85); border: 1px solid #e6edf6; padding: 3px 10px; border-radius: 8px; }
