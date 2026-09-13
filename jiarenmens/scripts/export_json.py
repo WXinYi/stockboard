@@ -1259,6 +1259,21 @@ def _synthesize_wzq(c, eff_date: str, prev: str | None, stage_word: str) -> list
     bids = {r[0]: r[1] for r in c.execute(
         "SELECT code, MAX(change_pct) FROM bid_pool WHERE date=? GROUP BY code", (eff_date,))}
     names = {r[0]: r[1] for r in c.execute("SELECT code, name FROM limit_pool WHERE date=?", (prev,))}
+    # 名字兜底(2026-09-13): 合成路径的名单源自"昨昨日涨停/昨日炸板", 但今日竞价/今日涨停股
+    # (09-11 实例 000980/601872 等)不在其中 → 裸代码上屏。查全表最新名字兜底。
+    def _any_name(code, _cache={}):
+        if code in _cache:
+            return _cache[code]
+        nm = names.get(code) or broken.get(code)
+        if not nm:
+            for tbl in ("bid_pool", "limit_pool"):
+                row = c.execute(f"SELECT name FROM {tbl} WHERE code=? AND name IS NOT NULL AND name!=''"
+                                " ORDER BY date DESC LIMIT 1", (code,)).fetchone()
+                if row and row[0]:
+                    nm = row[0]
+                    break
+        _cache[code] = nm or code
+        return _cache[code]
     open_now = stage_word in ("启动", "发酵", "分歧")
     status = "可做(弱转强)" if open_now else "观察(弱转强·禁买期)"
     out = []
@@ -1267,7 +1282,7 @@ def _synthesize_wzq(c, eff_date: str, prev: str | None, stage_word: str) -> list
         if b is None or not (1.5 <= b <= 7):
             continue
         tag = "断板" if code in duan else ("炸板" if code in broken else "烂板")
-        out.append({"code": code, "name": names.get(code) or broken.get(code) or code, "status": status,
+        out.append({"code": code, "name": _any_name(code), "status": status,
                     "reason": f"弱转强: 昨日{tag}分歧, 今竞价 {b:+.1f}%, 分时确认才上",
                     "tag": tag, "bid_pct": f"{b:+.1f}"})
     return out
