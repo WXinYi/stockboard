@@ -89,19 +89,45 @@ jobs:
       # 每次 run 都从 Release 热层恢复 db(白天 run 也需要完整 40 日历史: export_json 的
       # 持仓变动/卖出预警/高手判定都依赖历史采集日; 空库导出会产出退化数据并污染页面)。
       # 白天 run 恢复后只读不传; 上传由下方步骤的收盘闸门控制。
-      - name: 下载热层库
+      # ④降级链前置: 恢复 actions/cache 里的库副本(与 Release 独立的容错来源;
+      # 精确 key 永不命中, 靠 restore-keys 前缀取最近一份)
+      - name: 恢复库副本缓存(降级兜底)
+        uses: actions/cache/restore@v4
+        with:
+          path: jiarenmens/data/.cache-db/
+          key: crawl-db-not-exist-${{ github.run_id }}
+          restore-keys: |
+            crawl-db-
+
+      - name: 下载热层库(含④三级降级链)
         env:
           # 必须带 token: 缺了会走匿名 API(60 次/小时/IP), 被限流时 get_release 返回 None,
           # 脚本静默 exit 1 → 整班 skipped(2026-09-09 09:30 首班就是这么挂的)。
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: |
           cd jiarenmens
-          if python3 scripts/release_db.py --download-latest; then
-            echo "✅ 已恢复热层"
-          elif [ -f data/crawl_data.db ]; then
-            echo "⚠️ 热层不存在(迁移过渡期), 使用 git 内 db 继续"
+          # ④降级链(2026-09-13 拍板): 热层 → 温层最新周快照 → cache 副本;
+          # 非 hot 来源过库龄闸门(≤4 天)并写 data/.db_restore_source, 降级必发钉钉告警。
+          if python3 scripts/release_db.py --download-fallback --cache-db data/.cache-db/crawl_data.db.gz; then
+            echo "✅ 库恢复成功(见上方来源日志)"
           else
-            echo "❌ 热层下载失败且本地无 db, 终止以防数据断链"; exit 1
+            echo "❌ ④三级降级链耗尽(热层/温层/缓存副本全不可用), 终止以防数据断链"; exit 1
+          fi
+          if grep -q '"degraded": true' data/.db_restore_source 2>/dev/null; then
+            echo "⚠️ 本班为降级库, 发钉钉告警"
+            python3 - <<'PY'
+          import json
+          from src.notify.dingtalk import DingTalk
+          m = json.load(open('data/.db_restore_source'))
+          DingTalk().send_markdown(
+              'StockBoard 降级库告警',
+              f"⚠️ **本班热层下载失败, 已降级采集**\n\n"
+              f"- 来源: {m.get('source')}\n"
+              f"- 库龄: {m.get('stale_days', '?')} 天(闸门≤4天通过)\n\n"
+              f"数据带降级标记(core.json.db_restore), 基线可能偏旧, 变化类数字以钉钉实盘推送为准。")
+          PY
           fi
 
       - name: 数据采集
@@ -246,6 +272,18 @@ jobs:
             done
             echo "❌ 推送失败"; exit 1
           fi
+
+      # ④降级链备份: 把本班(成功且基线合格)的库打包存入 actions/cache, 供下个班热层失败时降级沿用。
+      # restore-keys 按"最近创建"取用; cache 与 Release 独立, Release 限流时它仍可用。
+      - name: 打包库副本(降级兜底)
+        if: success()
+        run: cd jiarenmens && mkdir -p data/.cache-db && gzip -c data/crawl_data.db > data/.cache-db/crawl_data.db.gz
+      - name: 保存库副本缓存(降级兜底)
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: jiarenmens/data/.cache-db/
+          key: crawl-db-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

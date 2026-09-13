@@ -49,11 +49,19 @@ const showTouchExited = ref(false)
 const crawlDate = ref('')
 const staleDayNote = computed(() => (crawlDate.value && cycleDataDay.value && crawlDate.value !== cycleDataDay.value)
   ? `最新采集 ${crawlDate.value}，决策数据为 ${cycleDataDay.value}（今日暂无新交易数据）` : '')
+// ④降级库批次(拍板③): 本班热层失败走了降级链, 基线可能偏旧, 红条明示
+const dbRestore = ref(null)
+const dbRestoreNote = computed(() => (dbRestore.value?.degraded
+  ? `⚠️ 本班为降级库（来源 ${dbRestore.value.source}，库龄 ${dbRestore.value.stale_days ?? '?'} 天），基线可能偏旧，变化类数字以钉钉实盘推送为准` : ''))
 
 async function loadMine(silent = false) {
   try { mine.value = await fetchMyPositions() } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
   // 采集日( core.json date ): 用于"最新采集晚于决策日"的诚实提示, 不猜测节假日
-  try { crawlDate.value = (await fetchCore())?.date || '' } catch (e) { /* 缺失就不提示 */ }
+  try {
+    const core = await fetchCore()
+    crawlDate.value = core?.date || ''
+    dbRestore.value = core?.db_restore || null
+  } catch (e) { /* 缺失就不提示 */ }
 }
 
 async function loadCycleBattle(silent = false) {
@@ -337,6 +345,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
   <div class="mt-page">
     <div class="pk-day">决策日 {{ cycleDataDay || auction?.date || '—' }}</div>
     <div v-if="staleDayNote" class="pk-stale">ℹ️ {{ staleDayNote }}</div>
+    <div v-if="dbRestoreNote" class="pk-stale" style="color:#a94442;border-color:#e6b8b0;background:#fdf2f0;">⚠️ {{ dbRestoreNote }}</div>
 
     <!-- ① 结论头: 当下可否买入(池 → 上限 → 一句话结论), 点击进 cycle 详情 -->
     <div v-if="battle && !battle.empty" class="pk-verdict" :class="'v-' + verdictShow.cls" :style="{ '--sc': STAGE_COLORS[cycle?.stage] || '#8a97a8' }" @click="open('cycle')">

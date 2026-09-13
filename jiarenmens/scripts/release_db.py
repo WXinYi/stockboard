@@ -37,7 +37,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -426,6 +426,100 @@ def cmd_download_latest(dest: Path = None, retries: int = 3):
     return _download_asset_to_db(HOT_TAG, HOT_ASSET, dest or DB_PATH, retries)
 
 
+# ────────────────────────── ④ 降级恢复链(2026-09-13 拍板) ──────────────────────────
+# 热层 → 温层最新周快照 → actions/cache 副本, 三级降级; 非 hot 来源必须过库龄闸门。
+# 三条配套: ①库龄闸门(MAX(crawl_date) ≥ 今天-4 天, 4 天窗口自然拒绝春节/国庆等长假缺口,
+# 周一早班用周五库=3 天也放行) ②降级写 marker 文件, workflow 据此发钉钉告警 ③export
+# 读 marker 写入 core.json.db_restore, 前端可见。全链耗尽返回 1(照旧宁可停不可断链)。
+
+MARKER_PATH = DB_PATH.parent / ".db_restore_source"
+MAX_STALE_DAYS = 4
+
+
+def _db_last_date(db_path: Path):
+    """库内最后采集日(date)或 None(表缺失/库坏)。"""
+    try:
+        mx = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True).execute(
+            "SELECT MAX(crawl_date) FROM positions").fetchone()[0]
+        return date.fromisoformat(str(mx)[:10]) if mx else None
+    except Exception as e:
+        print(f"[fallback] ⚠️ 库龄读取失败({e})", file=sys.stderr)
+        return None
+
+
+def _db_age_days(db_path: Path, today: date = None):
+    """库龄天数(今天-最后采集日); 库不可读返回 None。纯函数, 可单测。"""
+    last = _db_last_date(db_path)
+    return None if last is None else (today or date.today()) - last
+
+
+def _write_marker(source: str, degraded: bool, extra: dict = None):
+    MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MARKER_PATH.write_text(json.dumps({
+        "source": source, "degraded": degraded,
+        "checked_at": datetime.now().isoformat(timespec="seconds"),
+        **(extra or {}),
+    }, ensure_ascii=False))
+
+
+def cmd_download_fallback(cache_db: Path = None, today: date = None):
+    """④降级链: 热层 → 温层最新周快照 → cache 副本。成功(含降级)返回 0, 全链耗尽返回 1。"""
+    today = today or date.today()
+    # 1) 热层(最新可信, 不做库龄校验)
+    if _download_asset_to_db(HOT_TAG, HOT_ASSET, DB_PATH) == 0:
+        _write_marker("hot", False)
+        print("[fallback] ✅ 来源=hot(热层)")
+        return 0
+
+    def _accept(db: Path, source: str) -> int:
+        age = _db_age_days(db, today)
+        if age is None:
+            print(f"[fallback] ❌ {source} 库不可读, 跳过", file=sys.stderr)
+            return 1
+        if age.days > MAX_STALE_DAYS:
+            print(f"[fallback] ❌ {source} 库龄 {age.days} 天 > {MAX_STALE_DAYS} 天, 库龄闸门拒绝", file=sys.stderr)
+            return 1
+        _write_marker(source, True, {"stale_days": age.days})
+        print(f"[fallback] ⚠️ 降级启用 {source}(库龄 {age.days} 天, 闸门通过) — 已写 marker, workflow 应告警")
+        return 0
+
+    # 2) 温层: 从本周往回找最多 8 个 ISO 周, 取第一个"下载成功且库龄合格"的周快照
+    iso = today.isocalendar()
+    for back in range(0, 8):
+        if back:
+            d = date.fromisocalendar(iso[0], iso[1], 1) - timedelta(weeks=back)
+            y, w = d.isocalendar()[0], d.isocalendar()[1]
+        else:
+            y, w = iso[0], iso[1]
+        tag, asset = f"db-w{y}-W{w:02d}", f"crawl-{y}-W{w:02d}.db.gz"
+        print(f"[fallback] 尝试温层 {tag}/{asset} …")
+        if _download_asset_to_db(tag, asset, DB_PATH, retries=1) == 0:
+            if _accept(DB_PATH, f"温层{asset}") == 0:
+                return 0
+    print("[fallback] 温层 8 周内无可用品", file=sys.stderr)
+
+    # 3) actions/cache 副本(workflow restore 到本地的 gz)
+    if cache_db and Path(cache_db).exists():
+        tmp = DB_PATH.with_suffix(".db.cache-tmp")
+        try:
+            with gzip.open(cache_db, "rb") as s, open(tmp, "wb") as d:
+                shutil.copyfileobj(s, d)
+            ic = sqlite3.connect(tmp).execute("PRAGMA integrity_check").fetchone()[0]
+            if ic != "ok":
+                print(f"[fallback] ❌ cache 副本完整性失败: {ic}", file=sys.stderr)
+            elif _accept(tmp, "cache副本") == 0:
+                tmp.replace(DB_PATH)
+                return 0
+        except Exception as e:
+            print(f"[fallback] ❌ cache 副本展开失败: {e}", file=sys.stderr)
+        finally:
+            tmp.unlink(missing_ok=True)
+    elif cache_db:
+        print("[fallback] cache 副本文件不存在", file=sys.stderr)
+    print("[fallback] ❌ 三级降级链耗尽(热层/温层/缓存副本), 照旧宁可停不可断链", file=sys.stderr)
+    return 1
+
+
 def cmd_download_what(what: str, dest: Path = None):
     """--what 分发下载: auction 先 latest, 失败回退最新日期快照(防 latest 被损坏/覆盖丢失)。"""
     t = TARGETS[what]
@@ -468,6 +562,10 @@ def main():
     ap.add_argument("--sync", action="store_true")
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--download-latest", action="store_true")
+    ap.add_argument("--download-fallback", action="store_true",
+                    help="④降级链: 热层→温层周快照→cache副本, 非hot来源过库龄闸门并写 marker")
+    ap.add_argument("--cache-db", default=None, metavar="GZ",
+                    help="--download-fallback 的第三级: actions/cache 恢复出的库 gz 副本路径")
     ap.add_argument("--dest", default=None, help="--download-latest 目标路径(默认按 --what 取注册表)")
     ap.add_argument("--retain-weeks", type=int, metavar="N")
     ap.add_argument("--gz-only", metavar="OUT", help="无 token, 本地生成快照 gz 自检")
@@ -496,8 +594,13 @@ def main():
         cmd_init()
     if args.download_latest:
         raise SystemExit(cmd_download_what(args.what, Path(args.dest) if args.dest else None))
+    if args.download_fallback:
+        if args.what != "crawl":
+            sys.exit("--download-fallback 目前只支持 crawl 库(auction 已有日快照回退)")
+        raise SystemExit(cmd_download_fallback(Path(args.cache_db) if args.cache_db else None))
     if not any([args.upload_latest, args.archive_weeks, args.archive_months,
-                args.sync, args.init, args.download_latest, args.retain_weeks, args.gz_only]):
+                args.sync, args.init, args.download_latest, args.download_fallback,
+                args.retain_weeks, args.gz_only]):
         ap.print_help()
 
 

@@ -617,6 +617,15 @@ def export(db_path, crawl_date, out_dir):
     summary["crawl_time"] = crawl_time
     summary_slices["core"]["crawl_time"] = crawl_time
 
+    # ④降级标记(2026-09-13 拍板③): release_db 降级链写入的 marker → core.json.db_restore,
+    # 前端据此提示"本班为降级库, 基线可能偏旧"。hot(正常)也写, 字段恒存在便于前端判断。
+    marker_p = ROOT / "data" / ".db_restore_source"
+    if marker_p.exists():
+        try:
+            summary_slices["core"]["db_restore"] = json.loads(marker_p.read_text().strip())
+        except Exception as e:
+            print(f"⚠️ db_restore marker 解析失败(忽略): {e}")
+
     # 15. 新格式输出
     latest_dir = out_dir / "latest"
     latest_dir.mkdir(parents=True, exist_ok=True)
