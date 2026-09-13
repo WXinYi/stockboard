@@ -34,6 +34,8 @@ const mine = ref(null)
 const discRule = computed(() => STAGE_RULES[cycle.value?.stage] || null)
 // 触价持仓明细(2026-09-13 从纯计数升级为可点开): 系统估算净持仓为 0 的标"已清仓?"不计入待执行数;
 // net_qty_est 缺失(未知)时保守计入待执行
+// 2026-09-13 用户拍板: 选股页触价提醒先隐藏(净持仓估算误报过多), 恢复改回 true; 明细逻辑保留
+const SHOW_TOUCH = false
 const touchRows = computed(() => (mine.value?.positions || []).filter(p => p.touch))
 const touchPending = computed(() => touchRows.value.filter(p => p.net_qty_est !== 0))
 const touchExited = computed(() => touchRows.value.filter(p => p.net_qty_est === 0))
@@ -356,8 +358,9 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
       <span class="pk-sub muted">周期数据加载中,稍候给出「可否买入」结论</span>
     </div>
 
-    <!-- ① 持仓触价风控(纪律卡下线后的轻量回补): 可点开看逐只明细; 系统估算已清仓的不计入待执行 -->
-    <template v-if="touchRows.length > 0">
+    <!-- ① 持仓触价风控(纪律卡下线后的轻量回补): 可点开看逐只明细; 系统估算已清仓的不计入待执行.
+         2026-09-13 起隐藏(SHOW_TOUCH=false), 误报过多; 逻辑保留随时可恢复 -->
+    <template v-if="SHOW_TOUCH && touchRows.length > 0">
       <div class="pk-touch" @click="showTouchDetail = !showTouchDetail">
         ⚠️ {{ touchPending.length }} 只持仓触价待执行(反抽/破位线命中, 按价执行不撤单){{ touchExited.length ? ` · 另 ${touchExited.length} 只系统估算已清仓` : '' }} {{ showTouchDetail ? '▲' : '▼' }}
       </div>
