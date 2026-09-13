@@ -64,3 +64,7 @@ jiarenmens/data/auction.db
 
 # 回测归档(fetch_db 产物), 不入库
 jiarenmens/data/archive/
+
+# ④降级链产物(release_db --download-fallback / crawl.yml cache 副本)
+jiarenmens/data/.db_restore_source
+jiarenmens/data/.cache-db/
