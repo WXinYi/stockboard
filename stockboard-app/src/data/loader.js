@@ -5,7 +5,9 @@ const _cache = {}
 
 async function getJson(path) {
   if (_cache[path]) return _cache[path]
-  const resp = await fetch(`${BASE}${path}`)
+  // no-store(2026-09-13 拍板②): 绕过 Pages max-age=600 的 HTTP 缓存, 数据到达即最新;
+  // 会话内仍有模块级 _cache, 请求量不变
+  const resp = await fetch(`${BASE}${path}`, { cache: 'no-store' })
   const data = await resp.json()
   _cache[path] = data
   return data
@@ -30,5 +32,8 @@ export const fetchSixHistory = () => getJson('data/latest/six_history.json')
 // 全量（路由级懒加载）
 export const fetchPlayersIndex  = () => getJson('data/latest/players_index.json')
 
-// 按需新鲜数据（PlayerDetail，不缓存）
-export const fetchPlayerDetail  = (zhId) => fetch(`${BASE}data/latest/players/${zhId}.json`).then((r) => r.json())
+// 按需新鲜数据（PlayerDetail，不缓存）；404 抛专用错(不在采集名单), 与网络失败区分
+export const fetchPlayerDetail = (zhId) => fetch(`${BASE}data/latest/players/${zhId}.json`, { cache: 'no-store' }).then((r) => {
+  if (!r.ok) { const e = new Error(String(r.status)); e.status = r.status; throw e }
+  return r.json()
+})

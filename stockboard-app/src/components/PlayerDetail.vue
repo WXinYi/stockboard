@@ -10,6 +10,7 @@ import { usePullRefresh } from '../composables/usePullRefresh.js'
 const route = useRoute()
 const router = useRouter()
 const { playerLookup } = inject('stockData')
+const notFound = ref(false)
 
 // 📈 跳转股票详情页(自建详情, 页内含 H5 嵌套入口)
 function openStockDetail(c, n) { router.push({ path: '/stock/' + c, query: { name: n } }) }
@@ -128,9 +129,12 @@ function posLabel(total) {
 
 async function loadPlayer(zhId) {
   loadingDetail.value = true
+  notFound.value = false
   try {
     playerData.value = await fetchPlayerDetail(zhId)
   } catch (e) {
+    // 404 = 不在采集名单(未上榜/已跌榜), 与网络失败分开提示(2026-09-13, 900440639 深链实例)
+    notFound.value = e.status === 404
     console.warn('选手详情加载失败:', e.message)
   } finally {
     loadingDetail.value = false
@@ -151,7 +155,14 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
     <p class="loading-text">加载选手数据…</p>
   </div>
   <div v-else-if="!player && !loadingDetail" class="card">
-    <div class="empty-state">📭 选手数据加载失败</div>
+    <div v-if="notFound" class="empty-state">
+      📭 该选手不在采集名单（未上榜或已跌榜，无当日数据文件）<br>
+      <span style="font-size:11px;color:#8a97a8;">选手 ID: {{ route.params.zh_id }}</span>
+    </div>
+    <div v-else class="empty-state">
+      📭 选手数据加载失败
+      <button style="margin-left:8px;border:1px solid #2980b9;background:#fff;color:#2980b9;font-size:12px;padding:4px 12px;border-radius:8px;cursor:pointer;" @click="loadPlayer(route.params.zh_id)">重试</button>
+    </div>
   </div>
   <div v-else-if="player">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">

@@ -21,6 +21,8 @@ const items = computed(() => {
     { label: '连板率', value: (g.lianbanPct ?? '—') + (g.lianbanPct != null ? '%' : ''), cls: num(g.lianbanPct) >= 30 ? 'c-up' : '' },
   ]
 })
+// 六维全空(接口未覆盖该股)时不摆一排"—"假数据, 如实给空态说明
+const hasData = computed(() => items.value.some(it => !String(it.value).startsWith('—')))
 </script>
 
 <template>
@@ -29,13 +31,13 @@ const items = computed(() => {
       <h3>涨停基因</h3>
       <span class="fc-tag">近期</span>
     </header>
-    <div v-if="items.length" class="lg-grid">
+    <div v-if="hasData" class="lg-grid">
       <div v-for="it in items" :key="it.label" class="lg-cell">
         <span class="lg-lbl">{{ it.label }}</span>
         <b class="lg-val" :class="it.cls">{{ it.value }}</b>
       </div>
     </div>
-    <div v-else class="fc-empty">暂无涨停基因数据</div>
+    <div v-else class="fc-empty">接口暂无该股基因数据（非近期活跃股或未覆盖）</div>
   </section>
 </template>
 

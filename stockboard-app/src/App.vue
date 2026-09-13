@@ -82,7 +82,8 @@ function goBack() {
   else router.push('/market')
 }
 
-const { updateAvailable, initCheck, dismiss } = useDataRefresh()
+// 拍板①(2026-09-13): 检测到新采集自动应用(refreshData 自带清缓存+重载+dismiss 横幅)
+const { updateAvailable, initCheck, dismiss } = useDataRefresh(() => { refreshData() })
 
 // 路由 → 需要的分片（data 来自 useData，history 来自 useHistory）
 const ROUTE_SLICES = {
@@ -142,7 +143,7 @@ onMounted(async () => {
     <NavBar v-if="!isDetailPage" />
 
     <div v-if="updateAvailable" class="update-banner" @click="refreshData()">
-      📊 数据已更新 · 点击刷新
+      📊 检测到新采集 · 正在自动刷新（点击手动重刷）
     </div>
 
     <!-- detail-page: 无底部导航, 减少底部留白; stock-page: 股票详情全宽无左右留白 -->

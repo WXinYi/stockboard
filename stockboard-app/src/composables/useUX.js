@@ -9,9 +9,12 @@ export function useDebounce(fn, delay = 300) {
   }
 }
 
-// 页面可见性检测 — 切回页面时检查是否有新数据
+// 页面可见性 + 定时轮询检测新采集(2026-09-13 拍板①: 自动刷新) —
+// 检测到新 crawl_time 时置 updateAvailable 并回调 onNewData(App 传 refreshData 自动应用);
+// 轮询仅在页面可见时进行, 60s 一次, 避免后台烧请求
 export function useDataRefresh(onNewData) {
   const updateAvailable = ref(false)
+  let timer = null
 
   async function check() {
     try {
@@ -35,10 +38,14 @@ export function useDataRefresh(onNewData) {
 
   onMounted(() => {
     document.addEventListener('visibilitychange', onVisible)
+    timer = setInterval(() => {
+      if (document.visibilityState === 'visible') check()
+    }, 60_000)
   })
 
   onUnmounted(() => {
     document.removeEventListener('visibilitychange', onVisible)
+    if (timer) clearInterval(timer)
   })
 
   function dismiss() {

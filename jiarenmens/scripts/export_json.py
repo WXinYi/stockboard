@@ -145,7 +145,14 @@ def export(db_path, crawl_date, out_dir):
         all_dates.sort()
 
     # 选手 name 查找表
-    player_names = {p["zh_id"]: (p.get("name") or p["zh_id"]) for p in all_players_raw}
+    def _safe_name(zh_id, name):
+        # 源数据偶发编码残缺(09-13 实例 "���民88g670I678" 含 U+FFFD), 无法还原真名 →
+        # 如实退回选手 ID 展示, 不让乱码上屏
+        if not name or "\ufffd" in name:
+            return zh_id
+        return name
+
+    player_names = {p["zh_id"]: _safe_name(p["zh_id"], p.get("name")) for p in all_players_raw}
 
     # ── 2. 构建衍生数据（选手总分仓 + quality 标记等）──
     # 计算每个选手的总仓位
@@ -171,7 +178,7 @@ def export(db_path, crawl_date, out_dir):
         tp = pos_by_player.get(pid, 0)
         entry = {
             "id": pid,
-            "name": p.get("name") or "",
+            "name": _safe_name(pid, p.get("name")),
             "followers": safe_int(p.get("followers")),
             "total_return": safe_float(p.get("total_return")),
             "daily_return": safe_float(p.get("daily_return")),

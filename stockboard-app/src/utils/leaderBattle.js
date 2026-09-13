@@ -222,7 +222,9 @@ export function gateSentence(stage, high, mid, cap, noCandidate) {
     else if (g.tier.low === 'go') parts.push('低位可出击')
   }
   const poolTxt = (cap === 0 || cap == null) ? '池关闭' : (cap >= 100 ? '池全开' : `池限${cap}分`)
-  const base = `情绪${stage || '—'}${parts.length ? ' · ' + parts.join('、') : ''} · ${poolTxt}`
+  // 梯队资格标注(2026-09-13): 结论副行是"哪层梯队解禁"(按连板高度), 与阶段 banner 的
+  // "怎么买"(按角色/买法)是两个维度 —— 09-13 用户曾以为两句矛盾, 标明维度防再误读
+  const base = `情绪${stage || '—'}${parts.length ? ' · 梯队资格(按板高): ' + parts.join('、') : ''} · ${poolTxt}`
   return noCandidate ? `${base} · 暂无达标候选 → 只看` : base
 }
 

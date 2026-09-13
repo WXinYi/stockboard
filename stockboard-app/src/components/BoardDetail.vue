@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchBoardConstituents, fetchNewHighBoards, getLatestTradingDay, isTradingTime } from '../composables/useKplApi.js'
+import { fetchBoardConstituents, fetchNewHighBoards, fetchBoardAnnotations, getLatestTradingDay, isTradingTime } from '../composables/useKplApi.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 
 defineOptions({ name: 'BoardDetail' })
@@ -10,6 +10,9 @@ const route = useRoute()
 const router = useRouter()
 const bkCode = computed(() => route.params.bk_code)
 const bkName = computed(() => route.query.name || bkCode.value)
+// 深链无 ?name= 时退化为代码; 异动板块标注里有同名板块则补上(2026-09-13)
+const resolvedName = ref('')
+watch(bkCode, () => { resolvedName.value = '' }, { immediate: true })
 // 数据口径: 'bid' 完整成分(ZhiShuStockList_W8) / 'nh' 百日新高股(fetchNewHighBoards 板块 List)
 const src = computed(() => (route.query.src === 'nh' ? 'nh' : 'bid'))
 
@@ -20,6 +23,13 @@ const day = ref('')
 
 async function load(silent = false) {
   try {
+    // 深链无板块名: 从板块异动标注里认领一次(查不到就保持代码显示, 不硬凑)
+    if (bkName.value === bkCode.value && !resolvedName.value) {
+      fetchBoardAnnotations(true).then(list => {
+        const hit = (list || []).find(b => b.bkCode === bkCode.value && b.bkName)
+        if (hit) resolvedName.value = hit.bkName
+      }).catch(() => {})
+    }
     let list = null
     if (src.value === 'nh') {
       // 新高口径: 一次拉全板块新高分组, 按 bkCode 过滤出本板块新高股
@@ -126,7 +136,7 @@ const turnoverW = r => (Math.max(0, r.turnover || 0) / turnoverMax.value * 100).
   <div class="bd-page">
     <!-- 顶部导航由 App header 统一提供(返回+标题), 此处信息条含板块代码; bid=竞价异动口径非完整成分.
          深链无 ?name= 时名称退化为代码, 此时只显示一次不重复(801216 801216 实例) -->
-    <div class="bd-bar">⚡ {{ bkName }}<template v-if="bkName !== bkCode"> <small>{{ bkCode }}</small></template> · {{ src === 'nh' ? '百日新高' : '完整成分' }}口径{{ src === 'nh' ? '' : ' · ' + dayStr }}</div>
+    <div class="bd-bar">⚡ {{ resolvedName || bkName }}<template v-if="(resolvedName || bkName) !== bkCode"> <small>{{ bkCode }}</small></template> · {{ src === 'nh' ? '百日新高' : '完整成分' }}口径{{ src === 'nh' ? '' : ' · ' + dayStr }}</div>
 
     <div v-if="loading" class="sd-loading">板块成分加载中…</div>
     <div v-else-if="error" class="sd-error">

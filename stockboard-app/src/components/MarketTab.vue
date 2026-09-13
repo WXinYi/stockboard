@@ -399,7 +399,8 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           <button class="mt-more" @click="open('cycle')">决策详情 ›</button>
         </div>
         <div class="mt-strike-banner">
-          <div>{{ battle.strike.gate.banner?.split('📐')[0] }}</div>
+          <!-- 剧本维度标注(2026-09-13): banner=怎么买(角色/买法), 与结论副行的梯队资格(板高)是两个维度 -->
+          <div>剧本(怎么买) · {{ battle.strike.gate.banner?.split('📐')[0] }}</div>
           <div v-if="battle.strike.relay?.txt" class="sb-mtx">🗡 {{ battle.strike.relay.txt }}</div>
           <div v-if="gateMatrix" class="sb-mtx">📐 高位{{ gateMatrix.high }}×中位{{ gateMatrix.mid }}：{{ gateMatrix.note }}</div>
         </div>
