@@ -56,10 +56,12 @@ function computeBoardWars(todayJoined, prevFull) {
   const t = boardAgg(todayJoined)
   const p = boardAgg(prevFull.map(r => ({ ...r, level: r.pid >= 5 ? 5 : r.pid })))
   const keys = new Set([...Object.keys(t).filter(b => t[b].count >= 2), ...Object.keys(p).filter(b => p[b].count >= 2)])
+  const namesOf = b => todayJoined.filter(r => (r.plates || []).includes(b))
+    .sort((x, y) => (y.level || 0) - (x.level || 0)).map(r => r.name).slice(0, 5)
   const wars = [...keys].map(b => {
     const a = t[b] || { count: 0, maxH: 0, seal: 0 }
     const y = p[b] || { count: 0, maxH: 0 }
-    return { board: b, count: a.count, prevCount: y.count, dCount: a.count - y.count, maxH: a.maxH, prevMaxH: y.maxH, sealSum: a.seal, members: a.members || new Set() }
+    return { board: b, count: a.count, prevCount: y.count, dCount: a.count - y.count, maxH: a.maxH, prevMaxH: y.maxH, sealSum: a.seal, members: a.members || new Set(), names: namesOf(b) }
   }).sort((x, y2) => y2.count - x.count || y2.maxH - x.maxH)
 
   const prevTop3 = wars.filter(w => w.prevCount >= 2).sort((x, y2) => y2.prevCount - x.prevCount).slice(0, 3).map(w => w.board)
@@ -137,7 +139,8 @@ function computeDuels(todayJoined, prevFull, boardWars) {
     const [A, B] = topBoards
     const la = todayJoined.filter(r => (r.plates || []).includes(A.board)).sort((x, y) => y.level - x.level)[0]
     const lb = todayJoined.filter(r => (r.plates || []).includes(B.board)).sort((x, y) => y.level - x.level)[0]
-    if (la && lb && la.level >= 3 && lb.level >= 3) {
+    // 同股双标签(如超声电子同时挂通信+PCB)会对标到自己 → 放弃该对, 不硬凑
+    if (la && lb && la.code !== lb.code && la.level >= 3 && lb.level >= 3) {
       let rel = '并行轮动', note = `${A.board}龙头 ${la.name}(${la.level}板) vs ${B.board}龙头 ${lb.name}(${lb.level}板)`
       if (A.dCount >= 1 && B.dCount >= 1) rel = '双主线共振'
       else if (A.dCount >= 2 && B.dCount <= -1) rel = `${A.board}吸${B.board}血`

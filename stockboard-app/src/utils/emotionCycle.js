@@ -214,11 +214,11 @@ export function computeCycle({ ladderRows = [], prevPool = [], riseFall = null, 
   if ((hdrop !== null && hdrop >= cfg.tuiHeightDrop) ||
       (zr !== null && zr < cfg.tuiZtRatio && broke > brokeMa5)) {
     stage = '退潮'
-    reasons.push(`高度 ${heightPrev ?? '?'}→${height}${hdrop !== null ? `(降${hdrop}级)` : ''}，涨停 ${zt} 只(${zrTxt})，破板率 ${broke}%`)
+    reasons.push(`高度 ${heightPrev ?? '?'}→${height}${hdrop !== null ? `(降${hdrop}级)` : ''}，涨停 ${zt} 只(${zrTxt})，破板率 ${broke == null ? "?" : broke.toFixed(1)}%`)
   } else if (height <= cfg.iceHeight && ((zr !== null && zr < cfg.iceZtRatio) || broke > cfg.iceBroke)) {
     // 2) 冰点
     stage = '冰点'
-    reasons.push(`高度仅 ${height}B(≤${cfg.iceHeight}B 直接确认)，涨停 ${zt} 只，破板率 ${broke}%`)
+    reasons.push(`高度仅 ${height}B(≤${cfg.iceHeight}B 直接确认)，涨停 ${zt} 只，破板率 ${broke == null ? "?" : broke.toFixed(1)}%`)
   } else if (height >= cfg.gaochaoHeight || (zr !== null && zr >= cfg.gaochaoZtRatio)) {
     // 3) 高潮
     stage = '高潮'
@@ -236,7 +236,7 @@ export function computeCycle({ ladderRows = [], prevPool = [], riseFall = null, 
     // 6) 分歧
     const midTxt = promo.mid !== null ? `${Math.round(promo.mid * 100)}%` : '无数据'
     stage = '分歧'
-    reasons.push(`高度 ${height}B 持平/中断，中位晋级率 ${midTxt}，破板率 ${broke}%`)
+    reasons.push(`高度 ${height}B 持平/中断，中位晋级率 ${midTxt}，破板率 ${broke == null ? "?" : broke.toFixed(1)}%`)
   }
 
   const mainlines = boardMainlines(curRows)

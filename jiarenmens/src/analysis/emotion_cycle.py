@@ -153,10 +153,14 @@ def classify_leaders(cur_rows, mainlines):
         role = "总龙头" if i == 0 else f"板块龙头({m['board']})"
         if anchor_in_main == m["board"]:
             continue  # 主线由空间锚带队, 已在首行
-        out.append({"code": lead["code"], "name": lead["name"], "pid": lead["height"],
-                    "role": role, "note": f"主线[{m['board']}] {m['count']}只涨停, {seal_note(lead)}"})
-        used.add(lead["code"])
-        rest = [r for r in members if r["code"] != lead["code"]]
+        # 2026-09-13: 龙头身份要求 ≥2板 —— 此前主线2的更高连板票被主线1占用后,
+        # 1板票会顶上"板块龙头"(09-11 协和电子1板案例), 标注误导。1板票不再评龙头,
+        # 中军(成交额容量核心)与本板块补涨仍正常评定(与龙头身份无关)。
+        if lead["height"] >= 2:
+            out.append({"code": lead["code"], "name": lead["name"], "pid": lead["height"],
+                        "role": role, "note": f"主线[{m['board']}] {m['count']}只涨停, {seal_note(lead)}"})
+            used.add(lead["code"])
+        rest = [r for r in members if r["code"] not in used]
         if rest:
             mid = max(rest, key=lambda r: r["amount"] or 0)
             if (mid["amount"] or 0) > 5e8:

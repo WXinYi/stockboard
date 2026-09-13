@@ -187,8 +187,10 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
         for code in list(duanban | rotten | set(broken_prev))[:80]:
             if code in seen or not bid_strong(code):
                 continue
+            # 名字兜底链: 涨停池 → 炸板池 → 当日竞价池(断板股不在涨停池时防裸代码上屏, 09-11 实例 601872 等)
+            nm = names_d.get(code) or broken_prev.get(code) or (bids.get(code) or {}).get("name") or code
             tag = "断板" if code in duanban else ("炸板" if code in broken_prev else "烂板")
-            add(code, names_d.get(code, code) or broken_prev.get(code, code), 0,
+            add(code, nm, 0,
                 f"弱转强: 昨日{tag}分歧, 今竞价 {bids[code]['change_pct']:+.1f}%, 分时确认才上",
                 wzq_status,
                 tag=tag, bid_pct=f"{bids[code]['change_pct']:+.1f}")  # 结构化字段: build_strike_review 优先读, 免 regex 解析 reason

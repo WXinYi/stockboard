@@ -114,7 +114,8 @@ const SORT_HEADERS = [
 const sortedRows = computed(() => {
   const key = sortKey.value
   const dir = sortDir.value
-  return [...rows.value].sort((a, b) => dir * ((b[key] || 0) - (a[key] || 0)))
+  // 2026-09-13 修复: 原式 dir*(b-a) 在 dir=-1(表头标"↓"降序)时实际算出升序, 箭头与数据相反
+  return [...rows.value].sort((a, b) => dir * ((a[key] || 0) - (b[key] || 0)))
 })
 // 换手率迷你条: 宽度按全表最大值归一
 const turnoverMax = computed(() => Math.max(...rows.value.map(r => r.turnover || 0), 1))
@@ -123,8 +124,9 @@ const turnoverW = r => (Math.max(0, r.turnover || 0) / turnoverMax.value * 100).
 
 <template>
   <div class="bd-page">
-    <!-- 顶部导航由 App header 统一提供(返回+标题), 此处信息条含板块代码; bid=竞价异动口径非完整成分 -->
-    <div class="bd-bar">⚡ {{ bkName }} {{ bkCode }} · {{ src === 'nh' ? '百日新高' : '完整成分' }}口径{{ src === 'nh' ? '' : ' · ' + dayStr }}</div>
+    <!-- 顶部导航由 App header 统一提供(返回+标题), 此处信息条含板块代码; bid=竞价异动口径非完整成分.
+         深链无 ?name= 时名称退化为代码, 此时只显示一次不重复(801216 801216 实例) -->
+    <div class="bd-bar">⚡ {{ bkName }}<template v-if="bkName !== bkCode"> <small>{{ bkCode }}</small></template> · {{ src === 'nh' ? '百日新高' : '完整成分' }}口径{{ src === 'nh' ? '' : ' · ' + dayStr }}</div>
 
     <div v-if="loading" class="sd-loading">板块成分加载中…</div>
     <div v-else-if="error" class="sd-error">

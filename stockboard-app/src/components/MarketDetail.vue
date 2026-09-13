@@ -12,6 +12,7 @@ import {
   getLatestTradingDay, getLatestReportDate, isTradingTime,
 } from '../composables/useKplApi.js'
 import { loadCycleData, STAGES, STAGE_COLORS, STAGE_RULES } from '../utils/emotionCycle.js'
+import { MARKET_SECTION_TITLES } from '../utils/sectionTitles.js'
 import { loadBattleData } from '../utils/leaderBattle.js'
 import { fetchStrikeReview, fetchSixHistory, fetchAuction } from '../data/loader.js'
 import { normHistory, buildLiveRow, computeSixLive, fetchIndexTrend, parseBidYi } from '../utils/sixEmotion.js'
@@ -24,11 +25,7 @@ const route = useRoute()
 const router = useRouter()
 const section = computed(() => route.params.section)
 
-const SECTION_TITLES = {
-  auction: '竞价抢筹', wind: '最强风口', ladder: '涨停天梯', reasons: '涨停原因',
-  newhighs: '百日新高', global: '外围市场', institution: '机构增仓',
-  mood: '市场情绪', live: '盘面动态', lhb: '龙虎榜', cycle: '情绪周期',
-}
+const SECTION_TITLES = MARKET_SECTION_TITLES   // 唯一映射, 与 App.vue 顶栏共用(2026-09-13 去重)
 const title = computed(() => SECTION_TITLES[section.value] || '盘面详情')
 
 const loading = ref(true)
@@ -120,15 +117,17 @@ async function refreshSixLive(cdCycle, battleObj) {
   } catch (e) { /* 六情绪失败不影响主结论 */ }
 }
 const sixMood = ref(null)
+// 统一格式(2026-09-13): 此前 live 命中时短句、未命中时长句, 同一页两次加载渲染不一样。
+// 现在 live 分支也带全量数值, 两条路径输出同构句子, 只有来源(实时/快照)标注不同。
 const sixTxt = computed(() => {
   const s = sixLive.value
   if (s?.dominant) {
     const tag = isTradingTime() ? '实时' : '最近快照'
-    return `主导 ${s.dominant}${s.note ? ' · ' + s.note : ''}（${tag}）`
+    return `市场${fmt(s.market, 1)} 投机${fmt(s.spec, 1)} 板块${fmt(s.sector, 1)}（整体 ${fmt(s.m_market, 1)}/${fmt(s.m_spec, 1)}/${fmt(s.m_sector, 1)}）→ 主导: ${s.dominant}${s.note ? ' · ' + s.note : ''}（${tag}）`
   }
   const x = sixInfo.value
   if (!x?.dominant || !sameDataDay(x.date, cycle.value?.date)) return ''
-  return `市场${x.market ?? '—'} 投机${x.spec ?? '—'} 板块${x.sector ?? '—'}（整体 ${x.m_market ?? '—'}/${x.m_spec ?? '—'}/${x.m_sector ?? '—'}）→ 主导: ${x.dominant} · ${x.note}`
+  return `市场${x.market ?? '—'} 投机${x.spec ?? '—'} 板块${x.sector ?? '—'}（整体 ${x.m_market ?? '—'}/${x.m_spec ?? '—'}/${x.m_sector ?? '—'}）→ 主导: ${x.dominant} · ${x.note}（快照）`
 })
 // 双引擎背离: 六情绪极强 vs 矩阵禁高/中位(取严) → 明示 + 人工豁免出路
 const dvgTxt = computed(() => {
@@ -374,7 +373,10 @@ const lhbSorted = computed(() => {
     <!-- 竞价: 完整复用现有 AuctionTab -->
     <AuctionTab v-if="section === 'auction'" />
 
-    <div v-else-if="loading" class="sd-loading">加载中…</div>
+    <div v-else-if="loading" class="sd-loading">
+      <template v-if="section === 'cycle'">决策计算中 — 正在拉取涨停天梯/涨停池/涨跌宽度/市场情绪(KPL 实时接口, 首次约需数秒)…</template>
+      <template v-else>加载中…</template>
+    </div>
     <div v-else-if="error" class="sd-error">
       加载失败
       <button class="sd-retry" @click="load()">重试</button>
@@ -649,7 +651,6 @@ const lhbSorted = computed(() => {
           </div>
           <ul class="cy-reasons"><li v-for="r in cycle.reasons" :key="r">{{ r }}</li></ul>
           <div class="cy-playbook">📌 {{ cycle.playbook }}</div>
-          <div v-if="sixTxt" class="cy-six">🌡 {{ sixTxt }}</div>
           <div v-if="dvgTxt" class="cy-warn">⚠️ {{ dvgTxt }}</div>
           <div v-if="yjQuote" class="cy-yj">💬 {{ yjQuote }}</div>
         </div>
@@ -657,6 +658,8 @@ const lhbSorted = computed(() => {
           <div v-for="s in cycleStages" :key="s" class="cy-seg" :class="{ on: s === cycle.stage }"
                :style="s === cycle.stage ? { background: cyColor, borderColor: cyColor } : {}">{{ s }}</div>
         </div>
+        <!-- 六情绪是独立引擎(与上方周期结论不同源), 2026-09-13 挪出结论卡避免同卡两个主导结论打架 -->
+        <div v-if="sixTxt" class="cy-six">🌡 六情绪(独立口径): {{ sixTxt }}</div>
 
         <!-- 分析Tab: 博弈 / 龙头 / 周期 -->
         <div class="mt-tabs cy-tabs">
@@ -734,12 +737,20 @@ const lhbSorted = computed(() => {
           <div class="md-group">
             <div class="md-group-head">
               <span class="md-group-tag">🎨 主线板块</span>
-              <span class="md-group-count">按涨停家数排序</span>
+              <span class="md-group-count">口径同「板块之争」(多标签股重复计入)</span>
             </div>
-            <div v-for="a in cycle.mainlines" :key="a.board" class="cy-line">
-              <b>{{ a.board }}</b> {{ a.count }} 只 · 最高 {{ a.maxLevel }} 板
-              <span class="cy-names">{{ a.names.slice(0, 5).join('、') }}</span>
-            </div>
+            <template v-if="battle && !battle.empty && battle.boardWars?.wars?.length">
+              <div v-for="a in battle.boardWars.wars.slice(0, 6)" :key="a.board" class="cy-line">
+                <b>{{ a.board }}</b> {{ a.count }} 只 · 最高 {{ a.maxH }} 板
+                <span class="cy-names">{{ (a.names || []).join('、') }}</span>
+              </div>
+            </template>
+            <template v-else>
+              <div v-for="a in cycle.mainlines" :key="a.board" class="cy-line">
+                <b>{{ a.board }}</b> {{ a.count }} 只 · 最高 {{ a.maxLevel }} 板
+                <span class="cy-names">{{ a.names.slice(0, 5).join('、') }}</span>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -748,7 +759,7 @@ const lhbSorted = computed(() => {
           <div class="cy-metrics">
             <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.height }}B</span><span class="cy-mi-l">最高连板(昨 {{ cycle.metrics.heightPrev ?? '-' }})</span></div>
             <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.zt }}</span><span class="cy-mi-l">涨停(ma5 {{ Math.round(cycle.metrics.ztMa5 || 0) }})</span></div>
-            <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.brokeRate }}%</span><span class="cy-mi-l">破板率</span></div>
+            <div class="cy-mi"><span class="cy-mi-v">{{ cycle.metrics.brokeRate == null ? '—' : cycle.metrics.brokeRate.toFixed(1) + '%' }}</span><span class="cy-mi-l">破板率</span></div>
           </div>
           <div class="md-group">
             <div class="md-group-head">

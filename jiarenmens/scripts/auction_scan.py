@@ -781,6 +781,23 @@ def scan(date_str: str, dry_run: bool = False) -> int:
             llm_payload = llm_run(date_str)
         except Exception as e:
             print(f"      ⚠️ 大模型选股失败(不影响主流程): {e}")
+    if llm_payload is None and not dry_run:
+        # 兜底: 本班调用失败/无 key 但存档已有当日行(手工回填或早班成功), 用存档补展示, 不留空
+        try:
+            import sqlite3
+            with sqlite3.connect(f"file:{Path(__file__).resolve().parent.parent / 'data' / 'auction.db'}?mode=ro", uri=True) as _c:
+                _r = _c.execute(
+                    "SELECT regime, why, position, picks, avoid, model, prompt_ver, latency_s, degraded, created_at"
+                    " FROM llm_review WHERE date=? ORDER BY prompt_ver DESC, created_at DESC LIMIT 1", (date_str,)).fetchone()
+            if _r:
+                import json as _json
+                llm_payload = {"date": date_str, "regime": _r[0], "why": _r[1], "position_today": _r[2] or "",
+                               "picks": _json.loads(_r[3] or "[]"), "avoid": _r[4] or "", "model": _r[5],
+                               "prompt_ver": _r[6], "latency_s": _r[7], "degraded": bool(_r[8]),
+                               "generated_at": _r[9]}
+                print(f"      llm 本班无新输出, 回填当日存档(regime={_r[0]}, prompt_ver={_r[6]})")
+        except Exception:
+            pass
 
     # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
     if not dry_run:

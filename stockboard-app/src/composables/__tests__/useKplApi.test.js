@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   fetchZhangTingGene, fetchMainMonitor, fetchStockBid,
-  fetchStockPankou, fetchStockLhbHistory,
+  fetchStockPankou, fetchStockLhbHistory, getLatestTradingDay,
 } from '../useKplApi.js'
 
 // useKplApi 内部 postForm/getJson 是闭包变量, vi.mock 换导出无效 → 改为 mock 全局 fetch
@@ -43,13 +43,18 @@ describe('KPL 新增接口', () => {
     expect(await fetchZhangTingGene('002594', true)).toBeNull()
   })
 
-  it('fetchMainMonitor 解析逐笔列表', async () => {
-    mockFetch({ List: [['14:02', '101.5', '0', '200', '1', '203000']] })
+  it('fetchMainMonitor 按文档行序解析: [买卖方向,时间戳,量,金额,均价,时间]', async () => {
+    // 行序与方向图例: kpl-api.md [48][49] — 1 被动卖/2 主动买/3 被动买/4 主动卖
+    mockFetch({ List: [
+      ['2', '1778651941', '1075', '1011575', '9.41', '2026-05-13 13:59:01'],
+      ['4', '1778651942', '50', '50000', '9.40', '2026-05-13 13:59:02'],
+    ] })
     const r = await fetchMainMonitor('002594')
     expect(calls).toHaveLength(1)
     expect(calls[0].body).toMatchObject({ a: 'GetMainMonitor_w30', StockID: '002594' })
-    expect(r).toHaveLength(1)
-    expect(r[0]).toMatchObject({ time: '14:02', price: 101.5, side: '买', vol: 200, amount: 203000 })
+    expect(r).toHaveLength(2)
+    expect(r[0]).toMatchObject({ time: '13:59:01', price: 9.41, side: '买', vol: 1075, amount: 1011575, type: '超大' })
+    expect(r[1]).toMatchObject({ time: '13:59:02', side: '卖', vol: 50, type: '大单' })
   })
   it('fetchMainMonitor 空/失败返回 null', async () => {
     mockFetch({})
@@ -88,5 +93,18 @@ describe('KPL 新增接口', () => {
     const r = await fetchStockPankou('002594')
     expect(r).toEqual({ errcode: '0', weituo: [] })
     expect(await fetchStockPankou('002594')).toBeNull()
+  })
+
+  it('getLatestTradingDay 采集日落在国庆节假日 → 回退到节前最后交易日', async () => {
+    mockFetch({ date: '2026-10-03' })   // 周六且在国庆休市区间(10/1-10/7)
+    expect(await getLatestTradingDay()).toBe('20260930')
+  })
+  it('getLatestTradingDay 采集日为正常交易日 → 原样返回', async () => {
+    mockFetch({ date: '2026-09-11' })
+    expect(await getLatestTradingDay()).toBe('20260911')
+  })
+  it('getLatestTradingDay 采集日为中秋(周五休市) → 回退到周四', async () => {
+    mockFetch({ date: '2026-09-25' })
+    expect(await getLatestTradingDay()).toBe('20260924')
   })
 })

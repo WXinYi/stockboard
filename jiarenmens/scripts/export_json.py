@@ -417,7 +417,15 @@ def export(db_path, crawl_date, out_dir):
 
         changes = []
         all_pids = set(list(y_map.keys()) + list(t_map.keys()))
+        # 采集覆盖守卫(2026-09-13, 实锤依据: 09-12 周六班 1871人 vs 09-11 1988人, 缺口选手当日
+        # positions/trades 全为 0 → 缺口被算成"清仓", /copy 出现 -164 假清仓):
+        # 当日既无持仓行也无交易行的选手 = 采集缺失而非真清仓, 整体跳过其清仓/变动判定。
+        # (真全清仓的选手当日必有卖出交易行, 不会被误跳过)
+        traded_today = {r[0] for r in conn.execute(
+            "SELECT DISTINCT zh_id FROM trades WHERE crawl_date=?", (today,)).fetchall()}
         for pid in all_pids:
+            if pid not in t_map and pid not in traded_today:
+                continue
             today_stocks = t_map.get(pid, {})
             yesterday_stocks = y_map.get(pid, {})
             all_codes = set(list(today_stocks.keys()) + list(yesterday_stocks.keys()))
@@ -1204,6 +1212,13 @@ def build_lianban_bid(latest_dir: Path, crawl_date: str):
         print(f"⚠️ lianban_bid: auction.db 不可读({e}), 输出空标记")
         _atomic_json(latest_dir / "lianban_bid.json", out)
         return
+    if not bid:
+        # 非交易日班次(周末/节假日 push 触发): bid_pool 无当日行, 腾讯分钟数据会静默落到
+        # 上一交易日的竞价 —— 与 prev 连板名单错配成一个不存在的"决策日"。诚实输出空 top,
+        # 前端日期守卫本来就拒收; 09-12 实例: 09-11连板×09-11竞价 的错配对曾被当补算数据写出。
+        print(f"   lianban_bid.json → {crawl_date} 无竞价数据(非交易日), 输出空 top 防错配")
+        _atomic_json(latest_dir / "lianban_bid.json", out)
+        return
     if lianban:
         _np = os.environ.get("NO_PROXY", "")
         if "gtimg.cn" not in _np:
@@ -1301,12 +1316,27 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
             except Exception:
                 wzq = []
         import re as _re
+        # 名字兜底: 旧存档可能存了裸代码(09-11 实例 601872 等), 用 auction.db 最新名字回填
+        def _stock_name(code, cached={}):
+            if code not in cached:
+                nm = None
+                for tbl in ("bid_pool", "limit_pool"):
+                    row = c.execute(f"SELECT name FROM {tbl} WHERE code=? AND name IS NOT NULL AND name!=''"
+                                    " ORDER BY date DESC LIMIT 1", (code,)).fetchone()
+                    if row and row[0]:
+                        nm = row[0]
+                        break
+                cached[code] = nm or code
+            return cached[code]
         # 全量输出改版(09-07): 可做与 观察(禁买期) 都输出, 页面按状态词标「可买/不出手」
         for p in wzq:
             if "弱转强" not in (p.get("status") or ""):
                 continue
             m = _re.search(r"昨日(\S+?)分歧, 今竞价 ([+\-\d.]+)%", p["reason"])
-            out["today_wzq"].append({"code": p["code"], "name": p["name"],
+            nm = p["name"]
+            if not nm or nm == p["code"]:
+                nm = _stock_name(p["code"])
+            out["today_wzq"].append({"code": p["code"], "name": nm,
                                      "status": p.get("status"),
                                      "tag": p.get("tag") or (m.group(1) if m else "分歧"),
                                      "bid_pct": p.get("bid_pct") or (m.group(2) if m else None), "reason": p["reason"]})

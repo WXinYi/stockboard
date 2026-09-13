@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchAuction, fetchMyPositions, fetchLianbanBid, fetchStrikeReview, fetchSixHistory } from '../data/loader.js'
+import { fetchAuction, fetchCore, fetchMyPositions, fetchLianbanBid, fetchStrikeReview, fetchSixHistory } from '../data/loader.js'
 import { jsonp, secid } from '../utils/eastmoney.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 import {
@@ -29,13 +29,29 @@ const global = ref(null)
 const institution = ref(null)
 const mood = ref(null)
 const lhb = ref(null)
-// 持仓快照: 仅用于候选「已持仓」标记(纪律卡已下线 09-07)
+// 持仓快照: 仅用于候选「已持仓」标记 + 触价提醒明细(纪律卡已下线 09-07)
 const mine = ref(null)
 const discRule = computed(() => STAGE_RULES[cycle.value?.stage] || null)
-const touchCount = computed(() => (mine.value?.positions || []).filter(p => p.touch).length)
+// 触价持仓明细(2026-09-13 从纯计数升级为可点开): 系统估算净持仓为 0 的标"已清仓?"不计入待执行数;
+// net_qty_est 缺失(未知)时保守计入待执行
+const touchRows = computed(() => (mine.value?.positions || []).filter(p => p.touch))
+const touchPending = computed(() => touchRows.value.filter(p => p.net_qty_est !== 0))
+const touchExited = computed(() => touchRows.value.filter(p => p.net_qty_est === 0))
+// 触线描述: exit_rebound=[反抽区间], exit_break=破位线
+const touchLine = p => Array.isArray(p.exit_rebound) && p.exit_rebound.length
+  ? `反抽线 ${p.exit_rebound.join('~')}`
+  : (p.exit_break != null ? `破位线 ${p.exit_break}` : '触价')
+const showTouchDetail = ref(false)
+const showTouchExited = ref(false)
+// 采集日 vs 决策日: 不一致=今天还没有新交易数据(周末/节假日/push触发班次), 明示不猜测原因
+const crawlDate = ref('')
+const staleDayNote = computed(() => (crawlDate.value && cycleDataDay.value && crawlDate.value !== cycleDataDay.value)
+  ? `最新采集 ${crawlDate.value}，决策数据为 ${cycleDataDay.value}（今日暂无新交易数据）` : '')
 
 async function loadMine(silent = false) {
   try { mine.value = await fetchMyPositions() } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
+  // 采集日( core.json date ): 用于"最新采集晚于决策日"的诚实提示, 不猜测节假日
+  try { crawlDate.value = (await fetchCore())?.date || '' } catch (e) { /* 缺失就不提示 */ }
 }
 
 async function loadCycleBattle(silent = false) {
@@ -168,6 +184,20 @@ const preRows = computed(() => (auction.value?.bidrank || auction.value?.strike 
 const llm = computed(() => auction.value?.llm || null)
 const llmRegimeCls = computed(() => ({ '攻击': 'go', '试错': 'warn', '观察': 'watch', '空仓': 'ban' }[llm.value?.regime] || 'plain'))
 const showLlm = ref(true)
+// 可买性标注(纯展示层, 不改写 LLM 输出, 回测口径不受影响): 引擎闸门禁买或模型自判观察/空仓时,
+// 候选照常展示但打「不可买」标签 —— 执行权在引擎纪律, LLM 输出只作对照
+const llmSelfBuy = computed(() => ['攻击', '试错'].includes(llm.value?.regime || ''))
+const llmBlockTxt = computed(() => {
+  if (!llm.value || llm.value.degraded) return ''
+  if (verdictTier.value?.verdict === '禁买') return '禁买期'
+  if (!llmSelfBuy.value) return `模型自判${llm.value.regime || '观察'}`
+  return ''
+})
+// 密度控制: 默认紧凑 — 依据/回避截断两行、候选理由一行, 点"详情/展开"才放全文
+const whyFull = ref(false)
+const avoidFull = ref(false)
+const llmExp = ref({})
+function toggleLlmPick(code) { llmExp.value = { ...llmExp.value, [code]: !llmExp.value[code] } }
 
 // ── 六情绪实时版(battle 同源输入 + six_history 历史分位), 打开页面/30s 刷新即最新 ──
 const sixLive = ref(null)
@@ -291,7 +321,11 @@ const reviewRest = computed(() => reviewRows.value.slice(5))
 const showBrowse = ref(false)
 const ladderTop5 = computed(() => (ladder.value || []).slice(0, 5))
 const ladderLevel = g => { const n = parseInt(g.title); return !isNaN(n) ? n : 0 }
-const ladderStocks = g => (g.rows || []).slice(0, 3).map(r => r.name).join('、')
+const ladderStocks = g => {
+  const rows = g.rows || []
+  const names = rows.slice(0, 3).map(r => r.name).join('、')
+  return rows.length > 3 ? `${names} 等${rows.length}只` : names
+}
 const lhbTop3 = computed(() => (lhb.value?.list || []).slice(0, 3))
 const instTop3 = computed(() => (institution.value || []).slice(0, 3))
 const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
@@ -300,6 +334,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 <template>
   <div class="mt-page">
     <div class="pk-day">决策日 {{ cycleDataDay || auction?.date || '—' }}</div>
+    <div v-if="staleDayNote" class="pk-stale">ℹ️ {{ staleDayNote }}</div>
 
     <!-- ① 结论头: 当下可否买入(池 → 上限 → 一句话结论), 点击进 cycle 详情 -->
     <div v-if="battle && !battle.empty" class="pk-verdict" :class="'v-' + verdictShow.cls" :style="{ '--sc': STAGE_COLORS[cycle?.stage] || '#8a97a8' }" @click="open('cycle')">
@@ -311,7 +346,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
       <div class="pk-sub" v-if="gateSentenceTxt">{{ gateSentenceTxt }}{{ stageShift ? '（' + stageShift + '）' : '' }}</div>
       <div class="pk-sub muted" v-else>正在计算今日阶段与池…</div>
       <div v-if="riskSummary" class="pk-risk">
-        <span v-if="riskSummary.sw">🔄 主线切换 {{ riskSummary.sw }}</span>
+        <span v-if="riskSummary.sw">🔄 {{ riskSummary.sw }}</span>
         <span v-if="riskSummary.names.length">🚨 高标开板: {{ riskSummary.names.join('、') }}</span>
       </div>
       <div v-if="dvg" class="pk-warn">⚠️ {{ dvg }}</div>
@@ -321,8 +356,29 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
       <span class="pk-sub muted">周期数据加载中,稍候给出「可否买入」结论</span>
     </div>
 
-    <!-- ① 持仓触价风控(纪律卡下线后的轻量回补: 有触价即红字提醒) -->
-    <div v-if="touchCount > 0" class="pk-touch">⚠️ {{ touchCount }} 只持仓触价待执行(反抽/破位线命中, 按价执行不撤单)</div>
+    <!-- ① 持仓触价风控(纪律卡下线后的轻量回补): 可点开看逐只明细; 系统估算已清仓的不计入待执行 -->
+    <template v-if="touchRows.length > 0">
+      <div class="pk-touch" @click="showTouchDetail = !showTouchDetail">
+        ⚠️ {{ touchPending.length }} 只持仓触价待执行(反抽/破位线命中, 按价执行不撤单){{ touchExited.length ? ` · 另 ${touchExited.length} 只系统估算已清仓` : '' }} {{ showTouchDetail ? '▲' : '▼' }}
+      </div>
+      <div v-if="showTouchDetail" class="pk-touch-panel">
+        <div v-for="p in touchPending" :key="p.code" class="pk-touch-row" @click="goStock(p)">
+          <b>{{ p.name }}</b>
+          <span class="tk-line">{{ touchLine(p) }} · 现 {{ p.price }}({{ p.pct > 0 ? '+' : '' }}{{ p.pct }}%)</span>
+          <span class="tk-note">{{ p.note }}</span>
+        </div>
+        <div v-if="touchExited.length" class="pk-touch-toggle" @click="showTouchExited = !showTouchExited">
+          {{ showTouchExited ? '收起已清仓 ▲' : `系统估算已清仓 ${touchExited.length} 只 ▾` }}
+        </div>
+        <template v-if="showTouchExited">
+          <div v-for="p in touchExited" :key="'x' + p.code" class="pk-touch-row exited" @click="goStock(p)">
+            <b>{{ p.name }}</b>
+            <span class="tk-line">{{ touchLine(p) }} · 现 {{ p.price }}({{ p.pct > 0 ? '+' : '' }}{{ p.pct }}%)</span>
+            <span class="tk-note">系统估算净持仓 0(已清仓?) — 若实际仍持有请按纪律执行</span>
+          </div>
+        </template>
+      </div>
+    </template>
 
     <!-- ② 出击 pane(决策流主体; 早盘盘前候选在上, 盘中在下) -->
     <div class="mt-pane">
@@ -465,31 +521,43 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           </div>
         </template>
       </section>
-      <!-- 大模型独立选股(影子): 每日 09:25 DeepSeek 只看原始竞价数据独立分析, 与引擎结论互不影响 -->
-      <section v-if="llm" class="mt-sec">
+      <!-- 大模型独立选股(影子): 每日 09:25 DeepSeek 只看原始竞价数据独立分析, 与引擎结论互不影响.
+           卡片常驻: 无输出日也保留入口(占位说明), 候选不可买时照常展示只打标签, 执行权在引擎纪律 -->
+      <section class="mt-sec">
         <div class="mt-sec-head">
-          <h3>🤖 大模型选股<Hint text="DeepSeek 独立分析: 只喂 09:25 原始竞价数据(昨日涨停池/炸板/宽度/竞价额), 不参考引擎结论; 允许空仓输出。影子运行仅供对照, 不构成引擎结论。"/></h3>
-          <em>{{ llm.model }} · {{ llm.prompt_ver }} · {{ (llm.generated_at || '').slice(11, 16) }}</em>
-          <button class="mt-more" @click="showLlm = !showLlm">{{ showLlm ? '收起 ▲' : '展开 ▾' }}</button>
+          <h3>🤖 大模型选股<Hint text="DeepSeek 独立分析: 只喂 09:25 原始竞价数据(昨日涨停池/炸板/宽度/竞价额), 不参考引擎结论; 允许空仓输出。影子运行仅供对照, 不构成引擎结论; 候选上的「不可买」标签来自引擎闸门/模型自判, 展示层标注, 不影响回测口径。"/></h3>
+          <em v-if="llm">{{ llm.model }} · {{ llm.prompt_ver }} · {{ (llm.generated_at || '').slice(11, 16) }}</em>
+          <button v-if="llm" class="mt-more" @click="showLlm = !showLlm">{{ showLlm ? '收起 ▲' : '展开 ▾' }}</button>
         </div>
-        <template v-if="!llm.degraded">
+        <template v-if="llm && showLlm && !llm.degraded">
           <div class="mt-llm-head">
             <span :class="['llm-regime', llmRegimeCls]">{{ llm.regime || '—' }}</span>
             <span class="llm-pos">{{ llm.position_today }}</span>
+            <span v-if="llmBlockTxt && (llm.picks || []).length" class="rv-tag watch">候选均不可买 · {{ llmBlockTxt }}</span>
           </div>
-          <div class="mt-llm-why">{{ llm.why }}</div>
+          <div class="mt-llm-why" :class="{ clamped: !whyFull }" @click="whyFull = !whyFull">{{ llm.why }}</div>
+          <div v-if="!whyFull" class="clamp-line" @click="whyFull = true">展开依据 ▾</div>
           <div v-if="!(llm.picks || []).length" class="mt-hold">今日 {{ llm.regime }} —— 空仓等待 ✓（不满足出手条件，空仓即正确）</div>
           <div v-for="k in llm.picks" :key="k.code" class="mt-review" @click="goStock(k)">
             <div class="mt-strike-top">
               <b class="nm">{{ k.name }}</b>
               <span class="llm-action">{{ k.action }}</span>
               <span class="llm-pos-tag">{{ k.pos }}</span>
+              <span v-if="llmBlockTxt" class="rv-tag watch">不可买</span>
+              <button class="mt-mini" @click.stop="toggleLlmPick(k.code)">{{ llmExp[k.code] ? '收起' : '详情' }}</button>
             </div>
-            <div class="wzq-sub">{{ k.reason }}<template v-if="k.entry"> · 买法: {{ k.entry }}</template><template v-if="k.stop"> · 止损: {{ k.stop }}</template></div>
+            <div class="wzq-sub" :class="{ clamped: !llmExp[k.code] }">
+              {{ k.reason }}<template v-if="llmExp[k.code]"><template v-if="k.entry"> · 买法: {{ k.entry }}</template><template v-if="k.stop"> · 止损: {{ k.stop }}</template></template>
+            </div>
           </div>
-          <div class="mt-llm-avoid">🚫 回避: {{ llm.avoid }}</div>
+          <div class="mt-llm-avoid" :class="{ clamped: !avoidFull }" @click="avoidFull = !avoidFull">🚫 回避: {{ llm.avoid }}</div>
+          <div v-if="!avoidFull" class="clamp-line" @click="avoidFull = true">展开回避 ▾</div>
         </template>
-        <div v-else class="mt-hold">今日无有效输出（模型输出异常，已降级存档待回测）</div>
+        <div v-else-if="llm && showLlm && llm.degraded" class="mt-hold">今日无有效输出（模型输出异常，已降级存档待回测）</div>
+        <!-- 竞价数据未到时不下"暂无"结论, 防加载闪现误导; llm 存在但收起时三分支全不命中=只留卡头 -->
+        <div v-else-if="!auctionLoading && !llm" class="mt-hold">
+          暂无模型输出 — 每个交易日 09:25 竞价班自动生成，非交易日/上线前的历史日期无此项
+        </div>
       </section>
       <section v-if="reviewValid && review" class="mt-sec">
         <div class="mt-sec-head">
@@ -607,7 +675,16 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .pk-more { margin-left: auto; font-size: 11px; color: #b7c0cc; flex: none; }
 .pk-sub { margin-top: 7px; font-size: 11.5px; color: #43505e; line-height: 1.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-sub.muted { color: #a6afbd; }
-.pk-touch { font-size: 12px; font-weight: 700; color: #fff; background: #e67e22; border-radius: 10px; padding: 7px 13px; margin-bottom: 8px; }
+.pk-touch { font-size: 12px; font-weight: 700; color: #fff; background: #e67e22; border-radius: 10px; padding: 7px 13px; margin-bottom: 8px; cursor: pointer; }
+.pk-stale { font-size: 11px; color: #8a6d1a; background: #fdf6e0; border: 1px solid #eee0b0; border-radius: 8px; padding: 5px 10px; margin-bottom: 8px; }
+.pk-touch-panel { background: #fff7f2; border: 1px solid #f2ddce; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.pk-touch-row { padding: 5px 0; border-bottom: 1px solid #f5e8dd; cursor: pointer; line-height: 1.5; }
+.pk-touch-row:last-of-type { border-bottom: none; }
+.pk-touch-row b { font-size: 12.5px; color: #333; margin-right: 6px; }
+.pk-touch-row.exited { opacity: .62; }
+.tk-line { display: inline; font-size: 11px; color: #b06020; }
+.tk-note { display: block; font-size: 10.5px; color: #8a97a8; }
+.pk-touch-toggle { font-size: 10.5px; color: #2980b9; padding: 4px 0 0; cursor: pointer; }
 .pk-risk { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; font-size: 11px; color: #b9770e; background: #fff7e8; border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
 .pk-warn { margin-top: 7px; font-size: 11px; color: #b06020; background: #fff7e8; border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
 .pk-empty { border: 1px dashed #cbd5e0; border-radius: 12px; background: #f7f9fc; padding: 14px 12px; text-align: center; margin-bottom: 6px; }
@@ -663,16 +740,23 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .wzq-top .rv-tag { margin-left: auto; }
 .wzq-sub { font-size: 11px; color: #78839a; line-height: 1.6; margin: 3px 0 0; word-break: break-all; }
 /* ── 大模型选股(影子) ── */
-.mt-llm-head { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; }
-.llm-regime { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 10px; }
+.mt-llm-head { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; flex-wrap: wrap; }
+.llm-regime { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 10px; flex: none; white-space: nowrap; }
 .llm-regime.go { color: #0a7d34; background: rgba(42,168,92,.12); }
 .llm-regime.warn { color: #b06a00; background: rgba(230,146,26,.14); }
 .llm-regime.watch { color: #2980b9; background: rgba(41,128,185,.1); }
 .llm-regime.ban { color: #c0392b; background: rgba(192,57,43,.1); }
 .llm-regime.plain { color: #8e8e9a; background: rgba(0,0,0,.05); }
-.llm-pos { font-size: 11px; color: #78839a; }
+.llm-pos { font-size: 11px; color: #78839a; flex: 1 1 auto; min-width: 0; }
+/* 中文无空格, flex 收缩会压成一字一列, 不可买标签禁止收缩 */
+.mt-llm-head .rv-tag { margin-left: 0; }
 .mt-llm-why { font-size: 11px; color: #5b6a85; line-height: 1.6; padding: 4px 0 8px; border-bottom: 0.5px solid rgba(0,0,0,.04); }
 .mt-llm-avoid { font-size: 11px; color: #a05a4a; line-height: 1.6; padding: 8px 0 2px; border-top: 0.5px solid rgba(0,0,0,.04); margin-top: 4px; }
+/* 文本密度: 默认截断(依据/回避两行, 候选理由一行), 点击文本或下方小字放全文 */
+.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.mt-review .wzq-sub.clamped { -webkit-line-clamp: 1; }
+.clamp-line { font-size: 10px; color: #2980b9; text-align: right; padding: 2px 2px 6px; cursor: pointer; }
+.mt-llm-avoid + .clamp-line { padding-top: 0; }
 .llm-action { font-size: 11px; color: #5b6daa; font-weight: 600; }
 .llm-pos-tag { font-size: 10px; color: #8e8e9a; margin-left: auto; }
 .mt-strike-top { flex-wrap: wrap; row-gap: 4px; }

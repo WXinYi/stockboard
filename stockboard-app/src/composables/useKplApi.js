@@ -1,6 +1,7 @@
 // 开盘啦(KPL) 前端数据封装 —— 详情页行情/板块 + 盘面页全市场 + 详情页资讯/F10
 // 接口来源: github.com/zensu357/KPL-post 接口清单; 字段映射全部经 curl 实测(2026-08-09)
 import { fetchAuction } from '../data/loader.js'
+import { isTradingDay } from '../utils/tradingCalendar.js'
 
 // ---- 公共常量(与 jiarenmens/src/config.py 同款, 仓库公开, 安全) ----
 export const KPL_TOKEN = '036ca9cad6e44ee4a585c22cb2c298ed'
@@ -56,8 +57,19 @@ export function isTradingTime() {
 }
 
 // 最近交易日: core.json 的 date(采集日, 周末/节假日采集会落在非交易日)
-// → 非工作日则回退本地最近工作日(GetPlateInfo_w38/GetBKJJBL 对非交易日返回空)
+// → 向前回退到最近交易日(GetPlateInfo_w38/GetBKJJBL 对非交易日返回空)。
+// 2026-09-13 起用交易所节假日表(utils/tradingCalendar.js, 上交所2026通知), 法定节假日不再误判;
+// 表未覆盖的年份退回"周一~周五"近似(旧行为)。
 export async function getLatestTradingDay() {
+  const fmt = t => t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0')
+  const rollback = d => {
+    for (let i = 0; i < 20; i++) {
+      const t = new Date(d.getTime() - i * 86400000)
+      const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+      if (isTradingDay(iso)) return fmt(t)
+    }
+    return ''
+  }
   try {
     const BASE = import.meta.env.BASE_URL
     const j = await withTimeout(fetch(BASE + 'data/latest/core.json').then(r => r.json()))
@@ -65,25 +77,13 @@ export async function getLatestTradingDay() {
       const s = String(j.date).replace(/-/g, '')
       const d = new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))
       if (!Number.isNaN(d.getTime())) {
-        // 采集日可能落在周末/节假日(爬虫周末也会跑) → 向前回退到最近交易日(GetBKJJBL 需已入库交易日)
-        for (let i = 0; i < 7; i++) {
-          const t = new Date(d.getTime() - i * 86400000)
-          if (t.getDay() !== 0 && t.getDay() !== 6) {
-            return t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0')
-          }
-        }
+        // 采集日可能落在周末/节假日(爬虫周末也会跑) → 回退到最近交易日
+        const hit = rollback(d)
+        if (hit) return hit
       }
     }
   } catch (e) { /* fallthrough */ }
-  const d = new Date()
-  for (let i = 0; i < 10; i++) {
-    const t = new Date(d.getTime() - i * 86400000)
-    const w = t.getDay()
-    if (w !== 0 && w !== 6) {
-      return t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0')
-    }
-  }
-  return ''
+  return rollback(new Date())
 }
 
 // 最近已过的财报报告期 (3-31/6-30/9-30/12-31) — 机构增仓接口用
@@ -624,16 +624,25 @@ export async function fetchStockPankou(code, silent = false) {
   return j
 }
 
-// 逐笔大单 GetMainMonitor_w30 (POST) — 行 [时间,价格,方向0买1卖,手数,类型?,金额]
+// 逐笔大单 GetMainMonitor_w30 (POST)
+// 行序与方向图例见 ~/.claude/reference/kpl-api.md [48][49]:
+// [买卖方向, 时间戳, 成交量(手), 金额(元), 均价, "YYYY-MM-DD HH:MM:SS"]
+// 方向: 1 被动卖 / 2 主动买 / 3 被动买 / 4 主动卖 (2026-09-13 实探接口复核一致)
 export async function fetchMainMonitor(code, silent = false) {
   const j = await postForm(HOST_HQ, { a: 'GetMainMonitor_w30', c: 'StockYiDongKanPan', Order: 0, st: 20, Index: 0, Money: 2, StockID: code, IsBS: 0, DeviceID: KPL_DEVICE, ...COMMON }, silent)
   if (!j || !Array.isArray(j.List)) return null
-  return j.List.map(r => ({
-    time: String(r[0] || ''), price: parseFloat(r[1]),
-    side: r[2] === '0' ? '买' : '卖', vol: parseFloat(r[3]),
-    amount: parseFloat(r[5]),
-    type: parseFloat(r[3]) >= 100 ? '超大' : parseFloat(r[3]) >= 50 ? '大单' : '中单',
-  }))
+  return j.List.map(r => {
+    const dir = String(r[0] || '')
+    return {
+      // 时间列 38px 只放得下 HH:MM:SS
+      time: String(r[5] || '').slice(11, 19) || new Date((parseFloat(r[1]) || 0) * 1000).toLocaleTimeString('zh-CN', { hour12: false }),
+      price: parseFloat(r[4]),
+      side: (dir === '2' || dir === '3') ? '买' : '卖',
+      vol: parseFloat(r[2]),
+      amount: parseFloat(r[3]),
+      type: (parseFloat(r[2]) || 0) >= 100 ? '超大' : (parseFloat(r[2]) || 0) >= 50 ? '大单' : '中单',
+    }
+  })
 }
 
 // 涨停基因 GetZhangTingGene (GET, 免Token) — List[涨停次数,5%溢价次,次日红盘%,首板封板率%,破板率%,连板率%]

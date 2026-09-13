@@ -54,7 +54,9 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
       <!-- 环境结论 -->
       <div class="at-env" :class="pass ? 'ok' : 'no'">
         <div class="r1">
-          <span class="badge" :class="pass ? 'ok' : 'no'">{{ pass ? '✅ 可出手' : '❌ 空仓观望' }}</span>
+          <!-- 词汇统一(2026-09-13): 全站 可买/谨慎可买/禁买 三档; 竞价闸门是二值通过性判定,
+               不冒充仓位档位, 通过≠可买, 最终以选股首页结论为准 -->
+          <span class="badge" :class="pass ? 'ok' : 'no'">{{ pass ? '✅ 闸门通过' : '❌ 禁买(闸门未通过)' }}</span>
           <span class="time">{{ auction.generated_at }}</span>
         </div>
         <div class="rs"><div v-for="(r, i) in reasons" :key="i">· {{ r }}</div></div>

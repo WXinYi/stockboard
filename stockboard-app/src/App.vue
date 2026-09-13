@@ -6,6 +6,8 @@ import { useData } from './composables/useData.js'
 import { useHistory } from './composables/useHistory.js'
 import { useRelativeTime } from './composables/useRelativeTime.js'
 import { useDataRefresh } from './composables/useUX.js'
+import { getLatestTradingDay } from './composables/useKplApi.js'
+import { MARKET_SECTION_TITLES } from './utils/sectionTitles.js'
 import NavBar from './components/NavBar.vue'
 import PullToRefresh from './components/PullToRefresh.vue'
 import StockSearch from './components/StockSearch.vue'
@@ -41,11 +43,7 @@ const pageTitles = {
   stocks: '重仓共识',
   auction: '竞价抢筹',
 }
-const marketSectionTitles = {
-  auction: '竞价抢筹', wind: '最强风口', ladder: '涨停天梯', reasons: '涨停原因',
-  newhighs: '百日新高', global: '外围市场', institution: '机构增仓',
-  mood: '市场情绪', live: '盘面动态', lhb: '龙虎榜', discipline: '我的纪律卡',
-}
+const marketSectionTitles = MARKET_SECTION_TITLES   // 唯一映射(含 cycle), 与 MarketDetail 共用
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
   if (route.path.startsWith('/stock/')) return '股票详情'
@@ -106,10 +104,15 @@ async function ensureRoute() {
 
 watch(() => route.path, () => { ensureRoute() })
 
+// 页脚"数据截至"交易日: 与盘面二级页同源(getLatestTradingDay, core 采集日回退最近工作日)
+const tradingDay = ref('')
+const crawlDay = computed(() => (currentDate.value || '').slice(0, 10))
+
 onMounted(async () => {
   await loadData()          // 只等 core（~20KB），首屏尽快渲染
   ensureRoute()             // 当前 Tab 分片，不阻塞首屏
   initCheck()
+  getLatestTradingDay().then(d => { if (d && d.length === 8) tradingDay.value = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` }).catch(() => {})
 })
 
 </script>
@@ -159,8 +162,10 @@ onMounted(async () => {
       </PullToRefresh>
     </main>
 
+    <!-- 页脚时点诚实化(2026-09-13): core.date 是采集日(周末采集会落在非交易日),
+         此前标成"数据日期"误导(09-12周六曾当数据日展示)。交易日单独给出, 两者不一致时都亮出来 -->
     <footer class="footer" :title="crawlTime ? `数据采集于 ${crawlTime}` : ''">
-      StockBoard · 数据日期 {{ currentDate || '—' }}<template v-if="crawlTimeShort"> · 采集 {{ crawlTimeShort }}</template>
+      StockBoard · 采集 {{ crawlTimeShort || currentDate || '—' }}<template v-if="tradingDay && tradingDay !== crawlDay"> · 数据截至 {{ tradingDay }}</template>
     </footer>
 
     <!-- 全局股票搜索浮层 -->

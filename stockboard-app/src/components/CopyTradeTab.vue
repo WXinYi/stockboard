@@ -6,8 +6,14 @@ import { useTableSort } from '../composables/useTableSort.js'
 const showAlerts = ref(false)
 const showSuspects = ref(false)
 const router = useRouter()
-const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears, qualityPlayerCount } = inject('stockData')
+const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears, qualityPlayerCount, crawlTime } = inject('stockData')
 const { changesSummary: posCh } = inject('stockHistory')
+// 该班是否周末采集: 用 crawlTime(采集事实)判断, 不猜测节假日
+const isWeekendCrawl = computed(() => {
+  const d = new Date(String(crawlTime.value || '').replace(' ', 'T'))
+  const wd = d.getDay()
+  return !isNaN(wd) && (wd === 0 || wd === 6)
+})
 function goPlayer(nameOrId) { router.push('/player/' + (playerIds.value[nameOrId] || nameOrId)) }
 
 const coreData = computed(() => signals.value.ch)
@@ -52,6 +58,8 @@ function pct(v) {
   <!-- 持仓变更摘要 -->
   <div v-if="posCh && posCh.hasHistory" class="summary-bar">
     {{ posCh.today }} · +{{ posCh.addedCount }}新进 -{{ posCh.clearedCount }}清仓 {{ posCh.changeCount }}笔变动
+    <!-- 周六/周日采集的班次对比的是错位日期, 清仓计数可能因采集覆盖面失真(09-12 实例 -164), 明示不掩饰 -->
+    <span v-if="isWeekendCrawl" style="color:#b06020;"> · ⚠️ 该班为周末采集, 变动计数可能失真, 以交易日班次为准</span>
   </div>
   <div v-else class="summary-bar" style="color:#aaa;">需要至少2天数据 · 下个交易日 09:45 自动采集</div>
 
