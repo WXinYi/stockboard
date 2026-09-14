@@ -18,6 +18,7 @@
 | ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
 | ⑦ Build Vue 提速 | ✅ **上线并双分支验证** | dist 壳按代码指纹缓存，数据班跳过 npm ci+vite 全量构建（原慢班 Build Vue 可达 425s）。09-05 两次 push 触发实测：cache-miss 全量构建分支 ✅ / cache-hit rsync 拼接分支 ✅，详见 A2 |
 | 观察期 ⑥ | ✅ **观察期结束(5/5天全过) + 追加日 09-09 ✅** | 观察期 09-02~09-08 五天全部通过；09-09 定时任务第5/5次(末次)继续全绿：主链路 eod #574 success、热层 18:15 更新、Pages 四 JSON 日期=09-09、竞价 #30(09:25) + 涨停池回补 #19(15:05) 均 success、manifest integrity ok (trades 214304, range 07-29~09-09)。定时自检任务到期结束，详细逐日记录见 B |
+| ⑧ 对账巡检（本地工具） | ✅ 脚本完成 / ⏸ 不进 CI（09-14 拍板） | `data_reconcile.py`：现场重拉原始接口 + 生产页 DOM，核对选股页 6 模块，❌→钉钉告警。**用户拍板巡检不加到生产环境**，仅手动本地跑，crawl.yml 不改动。同批修复：stage_candidates 弱转强/首板"昨日"锚 off-by-one（9:26 盘前班名单恒旧一个交易日，巡检⑤实锤）、`_synthesize_wzq` bid_pct 存字符串（与 09-14 早盘竞价班崩溃同类隐患）、MarketTab llm 卡 UTC 时戳直显 + snapTxt 切位错（恒判"早盘曾判"） |
 
 ---
 

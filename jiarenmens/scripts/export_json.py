@@ -1300,7 +1300,7 @@ def _synthesize_wzq(c, eff_date: str, prev: str | None, stage_word: str) -> list
         tag = "断板" if code in duan else ("炸板" if code in broken else "烂板")
         out.append({"code": code, "name": _any_name(code), "status": status,
                     "reason": f"弱转强: 昨日{tag}分歧, 今竞价 {b:+.1f}%, 分时确认才上",
-                    "tag": tag, "bid_pct": f"{b:+.1f}"})
+                    "tag": tag, "bid_pct": round(float(b), 2)})  # 数值型(2026-09-14 修复: 曾存 "+4.3" 字符串, 与 09-14 早盘 bid_pct 格式化崩溃同类; 前端排序 stockPicks.js 也做数值比较)
     return out
 
 

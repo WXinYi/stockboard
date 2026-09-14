@@ -170,8 +170,10 @@ const morningStage = computed(() => {
   return a.cycle.stage
 })
 const snapTxt = computed(() => {
-  const h = parseInt(String(auction.value?.generated_at || '').slice(11, 13)) || 9
-  return h >= 12 ? '盘中曾判' : '早盘曾判'
+  // generated_at="HH:MM"(北京时间, auction_scan crawl_time): 旧代码 slice(11,13) 切空串恒判"早盘"
+  const s = String(auction.value?.generated_at || '')
+  const h = parseInt(s.includes('T') ? s.slice(11, 13) : s.slice(0, 2))
+  return (h || 9) >= 12 ? '盘中曾判' : '早盘曾判'
 })
 const stageShift = computed(() => {
   const m = morningStage.value, live = cycle.value?.stage || ''
@@ -192,6 +194,15 @@ const preRows = computed(() => (auction.value?.bidrank || auction.value?.strike 
 
 // 大模型独立选股(影子): auction.json.llm, 与引擎结论互不影响; 允许空仓输出
 const llm = computed(() => auction.value?.llm || null)
+// llm 卡时间: llm_review.created_at 是 CI runner 的 UTC ISO, 直显 slice(11,16) 会把北京 10:55 显示成 02:55
+const llmTime = computed(() => {
+  const s = String(llm.value?.generated_at || '')
+  if (!s) return ''
+  if (!/T\d{2}:/.test(s)) return s   // 已是短格式(HH:MM)原样
+  const d = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(s) ? s : `${s}Z`)   // 裸 ISO 按 UTC(CI runner 时区)
+  return isNaN(d) ? s.slice(11, 16)
+    : d.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
+})
 const llmRegimeCls = computed(() => ({ '攻击': 'go', '试错': 'warn', '观察': 'watch', '空仓': 'ban' }[llm.value?.regime] || 'plain'))
 const showLlm = ref(true)
 // 可买性标注(纯展示层, 不改写 LLM 输出, 回测口径不受影响): 引擎闸门禁买或模型自判观察/空仓时,
@@ -539,7 +550,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
       <section class="mt-sec">
         <div class="mt-sec-head">
           <h3>🤖 大模型选股<Hint text="DeepSeek 独立分析: 只喂 09:25 原始竞价数据(昨日涨停池/炸板/宽度/竞价额), 不参考引擎结论; 允许空仓输出。影子运行仅供对照, 不构成引擎结论; 候选上的「不可买」标签来自引擎闸门/模型自判, 展示层标注, 不影响回测口径。"/></h3>
-          <em v-if="llm">{{ llm.model }} · {{ llm.prompt_ver }} · {{ (llm.generated_at || '').slice(11, 16) }}</em>
+          <em v-if="llm">{{ llm.model }} · {{ llm.prompt_ver }} · {{ llmTime }}</em>
           <button v-if="llm" class="mt-more" @click="showLlm = !showLlm">{{ showLlm ? '收起 ▲' : '展开 ▾' }}</button>
         </div>
         <template v-if="llm && showLlm && !llm.degraded">

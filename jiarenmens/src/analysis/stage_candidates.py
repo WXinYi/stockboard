@@ -116,8 +116,14 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
     pool_rows = load_pool(days=10)
     dates = sorted({r["date"] for r in pool_rows})
     cur_rows = [r for r in pool_rows if r["date"] == date_str]
-    prev_rows = [r for r in pool_rows if r["date"] == dates[dates.index(date_str) - 1]] \
-        if date_str in dates and dates.index(date_str) > 0 else []
+    # "昨日"锚 = 执行日(bid_date)前一交易日, 非周期日前一交易日(2026-09-14 对账巡检⑤修复):
+    # 9:26 盘前班 cycle_res.date 回落到昨收日, 旧锚 dates[index(周期日)-1] 恒再往前错一天,
+    # 1进2首板池/弱转强分歧池被锚到前日("昨日XX分歧"名不副实; 实锤: 众泰汽车 断板@09-10 vs
+    # 应为 烂板@09-11)。收盘/回放班 bid_date 缺省=周期日 → 锚不变, 历史行为零变化。
+    _anchor = bid_date or date_str
+    _prior = [d for d in dates if d < _anchor]
+    prev_date = _prior[-1] if _prior else None
+    prev_rows = [r for r in pool_rows if r["date"] == prev_date]
     prev_first = {r["code"]: r for r in prev_rows if r["height"] == 1}
     bids = _bid_pool(bid_date or date_str)
     mainlines = {m["board"] for m in cycle_res["mainlines"]}
@@ -173,15 +179,14 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
     # 弱转强全阶段产出(2026-09-07 "全量输出"改版): 候选必产, 阶段只决定 可做/观察(禁买期)
     #   启动/发酵/分歧 → 可做(弱转强); 高潮/退潮/冰点 → 观察(弱转强·禁买期), 页面标「不出手」。
     wzq_status = "可做(弱转强)" if stage in ("启动", "发酵", "分歧") else "观察(弱转强·禁买期)"
-    if date_str in dates and dates.index(date_str) >= 1:
-        _i = dates.index(date_str)
-        prev_date2 = dates[_i - 1]
-        prev2_codes = {r["code"] for r in pool_rows if r["date"] == dates[_i - 2]} if _i >= 2 else set()
+    if prev_date:
+        _j = dates.index(prev_date)
+        prev2_codes = {r["code"] for r in pool_rows if r["date"] == dates[_j - 1]} if _j >= 1 else set()
         sealed_prev = {r["code"] for r in prev_rows}
-        broken_prev = _broken_map(prev_date2)  # 昨日触板未封(精确炸板池, 选股宝归档)
+        broken_prev = _broken_map(prev_date)  # 昨日触板未封(精确炸板池, 选股宝归档)
         duanban = prev2_codes - sealed_prev  # 前日涨停、昨日未封 = 昨日断板
-        rotten = {r["code"] for r in pool_rows if r["date"] == prev_date2
-                  and r.get("max_seal") and r.get("seal_amount")
+        rotten = {r["code"] for r in prev_rows
+                  if r.get("max_seal") and r.get("seal_amount")
                   and r["seal_amount"] / r["max_seal"] < 0.15}
         names_d = {r["code"]: r["name"] for r in pool_rows}
         for code in list(duanban | rotten | set(broken_prev))[:80]:
