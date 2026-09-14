@@ -267,11 +267,7 @@ class AuctionStore:
             _have_pool = {r[1] for r in c.execute("PRAGMA table_info(bid_pool)")}
             if "unfilled_buy" not in _have_pool:
                 c.execute("ALTER TABLE bid_pool ADD COLUMN unfilled_buy REAL")
-            # 存量清理守卫(2026-09-06): 评分漏斗/V5/打标体系已删, Release 热层旧库仍带这些表
-            # → 每班开跑自动 DROP(幂等), 班内 sha 变更后自动上传干净库。确认无旧库残留后本段可删。
-            for _legacy in ("v5_results", "candidates", "candidate_results",
-                            "funnel_rejected", "bid_series", "gene_daily"):
-                c.execute(f"DROP TABLE IF EXISTS {_legacy}")
+            # 存量清理守卫(V5 旧表 DROP)已于 2026-09-14 删除: Release 热层/日快照自 09-06 起均为干净库
 
     @staticmethod
     def _validate_date(date_str):

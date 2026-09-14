@@ -35,10 +35,8 @@ jobs:
           cd jiarenmens
           if python3 scripts/release_db.py --what auction --download-latest; then
             echo "✅ 已恢复 auction 热层"
-          elif [ -f data/auction.db ]; then
-            echo "⚠️ auction 热层不可用(迁移过渡期), 使用 git 内 db 继续"
           else
-            echo "❌ auction.db 恢复失败且本地无库, 推送将降级"; exit 1
+            echo "❌ auction.db 恢复失败, 推送将降级"; exit 1
           fi
 
       - name: 尾盘格局推送
