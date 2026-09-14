@@ -193,7 +193,7 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
             add(code, nm, 0,
                 f"弱转强: 昨日{tag}分歧, 今竞价 {bids[code]['change_pct']:+.1f}%, 分时确认才上",
                 wzq_status,
-                tag=tag, bid_pct=f"{bids[code]['change_pct']:+.1f}")  # 结构化字段: build_strike_review 优先读, 免 regex 解析 reason
+                tag=tag, bid_pct=round(float(bids[code]['change_pct']), 2))  # 结构化字段(数值型! 2026-09-14 修复: 曾存 "+2.5" 字符串, 推送行 :+.1f 格式化崩溃, 竞价班整班失败; regex 兜底仍在 build_strike_review)
 
     return _apply_matrix(_apply_shrink_filter(pool, cycle_res, cur_rows), cycle_res)[:max_n]
 

@@ -497,7 +497,15 @@ def _strike_line(i: int, p: Dict) -> List[str]:
     icon = "🟡" if "矩阵谨慎" in st else ("🔴" if st.startswith("可做") else "⚪")
     h = p.get("height") or 0
     pos = f"{h}连板" if h >= 2 else ("首板" if h == 1 else "")
-    bid = f" 竞价{p['bid_pct']:+.1f}%" if p.get("bid_pct") is not None else ""
+    # bid_pct 防御(2026-09-14): 旧存档可能存字符串("+2.5"), 转数值失败就原样拼, 不让格式化炸班
+    bidp = p.get("bid_pct")
+    if bidp is None:
+        bid = ""
+    else:
+        try:
+            bid = f" 竞价{float(bidp):+.1f}%"
+        except (TypeError, ValueError):
+            bid = f" 竞价{bidp}%"
     return [f"{i}. {icon} {_stock_link(p['name'], p['code'])} {pos}{bid}".rstrip(),
             f"   {st} · {(p.get('reason') or '')[:60]}"]
 
@@ -552,7 +560,10 @@ def auction_pulse(prev_limit: List[Dict], pool: Dict[str, Dict],
         for l in leaders:
             item = pool.get(str(l["code"]))
             if item and item.get("bid_pct") is not None:
-                q.append(f"{l['name']}{item['bid_pct']:+.1f}%")
+                try:
+                    q.append(f"{l['name']}{float(item['bid_pct']):+.1f}%")
+                except (TypeError, ValueError):
+                    q.append(f"{l['name']}{item['bid_pct']}%")
             if len(q) >= top_leaders:
                 break
         if q:
@@ -610,7 +621,10 @@ def build_strike_message(date_str: str, crawl_time: str, cycle_res: Optional[Dic
         for i, b in enumerate(bidrank, 1):
             h = b.get("height") or 0
             pos = f"{h}连板" if h >= 2 else ("首板" if h == 1 else "")
-            bid = f" 竞价{b['bid_pct']:+.1f}%" if b.get("bid_pct") is not None else ""
+            try:
+                bid = f" 竞价{float(b['bid_pct']):+.1f}%" if b.get("bid_pct") is not None else ""
+            except (TypeError, ValueError):
+                bid = f" 竞价{b['bid_pct']}%"
             lines.append(f"{i}. {_stock_link(b['name'], b['code'])} {pos}{bid} "
                          f"· 换手{b['turnover']:.2f}%".strip())
         lines.append("> 换手=竞价实际成交换手(09:25口径); 竞价无成交的连板股不参与排名")
