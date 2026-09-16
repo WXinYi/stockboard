@@ -195,19 +195,19 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
             v-slot="{ item }"
           >
             <div class="rank-row" :class="{ pinned: WATCHED.has(item.zh_id) }" @click="navigateToPlayer(item.zh_id)">
-              <span class="c-rank">{{ rankMap[item.zh_id] || 1 }}</span>
+              <span class="c-rank">{{ rankMap[item.zh_id] ?? '—' }}</span>
               <span class="c-name">
                 <strong :style="{ color: WATCHED.has(item.zh_id) ? '#e67e22' : '#2980b9' }">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template><template v-else-if="isQuality(item)"> 🏅</template></strong>
                 <span v-if="tradedPlayerIds.has(item.zh_id)" class="trade-dot" title="今日有调仓"></span>
               </span>
               <span v-for="h in sortHeaders" :key="'c'+h.key" class="c-num" v-html="rankCellHtml(h.key, item[h.key])"></span>
-              <span class="c-num" :style="{ color: drawdownColor(item.max_drawdown) }">{{ (item.max_drawdown || 0).toFixed(1) }}%</span>
+              <span class="c-num" :style="{ color: drawdownColor(item.max_drawdown) }">{{ item.max_drawdown == null ? '—' : item.max_drawdown.toFixed(1) + '%' }}</span>
               <span class="c-style">{{ styles[item.zh_id]?.emoji || '—' }}</span>
               <span class="c-pos">
-                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, item._total_position || 0) + '%' }"></span></span>
-                {{ (item._total_position || 0).toFixed(0) }}%
+                <span class="progress-bar"><span class="fill" :style="{ width: (item._total_position == null ? 0 : Math.min(100, item._total_position)) + '%' }"></span></span>
+                {{ item._total_position == null ? '—' : item._total_position.toFixed(0) + '%' }}
               </span>
-              <span class="c-num">{{ item.days || 0 }}天</span>
+              <span class="c-num">{{ item.days == null ? '—' : item.days + '天' }}</span>
             </div>
           </RecycleScroller>
         </div>

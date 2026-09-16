@@ -33,10 +33,18 @@ jobs:
           cd jiarenmens
           if python3 scripts/release_db.py --download-latest; then
             echo "✅ 已从热层覆盖恢复"
-          elif [ -f data/crawl_data.db ]; then
-            echo "ℹ️ 热层不存在, 使用 git 历史恢复的库"
           else
-            echo "❌ 热层与 git 历史均无法恢复库文件"; exit 1
+            # 2026-09-15 静默审计 S5: 原写法把"下载失败"和"热层不存在"合成一个 elif 分支,
+            # 瞬时故障(限流/抖动)时会用 git 历史的旧库 --init 覆盖掉更新的热层(绿灯数据回滚)。
+            # 这里先探测热层是否真的不存在, 只有确认 absent 才允许用 git 历史库兜底。
+            HOT=$(python3 scripts/release_db.py --hot-status | sed -n 's/^hot_status\[crawl\]: //p' | tail -1)
+            if [ "$HOT" = "absent" ] && [ -f data/crawl_data.db ]; then
+              echo "ℹ️ 热层确实不存在(hot_status=absent), 使用 git 历史恢复的库做首次初始化"
+            elif [ "$HOT" = "absent" ]; then
+              echo "❌ 热层与 git 历史均无法恢复库文件"; exit 1
+            else
+              echo "❌ 热层状态=$HOT: 下载失败或读取受限, 拒绝用 git 历史旧库覆盖热层"; exit 1
+            fi
           fi
 
       - name: 上传 Release 存储
@@ -44,3 +52,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 jiarenmens/scripts/release_db.py --init
 # re-trigger: release_db.py 匿名读修复
+
+
+  # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,
+  # 失败只表现为"钉钉少一条推送 / 页面仍是上一次采集", 无法第一时间知晓。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [init]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

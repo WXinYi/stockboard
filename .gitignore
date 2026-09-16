@@ -54,6 +54,9 @@ jiarenmens/data/watchlist_extra.txt
 
 # 会话/误写产物, 不入库
 .zcode/
+# 安全钩子(Mimosa)的会话状态与源码基线副本: 每轮都往这里写一份影子文件,
+# 2026-09-15 实测单个会话就 339 个文件 ≈ 7.4 万行, 会把"待提交"数字撑到几万行
+.mimosa/
 jiarenmens/jiarenmens/
 
 # 数据库已迁往 Release 三层存储(db-state/db-w*/db-m*), git 不再跟踪(见 docs/DATA_PIPELINE.md)

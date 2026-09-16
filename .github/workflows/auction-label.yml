@@ -69,3 +69,21 @@ jobs:
           fi
 
       # auction.db 不再进 git(Release auction-state, 上方上传步骤已落库), 无需提交步骤
+
+
+  # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,
+  # 失败只表现为"钉钉少一条推送 / 页面仍是上一次采集", 无法第一时间知晓。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [label]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

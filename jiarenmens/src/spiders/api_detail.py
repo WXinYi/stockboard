@@ -29,6 +29,19 @@ MAX_RETRIES = 3
 RETRY_DELAY = 1  # 秒
 
 
+def _opt_rate(v) -> Optional[float]:
+    """源可能不提供的比值(如胜率): 缺/非数/0 → None(存 NULL), 不用 0 冒充真值。
+
+    依据(2026-09-15 实测): 东财 rtV2 对全部选手返回 dealRate=0, 库内 25556 行无一非零,
+    10 倍收益选手亦然; 旧 H5 页已失效无从补 → 该字段判定为"源不可得"。
+    """
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
+
+
 def _call_api(method: str, args: Dict[str, str]) -> Optional[Dict]:
     """调用 rtV2 API（同步）"""
     payload = {
@@ -90,7 +103,7 @@ def _parse_player_detail(api_data: Dict, zh_id: str) -> Dict[str, Any]:
         "yearly_return": float(d.get("rate250Day", 0)),
         "net_value": float(d.get("JZ", 0)),
         "max_drawdown": float(d.get("maxDrawDown", 0)),
-        "win_rate": float(d.get("dealRate", 0)),
+        "win_rate": _opt_rate(d.get("dealRate")),
         "days": int(d.get("yxts", 0)),
         "concept": d.get("comment", "")[:100] if d.get("comment") else "",
         "intro": d.get("comment", ""),

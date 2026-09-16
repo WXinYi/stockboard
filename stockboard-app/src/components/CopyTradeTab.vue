@@ -6,8 +6,12 @@ import { useTableSort } from '../composables/useTableSort.js'
 const showAlerts = ref(false)
 const showSuspects = ref(false)
 const router = useRouter()
-const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears, qualityPlayerCount, crawlTime } = inject('stockData')
-const { changesSummary: posCh } = inject('stockHistory')
+const { copyTradeSignals: signals, playerNameMap: playerIds, tradeAlerts, suspectedClears, qualityPlayerCount, crawlTime, sliceErrors, sliceLoaded } = inject('stockData')
+// copy.json 拉取失败/未加载 ≠ 今天没有信号(2026-09-15 静默审计):
+// 原先两者都落到默认空对象, 页面直接下"今日暂无高手买入信号"的结论 —— 把"没拿到"说成市场事实。
+const copyFailed = computed(() => !!sliceErrors?.value?.copy)
+const copyLoaded = computed(() => sliceLoaded?.value?.copy !== false)
+const { changesSummary: posCh, changesSummaryError: posChError } = inject('stockHistory')
 // 该班是否周末采集: 用 crawlTime(采集事实)判断, 不猜测节假日
 const isWeekendCrawl = computed(() => {
   const d = new Date(String(crawlTime.value || '').replace(' ', 'T'))
@@ -61,6 +65,7 @@ function pct(v) {
     <!-- 周六/周日采集的班次对比的是错位日期, 清仓计数可能因采集覆盖面失真(09-12 实例 -164), 明示不掩饰 -->
     <span v-if="isWeekendCrawl" style="color:#b06020;"> · ⚠️ 该班为周末采集, 变动计数可能失真, 以交易日班次为准</span>
   </div>
+  <div v-else-if="posChError" class="summary-bar" style="color:#a94442;">⚠️ 变更摘要加载失败 — 这与"数据不足两天"不同，请刷新重试</div>
   <div v-else class="summary-bar" style="color:#aaa;">需要至少2天数据 · 下个交易日 09:45 自动采集</div>
 
   <!-- 置顶总结 -->
@@ -83,7 +88,9 @@ function pct(v) {
       <h2>◆ 高手正在买入 <span class="badge">{{ signals.bs.length }}</span></h2>
       <p class="hint">有高质量选手今日买入的股票，按信号强度排序</p>
       <div style="max-height:500px;overflow-y:auto;">
-        <div v-if="!signals.bs.length" class="empty-state">今日暂无高手买入信号</div>
+        <div v-if="copyFailed" class="empty-state" style="color:#a94442;">⚠️ 抄作业数据加载失败 — 与"今日暂无信号"不同，请刷新重试</div>
+        <div v-else-if="!copyLoaded" class="empty-state" style="color:#a94442;">⚠️ 抄作业数据未加载（与"今日暂无信号"不同）— 请刷新重试</div>
+        <div v-else-if="!signals.bs.length" class="empty-state">今日暂无高手买入信号</div>
         <div v-for="s in signals.bs" :key="s.c" class="signal-card" :class="{ strong: s.b.length >= 5 }">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <strong>{{ s.n }}</strong>
@@ -106,7 +113,9 @@ function pct(v) {
       <h2>◇ 高手正在卖出 <span class="badge">{{ signals.sw.length }}</span></h2>
       <p class="hint">高质量选手正在出货的股票，如果你持有建议关注风险</p>
       <div style="max-height:500px;overflow-y:auto;">
-        <div v-if="!signals.sw.length" class="empty-state">今日暂无高手集中卖出</div>
+        <div v-if="copyFailed" class="empty-state" style="color:#a94442;">⚠️ 抄作业数据加载失败 — 与"今日暂无集中卖出"不同，请刷新重试</div>
+        <div v-else-if="!copyLoaded" class="empty-state" style="color:#a94442;">⚠️ 抄作业数据未加载（与"今日暂无集中卖出"不同）— 请刷新重试</div>
+        <div v-else-if="!signals.sw.length" class="empty-state">今日暂无高手集中卖出</div>
         <div v-for="s in signals.sw" :key="s.c" class="signal-card warn">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <strong>{{ s.n }}</strong>

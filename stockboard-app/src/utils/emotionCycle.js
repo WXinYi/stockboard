@@ -270,6 +270,9 @@ export async function loadCycleData(kpl, dateStr) {
     kpl.fetchMarketMood(true),
   ])
   const todayDay = riseFall?.today?.day || dateStr || ''
+  // 输入全空 = 接口可能失败(或确为非交易日), 此时引擎仍会"算出"一个阶段 ——
+  // 结论来自零输入, 必须打标让页面说明, 不能当成真结论展示(2026-09-15 审计 F8/B5)。
+  const inputEmpty = !(tianTi || []).length && !(riseFall?.series || []).length && !(mood || []).length
   const ladderRows = (tianTi || []).flatMap(g => g.rows.map(r => ({
     code: r.code, name: r.name, level: r.level, bkName: r.bkName, cap: +r.cap || 0, seal: 0,
     plates: r.bkName ? [r.bkName] : [],
@@ -277,12 +280,18 @@ export async function loadCycleData(kpl, dateStr) {
   // 昨日池: 从历史序列取今日前一交易日, 拉 5 个板位(按日缓存)
   const prevSeries = (riseFall?.series || []).filter(r => !todayDay || r.day < todayDay)
   const prevDay = prevSeries[0]?.day || ''
-  if (!prevDay) return { cycle: computeCycle({ ladderRows, prevPool: [], riseFall, moodSeries: mood || [], dateStr: todayDay }), ladderRows, prevFull: [] }
+  if (!prevDay) {
+    const cycle = computeCycle({ ladderRows, prevPool: [], riseFall, moodSeries: mood || [], dateStr: todayDay })
+    if (inputEmpty) cycle.inputsEmpty = true
+    return { cycle, ladderRows, prevFull: [] }
+  }
   if (_prevPoolCache.key !== prevDay) {
     const prevLists = await Promise.all(pids.map(p => kpl.fetchLimitPool(prevDay, p, { rt: false, silent: true })))
     _prevPoolCache = { key: prevDay, rows: prevLists.flat() }
   }
   const prevFull = _prevPoolCache.rows
   const prevPool = prevFull.map(r => ({ code: r.code, pid: r.pid }))
-  return { cycle: computeCycle({ ladderRows, prevPool, riseFall, moodSeries: mood || [], dateStr: todayDay }), ladderRows, prevFull }
+  const cycle = computeCycle({ ladderRows, prevPool, riseFall, moodSeries: mood || [], dateStr: todayDay })
+  if (inputEmpty) cycle.inputsEmpty = true
+  return { cycle, ladderRows, prevFull }
 }

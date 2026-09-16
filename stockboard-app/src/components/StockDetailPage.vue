@@ -34,10 +34,16 @@ const gene = ref(null)   // fetchZhangTingGene 六维; null=未加载/失败(空
 const bid = ref(null)    // fetchStockBid 竞价序列; null=未加载/非竞价时段(空态)
 const orders = ref(null)       // fetchMainMonitor 逐笔大单; null=未加载/失败(空态), 15s 轮询
 const lhbHistory = ref(null)   // fetchStockLhbHistory 上榜历史; null=未加载/失败(空态), 激活加载一次
+// 四个卡的"取数失败"标记(2026-09-15 审计): 失败与"真的没有数据"文案必须分开
+const geneFailed = ref(false)
+const bidFailed = ref(false)
+const ordersFailed = ref(false)
+const lhbFailed = ref(false)
 
 // ── 板块胶囊 / 涨停原因(开盘啦) ──
 const boards = ref(null)          // null=未加载失败, []或数组=成功
 const boardsLoading = ref(false)
+const boardsFailed = ref(false)   // 取数失败: 与"该股无板块"区分(2026-09-15 审计)
 const boardsMore = ref(false)
 const limitReason = ref(null)     // {zsCodes, reason} 或 null(接口无数据)
 // 仅当日涨停才展示涨停原因: GetDayZhangTing 对非涨停股也返回"最近一次涨停原因"(如茅台返回7月17日) →
@@ -275,6 +281,11 @@ watch(code, () => {
   bid.value = null
   orders.value = null
   lhbHistory.value = null
+  geneFailed.value = false
+  bidFailed.value = false
+  ordersFailed.value = false
+  lhbFailed.value = false
+  boardsFailed.value = false
   moreTab.value = 'info'
   infoList.value = []
   f10Company.value = null
@@ -299,7 +310,8 @@ async function loadBoards(silent = false) {
   try {
     const res = await fetchBoards(code.value, silent)
     if (res) boards.value = res
-  } catch (e) { /* 板块失败不阻塞 */ }
+    boardsFailed.value = false
+  } catch (e) { boardsFailed.value = true }   // 不阻塞, 但页面要能看出"没取到"
   boardsLoading.value = false
 }
 
@@ -333,24 +345,31 @@ async function loadPankou(silent = false) {
 
 // ── 涨停基因 + 竞价分时(低频: 激活加载一次, 不轮询; 失败留空态) ──
 async function loadGene(silent = false) {
-  try { gene.value = await fetchZhangTingGene(code.value, silent) }
-  catch (e) { gene.value = null }
+  try {
+    gene.value = await fetchZhangTingGene(code.value, silent)
+    geneFailed.value = false
+  } catch (e) { gene.value = null; geneFailed.value = true }
 }
 async function loadBid(silent = false) {
   try {
     bid.value = await fetchStockBid(code.value, silent)
+    bidFailed.value = false
     mergeBid()   // bid 后到(如首次加载)时补并入分时
   }
-  catch (e) { bid.value = null }
+  catch (e) { bid.value = null; bidFailed.value = true }
 }
 // ── 大单监控(15s 轮询) + 龙虎榜个股历史(激活加载一次) ──
 async function loadBigOrder(silent = false) {
-  try { orders.value = await fetchMainMonitor(code.value, silent) }
-  catch (e) { orders.value = null }
+  try {
+    orders.value = await fetchMainMonitor(code.value, silent)
+    ordersFailed.value = false
+  } catch (e) { orders.value = null; ordersFailed.value = true }
 }
 async function loadLhb(silent = false) {
-  try { lhbHistory.value = await fetchStockLhbHistory(code.value, silent) }
-  catch (e) { lhbHistory.value = null }
+  try {
+    lhbHistory.value = await fetchStockLhbHistory(code.value, silent)
+    lhbFailed.value = false
+  } catch (e) { lhbHistory.value = null; lhbFailed.value = true }
 }
 
 // ── 资讯 tab: 新闻|研报|公告 列表 + 正文懒加载 ──
@@ -653,13 +672,14 @@ onUnmounted(() => {
       </div>
     </div>
     <div v-else-if="boardsLoading" class="sd-boards-loading">板块加载中…</div>
+    <div v-else-if="boardsFailed" class="sd-boards-loading" style="color:#a94442;">⚠️ 所属板块加载失败（与"该股无板块"不同）</div>
 
     <!-- 功能卡区(4 列, 移动堆叠): 竞价分时 / 涨停基因 / 大单监控 / 龙虎榜; 第二行涨停原因全宽 -->
     <div class="sd-cards">
-      <BidAuctionCard :bid="bid" :prev-close="quote?.prevClose" />
-      <LimitGeneCard :gene="gene" />
-      <BigOrderCard :orders="orders" />
-      <LhbStockCard :history="lhbHistory" />
+      <BidAuctionCard :bid="bid" :prev-close="quote?.prevClose" :failed="bidFailed" />
+      <LimitGeneCard :gene="gene" :failed="geneFailed" />
+      <BigOrderCard :orders="orders" :failed="ordersFailed" />
+      <LhbStockCard :history="lhbHistory" :failed="lhbFailed" />
       <ZtHistoryCard v-if="isLimitUp && limitReason" class="sd-card-wide" :reason="limitReason" :board-map="boardNameById" @go-board="goBoard" />
     </div>
 

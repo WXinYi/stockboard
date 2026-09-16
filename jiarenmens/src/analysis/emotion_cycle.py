@@ -195,7 +195,8 @@ def compute_cycle(date_str: str | None = None, persist: bool = True,
 
     breadth_db = _rows("""SELECT date, zt, broke_rate FROM market_breadth WHERE date<=?
                           ORDER BY date DESC LIMIT 10""", (date_str,))
-    if rt_today and rt_today.get("breadth"):
+    rt_covered = bool(rt_today and rt_today.get("breadth"))
+    if rt_covered:
         b = rt_today["breadth"]
         # 实时行作为"今日"，库内 ma5 窗口排除今日(防重复计入)
         breadth = [{"date": str(b[6]), "zt": b[0], "broke_rate": b[4]}] + \
@@ -203,10 +204,27 @@ def compute_cycle(date_str: str | None = None, persist: bool = True,
     else:
         breadth = breadth_db
     cfg = CYCLE_CFG
-    zt = breadth[0]["zt"] if breadth else None
-    zt_ma5 = _ma([b["zt"] for b in breadth[1:6]], 5)   # 前 5 日均值(不含当日)
-    broke = breadth[0]["broke_rate"] if breadth else None
-    broke_ma5 = _ma([b["broke_rate"] for b in breadth[1:6]], 5)
+    # 覆盖校验(2026-09-15 静默审计): 库内最新一行必须就是目标日, 否则不得把旧宽度当"今日".
+    # 历史事故: 9/4 拿 8/28 的宽度当当日 → zt/炸板率取自旧日 → 阶段误判"分歧"。
+    breadth_stale_date = None
+    if not rt_covered:
+        if not breadth or breadth[0]["date"] != date_str:
+            breadth_stale_date = breadth[0]["date"] if breadth else ""
+            # 当日宽度缺失 → 当日值弃权(None), 前 5 日窗口顺延到现有最后 5 行
+            zt = None
+            broke = None
+            zt_ma5 = _ma([b["zt"] for b in breadth[0:5]], 5)
+            broke_ma5 = _ma([b["broke_rate"] for b in breadth[0:5]], 5)
+        else:
+            zt = breadth[0]["zt"]
+            broke = breadth[0]["broke_rate"]
+            zt_ma5 = _ma([b["zt"] for b in breadth[1:6]], 5)   # 前 5 日均值(不含当日)
+            broke_ma5 = _ma([b["broke_rate"] for b in breadth[1:6]], 5)
+    else:
+        zt = breadth[0]["zt"] if breadth else None
+        zt_ma5 = _ma([b["zt"] for b in breadth[1:6]], 5)
+        broke = breadth[0]["broke_rate"] if breadth else None
+        broke_ma5 = _ma([b["broke_rate"] for b in breadth[1:6]], 5)
 
     heights = {d: max(r["height"] for r in pool_rows if r["date"] == d) for d in dates}
     height = heights.get(date_str, 0)
@@ -267,12 +285,18 @@ def compute_cycle(date_str: str | None = None, persist: bool = True,
     mainlines = board_mainlines(cur_rows)
     leaders = classify_leaders(cur_rows, mainlines)
     confidence = min(9, 4 + len(reasons) + (2 if promo["mid"] is not None else 0))
+    if breadth_stale_date is not None:
+        # 当日宽度缺失时把"弃权"写进理由, 让推送/页面能看出阶段判定的输入少了一块
+        reasons.append(
+            f"⚠️ 当日宽度缺失(库内最新为 {breadth_stale_date or '无'}), 涨停数/破板率未参与判定, "
+            "阶段结论基于高度与晋级率")
 
     res = {"date": date_str, "stage": stage, "confidence": confidence, "reasons": reasons,
            "playbook": STAGE_PLAYBOOK[stage],
            "metrics": {"height": height, "height_prev": height_prev, "zt": zt, "zt_ma5": zt_ma5,
                        "broke_rate": broke, "broke_ma5": broke_ma5, "promo": promo,
-                       "ladder": ladder_counts, "h_trend": h_trend},
+                       "ladder": ladder_counts, "h_trend": h_trend,
+                       "breadth_stale_date": breadth_stale_date},
            "matrix": matrix, "mainlines": mainlines, "leaders": leaders}
     if persist:
         save(res)

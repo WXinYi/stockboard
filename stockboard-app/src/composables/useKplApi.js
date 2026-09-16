@@ -72,7 +72,11 @@ export async function getLatestTradingDay() {
   }
   try {
     const BASE = import.meta.env.BASE_URL
-    const j = await withTimeout(fetch(BASE + 'data/latest/core.json').then(r => r.json()))
+    // no-store: 与 data/loader.js 同口径(2026-09-13 拍板②)。此处原先用默认缓存策略, 是全站
+    // 唯一一处读数据文件走 HTTP 缓存的地方 —— Pages 的 max-age 会让它读到旧 core.json,
+    // 页脚"数据截至"就会按旧采集日回退(实测: 缓存里是 09-12 周六 → 显示 09-11),
+    // 与其他区块(走 no-store)显示的日期自相矛盾。时点披露不能有第二个数据源。
+    const j = await withTimeout(fetch(BASE + 'data/latest/core.json', { cache: 'no-store' }).then(r => r.json()))
     if (j && j.date) {
       const s = String(j.date).replace(/-/g, '')
       const d = new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))

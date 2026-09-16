@@ -25,6 +25,16 @@ export function useData() {
     core: ref(null), copy: ref(null), stocks: ref(null),
     nameMap: ref(null), playersIndex: ref(null),
   }
+  // 各分片"拉取失败"标记(与"数据确实为空"区分): 见 ensureSlices
+  const sliceErrors = ref({})
+  // 分片是否真的加载过: false = 还没拉(未触发/前序失败中断), 消费者不能把未加载当成"今天没有"
+  const sliceLoaded = computed(() => ({
+    core: slices.core.value != null,
+    copy: slices.copy.value != null,
+    stocks: slices.stocks.value != null,
+    nameMap: slices.nameMap.value != null,
+    playersIndex: slices.playersIndex.value != null,
+  }))
 
   // 筛选状态
   const sortKey = ref('total_return')
@@ -64,7 +74,8 @@ export function useData() {
       ranks: rk,
       total_position: tp, quality: q, stocks: ss,
       zh_id: i,
-      _total_position: tp ?? 0,
+      // 缺失(采集缺口/字段不可得)保留 null 供展示层渲染 '—'; 不要 0 冒充"空仓"
+      _total_position: tp ?? null,
     }
   }
 
@@ -159,8 +170,15 @@ export function useData() {
       const r = slices[name]
       if (!r || r.value) return
       loading.value[name] = true
-      try { r.value = await SLICE_LOADER[name]() }
-      finally { loading.value[name] = false }
+      try {
+        r.value = await SLICE_LOADER[name]()
+        sliceErrors.value[name] = false
+      } catch (e) {
+        // 分片拉取失败必须可辨(2026-09-15 静默审计): 此前失败与"今天确实没有信号"同形,
+        // 页面会拿空数组渲染成"今日暂无高手买入信号"这类结论 —— 把失败说成事实。
+        sliceErrors.value = { ...sliceErrors.value, [name]: true }
+        throw e
+      } finally { loading.value[name] = false }
     }))
   }
 
@@ -172,6 +190,7 @@ export function useData() {
   // 清空所有分片（配合 refreshData：置 null 后 ensureSlices 才会真正重新拉取）
   function clearSlices() {
     for (const k in slices) slices[k].value = null
+    sliceErrors.value = {}
   }
 
   return {
@@ -180,7 +199,7 @@ export function useData() {
     sortKey, qualityOnly, isQuality,
     playerStyles, fullRankPlayers, copyTradeSignals,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
-    playerLookup,
+    playerLookup, sliceErrors, sliceLoaded,
     ensureSlices, loadData, clearSlices,
   }
 }

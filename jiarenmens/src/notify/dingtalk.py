@@ -5,6 +5,9 @@
 
     dt = DingTalk()  # 读环境变量 DINGTALK_URL / DINGTALK_SECRET
     dt.send_markdown("标题", "markdown 内容")
+
+errcode != 0 视为失败抛出(2026-09-15 修复): 钉钉对 token 失效/被限流/关键词不符
+一律回 HTTP 200, 只看 HTTP 状态会把"没送到"记成"已推送"。
 """
 import base64
 import hashlib
@@ -39,4 +42,10 @@ class DingTalk:
             self._signed_url(), data=payload, headers={"Content-Type": "application/json"}
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
+            data = json.loads(resp.read().decode())
+        # 钉钉对"token 失效/机器人被限流/关键词不符"等一律回 HTTP 200 + errcode!=0:
+        # 只看 HTTP 状态会把"没送到"记成"已推送"(2026-09-15 实测 errcode=300001 仍被判成功)。
+        errcode = data.get("errcode") if isinstance(data, dict) else None
+        if errcode not in (0, None):
+            raise RuntimeError(f"钉钉接口返回错误 errcode={errcode} errmsg={data.get('errmsg')}")
+        return data

@@ -16,7 +16,7 @@ const routes = [
   { path: '/market', component: MarketTab, meta: { keepAlive: true } },   // 盘面概览(静态优先于 :section)
   { path: '/market/:section', name: 'MarketDetail', component: MarketDetail },
   { path: '/board/:bk_code', name: 'BoardDetail', component: BoardDetail },
-  { path: '/copy', component: CopyTradeTab, meta: { keepAlive: true } },   // 保留直达, 导航不暴露
+  { path: '/copy', component: CopyTradeTab, meta: { keepAlive: true } },   // 保留直达, 导航不暴露(2026-09-15 用户决定继续隐藏)
   { path: '/rankings', component: RankingsTab, meta: { keepAlive: true } },
   { path: '/stocks', component: StockTab, meta: { keepAlive: true } },
   { path: '/auction', component: AuctionTab },  // 竞价快照: 当日结论, 不缓存; 入口在盘面页

@@ -17,6 +17,7 @@ import { loadBattleData } from '../utils/leaderBattle.js'
 import { fetchStrikeReview, fetchSixHistory, fetchAuction } from '../data/loader.js'
 import { normHistory, buildLiveRow, computeSixLive, fetchIndexTrend, parseBidYi } from '../utils/sixEmotion.js'
 import { sameDataDay, divergenceNote, statusWord } from '../utils/stockPicks.js'
+import { mergeSection } from '../utils/sectionMerge.js'
 import { jsonp, secid } from '../utils/eastmoney.js'
 
 defineOptions({ name: 'MarketDetail' })
@@ -30,6 +31,8 @@ const title = computed(() => SECTION_TITLES[section.value] || '盘面详情')
 
 const loading = ref(true)
 const error = ref(false)
+// 本 section 有字段没取到、页面仍在显示上一次的数(2026-09-15 审计 G5) —— 必须明示, 不能默认静默
+const sectionFailed = ref(false)
 const data = ref(null)
 const dayLabel = ref('')
 
@@ -178,15 +181,27 @@ async function load(silent = false) {
       annotations: await fetchBoardAnnotations(silent),
     }
     else if (s === 'lhb') res = await fetchLhbList(silent)
-    if (res) data.value = res
-    else if (!silent) error.value = true
+    // 合并而非整体替换(2026-09-15 静默审计 G5): 对象型 section(newhighs/mood/live/cycle)在
+    // 静默轮询失败时会带着一半 null 返回, 原写法 `if (res) data.value = res` 会把上一次的
+    // 好数据整体清空, 页面变"暂无数据"—— 降级方向反了: 拿不到就保留旧值并标记失败。
+    if (res) {
+      const m = mergeSection(data.value, res)
+      data.value = m.value
+      sectionFailed.value = m.staleFields.length > 0
+    } else if (!silent) {
+      error.value = true
+    }
     if (s === 'cycle' && res) cycleFetchedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } catch (e) {
+    sectionFailed.value = true
     if (!silent) error.value = true
   } finally {
     loading.value = false
   }
 }
+
+// 对象型 section 的合并规则: 见 utils/sectionMerge.js(纯函数, 有单测)
+
 
 // 30s 轮询(交易时段; auction 不轮询)
 let timer = null
@@ -369,6 +384,13 @@ const lhbSorted = computed(() => {
   <div class="md-page">
     <!-- 顶部导航由 App header 统一提供(返回+标题), 此处仅显示数据日期 -->
     <p v-if="dayLabel" class="md-dayline">数据日期 {{ dayLabel }}</p>
+
+    <!-- 部分字段没取到、页面仍在显示上一次的数(2026-09-15 审计 G5): 明示而不是静默留旧值。
+         注意必须放在下方 v-if/v-else-if 链之外 —— 插进链里会把 loading/内容互斥关系打断
+         (初次加载闪"暂无数据"、部分失败时整块内容被隐藏, 与横幅文案"显示上一次的数值"矛盾)。 -->
+    <div v-if="sectionFailed && !loading && !error && section !== 'auction'" class="md-dayline" style="color:#a94442;">
+      ⚠️ 部分数据本次未取到，页面显示的是上一次的数值（非最新）
+    </div>
 
     <!-- 竞价: 完整复用现有 AuctionTab -->
     <AuctionTab v-if="section === 'auction'" />
@@ -792,6 +814,7 @@ const lhbSorted = computed(() => {
         </div>
 
         <div class="md-summary">⚡ 打开页面时经 KPL 实时数据计算 · {{ cycleFetchedAt || '计算中' }} · 交易时段 30s 自动刷新</div>
+        <div v-if="data.cycle?.inputsEmpty" class="md-summary" style="color:#a94442;">⚠️ 行情输入为空（接口可能失败，或今日非交易日）—— 以上阶段结论不可作为依据</div>
       </div>
     </template>
 

@@ -324,8 +324,10 @@ def main():
     players = player_list_spider.fetch_player_list(args.limit)
 
     if not players:
-        logger.warning("未获取到选手列表")
-        return
+        # 榜单接口返回空 = 采集失败(选手榜在非交易日同样有数据), 不能当作"今天没事"静默退出:
+        # 否则后续 export/提交/部署会拿着旧库产出"今天"的页面(2026-09-15 静默审计 W7)。
+        logger.error("❌ 未获取到选手列表(接口异常?), 以非零退出, 不生成当日数据")
+        return 1
 
     # 确保关注选手始终在列表中（去重后插入最前），名单见模块级 WATCHED_PLAYERS
     existing_ids = {p.get("zh_id") for p in players}
@@ -351,7 +353,7 @@ def main():
     logger.info(f"\n[Step 2] 异步获取选手数据 (并发数={args.workers}, 跳过已存在={skip_existing})...")
 
     try:
-        asyncio.run(crawl_all_data_async(
+        success_count, skip_count, fail_count = asyncio.run(crawl_all_data_async(
             players,
             storage,
             max_workers=args.workers,
@@ -359,9 +361,20 @@ def main():
         ))
     except KeyboardInterrupt:
         logger.info("采集被用户中断")
+        return 1
     except Exception as e:
-        logger.exception(f"数据采集过程出现未处理异常: {e}")
+        # 未处理异常 = 采集未完成; 非零退出让 workflow 停在这里,
+        # 避免旧库数据被导出/提交/部署成"今天的快照"(2026-09-15 静默审计 W7)
+        logger.exception(f"❌ 数据采集过程出现未处理异常: {e}")
+        return 1
+
+    # 全员失败 = 源头不可用(网络/接口风控), 同样不产出当日数据;
+    # 部分失败仍继续(逐人失败已在日志逐条列出, 缺口由 export 的采集覆盖守卫兜住)
+    if players and success_count == 0 and fail_count >= len(players):
+        logger.error(f"❌ 全部 {len(players)} 名选手采集失败, 判定为源头不可用, 非零退出")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

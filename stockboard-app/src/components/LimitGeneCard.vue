@@ -6,6 +6,8 @@ import '../styles/cards.css'
 
 const props = defineProps({
   gene: { type: Object, default: null },
+  // 取数失败 ≠ "接口没有这只票的基因数据"(2026-09-15 审计)
+  failed: { type: Boolean, default: false },
 })
 
 const items = computed(() => {
@@ -37,7 +39,7 @@ const hasData = computed(() => items.value.some(it => !String(it.value).startsWi
         <b class="lg-val" :class="it.cls">{{ it.value }}</b>
       </div>
     </div>
-    <div v-else class="fc-empty">接口暂无该股基因数据（非近期活跃股或未覆盖）</div>
+    <div v-else class="fc-empty">{{ failed ? '⚠️ 基因数据加载失败(未覆盖与否未知)' : '接口暂无该股基因数据（非近期活跃股或未覆盖）' }}</div>
   </section>
 </template>
 

@@ -2,6 +2,8 @@
 import { useRoute } from 'vue-router'
 import { icons } from '../icons.js'
 
+// 一级入口。抄作业(/copy)按用户决定隐藏(2026-09-15): 不设导航入口, 页面保留直达,
+// 需要时直接在地址栏访问 /#/copy 即可 —— 若要恢复入口, 在这里加回 copy 一项即可。
 const primary = [
   { key: 'market', label: '选股', icon: 'market' },
   { key: 'rankings', label: '排行', icon: 'rankings' },

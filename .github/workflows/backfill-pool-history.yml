@@ -46,9 +46,20 @@ jobs:
 
       # ⚠️ 每次 push 到 main 也会触发 crawl.yml(它恢复→写宽度→上传 auction 热层)。
       # 若本任务与 crawl 并发, crawl 后上传会用"无回补"的库覆盖结果(2026-09-09 实测踩坑)。
-      # 因此先等 crawl 跑完(~15-20min)再恢复热层, 保证本任务最后上传且不丢 crawl 的当日写入。
+      # 2026-09-15 静默审计: 原为固定 sleep 1200(盲等, 若那班 crawl 超过 20min 竞态照旧发生)。
+      # 现改为轮询 crawl.yml 是否有进行中的班次, 等到确实没有为止(上限 40min, 超时告警但仍继续)。
       - name: 等待并发 crawl 完成(防热层后写覆盖)
-        run: sleep 1200
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 40); do
+            N=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/workflows/crawl.yml/runs?status=in_progress" \
+                 | python3 -c "import json,sys;print(json.load(sys.stdin).get('total_count',0))" 2>/dev/null || echo 0)
+            if [ "$N" = "0" ]; then echo "✅ 无进行中的 crawl 班次, 继续"; exit 0; fi
+            echo "⏳ 有 $N 个 crawl 班次进行中, 等待 60s ($i/40)"; sleep 60
+          done
+          echo "::warning::等待 crawl 超时(40min), 仍继续 — 存在热层后写覆盖风险, 请核对回补结果"
 
       - name: 恢复 auction.db 热层
         env:
@@ -61,14 +72,19 @@ jobs:
             echo "❌ auction 热层恢复失败"; exit 1
           fi
 
-      - name: 判断是否已回补(幂等守卫)
+      # 幂等守卫(2026-09-15 静默审计): 原先只看全局 MIN ≤ 2025-09-01 就跳过 ——
+      # 指定更早区间的手动触发会被静默忽略("成功"但什么都没做)。现按请求起点判断。
+      - name: 判断是否已回补(幂等守卫, 按请求区间)
         id: need
+        env:
+          INPUT_START: ${{ inputs.start }}
         run: |
           cd jiarenmens
+          REQ="${INPUT_START:-2025-09-01}"
           MIN=$(python3 -c "import sqlite3;print(sqlite3.connect('data/auction.db').execute('SELECT MIN(date) FROM limit_pool').fetchone()[0])")
-          echo "当前 limit_pool 最早日期: $MIN"
-          if [[ "$MIN" < "2025-09-01" || "$MIN" == "2025-09-01" ]]; then
-            echo "skip=1" >> "$GITHUB_OUTPUT"; echo "⏭ 已回补, 跳过"
+          echo "请求起点: $REQ | 当前 limit_pool 最早日期: $MIN"
+          if [[ -n "$MIN" && ! "$MIN" > "$REQ" ]]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"; echo "⏭ 请求起点 $REQ 已被覆盖(最早 $MIN), 跳过回补"
           else
             echo "skip=0" >> "$GITHUB_OUTPUT"
           fi
@@ -106,3 +122,21 @@ jobs:
           print('✅ 回补覆盖校验通过')
           "
           PY
+
+
+  # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,
+  # 失败只表现为"钉钉少一条推送 / 页面仍是上一次采集", 无法第一时间知晓。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [backfill]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

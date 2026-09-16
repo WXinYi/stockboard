@@ -7,7 +7,7 @@ import {
 // useKplApi 内部 postForm/getJson 是闭包变量, vi.mock 换导出无效 → 改为 mock 全局 fetch
 // 不发起真实请求, 只测「返回 JSON → 映射对象」的纯逻辑
 const originalFetch = globalThis.fetch
-const calls = []   // [{ url, body }] 记录每次 fetch, 供断言参数
+const calls = []   // [{ url, body, opts }] 记录每次 fetch, 供断言参数
 
 // json 可为对象, 或 (url, body) => 对象的函数(同测试多次调用时按需返回)
 function mockFetch(json) {
@@ -17,7 +17,7 @@ function mockFetch(json) {
       const usp = new URLSearchParams(opts.body)
       for (const [k, v] of usp.entries()) body[k] = v
     }
-    calls.push({ url: String(url), body })
+    calls.push({ url: String(url), body, opts })
     const data = typeof json === 'function' ? json(String(url), body) : json
     return { json: async () => data }
   })
@@ -106,5 +106,16 @@ describe('KPL 新增接口', () => {
   it('getLatestTradingDay 采集日为中秋(周五休市) → 回退到周四', async () => {
     mockFetch({ date: '2026-09-25' })
     expect(await getLatestTradingDay()).toBe('20260924')
+  })
+
+  it('getLatestTradingDay 读 core.json 必须绕开 HTTP 缓存(no-store)', async () => {
+    // 回归(2026-09-15 实测): 此处曾用默认缓存策略, 浏览器缓存里是旧 core.json(采集日 09-12 周六)
+    // → 页脚"数据截至"算成 09-11, 与其它区块(loader 走 no-store)显示的 09-15 自相矛盾。
+    // 时点披露只能有一个数据源, 故锁定 no-store。
+    mockFetch({ date: '2026-09-15' })
+    await getLatestTradingDay()
+    const c = calls.find(x => x.url.includes('data/latest/core.json'))
+    expect(c).toBeTruthy()
+    expect(c.opts.cache).toBe('no-store')
   })
 })

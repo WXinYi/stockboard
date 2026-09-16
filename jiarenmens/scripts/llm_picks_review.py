@@ -79,14 +79,27 @@ def main():
     sql += " ORDER BY date DESC LIMIT ?"
     args.append(a.days)
     rows = conn.execute(sql, args).fetchall()
+    # 被排除的降级日必须报出来(2026-09-15 静默审计 J10): 否则"0 天参评"看起来像"没存档",
+    # 而实际是"有存档但都降级了"——两种情况的结论完全相反。
+    dsql = "SELECT COUNT(*) FROM llm_review WHERE degraded!=0"
+    dargs = []
+    if a.ver:
+        dsql += " AND prompt_ver=?"
+        dargs.append(a.ver)
+    n_degraded = conn.execute(dsql, dargs).fetchone()[0]
+    if n_degraded:
+        print(f"ℹ️ 另有 {n_degraded} 个降级日(degraded)未计入统计"
+              f"{'(提示词版本={})'.format(a.ver) if a.ver else ''}")
     if not rows:
         print("(llm_review 无存档)")
         return
     all_rets, all_engine = [], []
+    n_noquote = 0
     for r in reversed(rows):
         d, ver, regime = r["date"], r["prompt_ver"], r["regime"]
         picks = json.loads(r["picks"] or "[]")
         detail, avg, n = score([{"code": k["code"], "name": k.get("name", "")} for k in picks], d, conn)
+        n_noquote += sum(1 for _, v, note in detail if v is None and note == "无行情")
         line = f"{d} [{ver}] {regime} | {len(picks)}只 可买{n} → " + \
                ("空仓" if not picks else f"{avg:+.2f}%" if avg is not None else "无行情")
         print(line + "   " + "  ".join(f"{nm}:{v if isinstance(v, str) else format(v, '+.1f') + '%'}"
@@ -100,6 +113,7 @@ def main():
                 from auction_scan import pick_strike_top
                 eng_top, _wm = pick_strike_top(json.loads(sp["picks"]))
                 eng_detail, eng_avg, eng_n = score([{"code": p["code"], "name": p["name"]} for p in eng_top], d, conn)
+                n_noquote += sum(1 for _, v, note in eng_detail if v is None and note == "无行情")
                 print(f"    └ 引擎Top5对照: {eng_avg:+.2f}%({eng_n}只可买)" if eng_avg is not None
                       else "    └ 引擎Top5对照: 无行情")
                 if eng_avg is not None:
@@ -109,6 +123,10 @@ def main():
     print(f"\n== LLM({a.ver or '全部版本'}) {stat(all_rets)}")
     if a.compare_engine:
         print(f"== 引擎Top5   {stat(all_engine)}")
+    if n_noquote:
+        # 无行情会同时压低/放大两边均值, 必须报数(2026-09-15 J10): 盘中跑时腾讯日K尚未落当日行,
+        # 这类"无行情"是时点问题而非数据缺失, 收盘后重跑即可。
+        print(f"⚠️ 本次共 {n_noquote} 只取不到行情(未计入均值): 盘中跑属正常(当日日K未落行), 收盘后重跑复核")
 
 
 if __name__ == "__main__":

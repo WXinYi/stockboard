@@ -36,7 +36,9 @@ jobs:
           if python3 scripts/release_db.py --what auction --download-latest; then
             echo "✅ 已恢复 auction 热层"
           else
-            echo "❌ auction.db 恢复失败, 推送将降级"; exit 1
+            # 文案与行为对齐(2026-09-15 静默审计 W9): 这里确实是终止本班(不做降级推送),
+            # 原文案"推送将降级"与实际 exit 1 不符, 会让人以为还有一条降级推送发出去了。
+            echo "❌ auction.db 恢复失败: 本班尾盘推送终止(不做降级推送), 失败由 alert job 告警"; exit 1
           fi
 
       - name: 尾盘格局推送
@@ -44,3 +46,21 @@ jobs:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python scripts/cycle_push.py --session eod
+
+
+  # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,
+  # 失败只表现为"钉钉少一条推送 / 页面仍是上一次采集", 无法第一时间知晓。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [eod]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

@@ -109,6 +109,9 @@ def main():
     ap = argparse.ArgumentParser(description="超短格局定时推送")
     ap.add_argument("--session", choices=["midday", "eod"], required=True)
     ap.add_argument("--dry-run", action="store_true", help="只打印不推送")
+    ap.add_argument("--fail-flag", default="/tmp/cycle_push_failed",
+                    help="推送失败时写标志文件(workflow 在数据步骤之后再据此判红: "
+                         "既不因推送故障阻断落库/部署, 也不让失败无声无息)")
     args = ap.parse_args()
 
     spider = KPLSpider()
@@ -121,8 +124,17 @@ def main():
         return 0
     from src.notify.dingtalk import DingTalk
     tag = "午盘" if args.session == "midday" else "尾盘"
-    resp = DingTalk().send_markdown(f"超短格局 {res['date']} {tag}", text)
-    print(f"📣 已推送: {resp}")
+    try:
+        resp = DingTalk().send_markdown(f"超短格局 {res['date']} {tag}", text)
+        print(f"📣 已推送: {resp}")
+    except Exception as e:
+        # 钉钉挂/被限流/keyword 被拒 = 该班推送没送到; 写标志文件 + 非零退出, 让失败可见
+        try:
+            Path(args.fail_flag).write_text(f"{tag}格局推送失败: {e}\n", encoding="utf-8")
+        except Exception:
+            pass
+        print(f"❌ {tag}格局推送失败: {e}", file=sys.stderr)
+        return 1
     return 0
 
 

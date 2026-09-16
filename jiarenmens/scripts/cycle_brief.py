@@ -55,11 +55,18 @@ def main():
     args = ap.parse_args()
     if not args.date:
         args.date = _latest_pool_date()
+    breadth_ok = True
     try:
         ensure_breadth(args.date)
     except Exception as e:
-        print(f"  ⚠️ 宽度自愈失败, 继续用库内数据: {e}")
+        breadth_ok = False
+        print(f"  ⚠️ 宽度自愈失败({e}) — 当日宽度可能缺失, 阶段结论会少一个输入分量")
     r = compute_cycle(args.date)
+    # 引擎侧已对"库内最新宽度≠当日"弃权处理(2026-09-15); 这里把结果再显式说一次,
+    # 因为阶段结论是给人看的, 输入少了一块必须写在结论旁边而不是埋在日志里。
+    if r["metrics"].get("breadth_stale_date") is not None:
+        print(f"  ⚠️ 当日宽度缺失(库内最新 {r['metrics']['breadth_stale_date'] or '无'})"
+              " — 涨停数/破板率未参与判定, 本结论仅基于高度与晋级率")
     m = r["metrics"]
     print("=" * 64)
     print(f"超短格局 · {r['date']} · 周期阶段: {r['stage']} (置信度 {r['confidence']}/9)")

@@ -19,6 +19,8 @@ const src = computed(() => (route.query.src === 'nh' ? 'nh' : 'bid'))
 const rows = ref([])
 const loading = ref(true)
 const error = ref(false)
+// 本次拉取是否失败(与"该板块真的没有成分股"区分): 静默轮询失败只记这里, 不打断页面
+const loadFailed = ref(false)
 const day = ref('')
 
 async function load(silent = false) {
@@ -40,8 +42,10 @@ async function load(silent = false) {
       list = await fetchBoardConstituents(bkCode.value, day.value, silent)
     }
     if (list) rows.value = list
+    loadFailed.value = false
     if (!silent) error.value = false
   } catch (e) {
+    loadFailed.value = true
     if (!silent) error.value = true
   } finally {
     loading.value = false
@@ -55,6 +59,7 @@ watch(bkCode, () => {
   rows.value = []
   loading.value = true
   error.value = false
+  loadFailed.value = false
   load()
 })
 
@@ -167,7 +172,10 @@ const turnoverW = r => (Math.max(0, r.turnover || 0) / turnoverMax.value * 100).
           </span>
           <span class="bd-net" :style="{ color: (r.bigNet || 0) >= 0 ? '#c0392b' : '#27ae60' }">{{ fmtNet(r.bigNet) }}</span>
         </div>
-        <div v-if="!rows.length" class="sd-error">该板块今日无成分数据(可能停牌或已改代码)</div>
+        <div v-if="!rows.length" class="sd-error">
+          <template v-if="loadFailed">⚠️ 成分数据加载失败（与"该板块今日无成分"不同）— 请刷新重试</template>
+          <template v-else>该板块今日无成分数据(可能停牌或已改代码)</template>
+        </div>
       </div>
     </template>
   </div>

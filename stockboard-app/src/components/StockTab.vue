@@ -58,7 +58,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
         <p style="font-size:12px;color:#888;margin-bottom:8px;">{{ lookedUpHolders.length }} 人持有:</p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
           <span v-for="p in lookedUpHolders" :key="p.zh_id" style="background:#f0f2f5;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;" @click="navigateToPlayer(p.zh_id)">
-            {{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span> <span style="color:#888;">{{ (p._total_position || 0).toFixed(0) }}%仓位</span>
+            {{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span> <span style="color:#888;">{{ p._total_position == null ? '仓位未知' : p._total_position.toFixed(0) + '%仓位' }}</span>
           </span>
         </div>
       </div>

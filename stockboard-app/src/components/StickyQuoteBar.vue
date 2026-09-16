@@ -14,6 +14,7 @@ const props = defineProps({
 const UP = '#e74c3c'
 const DOWN = '#27ae60'
 const copied = ref(false)
+const copyFailed = ref(false)
 
 const color = computed(() => {
   const c = props.crossInfo || props.quote
@@ -28,13 +29,24 @@ const codeText = computed(() => props.quote?.code || props.code)
 
 async function copyCode() {
   const txt = codeText.value
-  try { await navigator.clipboard.writeText(txt) } catch (e) { /* 剪贴板不可用静默 */ }
+  try {
+    await navigator.clipboard.writeText(txt)
+  } catch (e) {
+    // 剪贴板不可用(非 https/无权限)时不得显示"已复制"——那是假反馈
+    copyFailed.value = true
+    setTimeout(() => { copyFailed.value = false }, 1500)
+    return
+  }
   copied.value = true
   setTimeout(() => { copied.value = false }, 1500)
 }
 function fmt(v) {
   return typeof v === 'number' && isFinite(v) ? v.toFixed(2) : '—'
 }
+// 行情来源角标(2026-09-15 审计 F3): KPL 主源 vs 降级源(东财延迟/腾讯)必须可见 ——
+// 降级源的价格时效与字段完整度都不同, 之前是静默降级, 用户以为看到的都是同一口径
+const SRC_LABEL = { kpl: '', em: '东财延迟', tencent: '腾讯' }
+const srcTag = computed(() => SRC_LABEL[props.quote?.quoteSrc] || '')
 </script>
 
 <template>
@@ -42,13 +54,14 @@ function fmt(v) {
     <div class="sb-name">
       <strong class="sb-title">{{ quote?.name || '—' }}</strong>
       <span class="sb-code">{{ codeText }}</span>
-      <button class="sb-copy" :class="{ on: copied }" @click="copyCode">{{ copied ? '已复制' : '复制' }}</button>
+      <button class="sb-copy" :class="{ on: copied }" @click="copyCode">{{ copied ? '已复制' : (copyFailed ? '复制失败' : '复制') }}</button>
     </div>
     <div class="sb-quote">
       <span class="sb-price" :style="{ color }">{{ fmt(price) }}</span>
       <span class="sb-chg" :style="{ color }">{{ typeof chgPct === 'number' ? (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%' : '—' }}</span>
     </div>
     <span v-if="timeText" class="sb-time">{{ timeText }}</span>
+    <span v-if="srcTag" class="sb-time" style="color:#b06020;" :title="'行情降级来源: ' + srcTag">{{ srcTag }}</span>
   </div>
 </template>
 

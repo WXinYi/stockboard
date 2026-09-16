@@ -118,13 +118,25 @@ function pct(v) {
   return n >= 0 ? `+${n.toFixed(2)}%` : `${n.toFixed(2)}%`
 }
 function posLabel(total) {
-  if (!total || total === 0) return '空仓'
+  // 缺失(采集缺口/字段不可得)不得显示成"空仓"——那是无中生有的结论
+  if (total == null || isNaN(total)) return '—'
+  if (total === 0) return '空仓'
   if (total < 10) return '1成以下'
   if (total < 30) return '1-3成'
   if (total < 50) return '3-5成'
   if (total < 70) return '5-7成'
   if (total < 90) return '7-9成'
   return '9成以上'
+}
+
+// 缺失值一律 '—', 不落成 0(0 是"真实的零", 与"没有数据"必须区分)
+function num(v, digits) {
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  return isFinite(n) ? n.toFixed(digits) : '—'
+}
+function retColor(v) {
+  if (v == null || !isFinite(v)) return '#666'
+  return v >= 0 ? '#e74c3c' : '#27ae60'
 }
 
 async function loadPlayer(zhId) {
@@ -278,14 +290,14 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
 
   </div>
     <div v-if="player" class="player-meta" style="margin-top:20px;">
-      <div class="player-meta-item"><div class="val" :style="{ color: player.total_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>
-      <div class="player-meta-item"><div class="val" :style="{ color: player.daily_return >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(player.daily_return) }}</div><div class="lbl">日收益</div></div>
-      <div class="player-meta-item"><div class="val" :style="{ color: (player.net_value || 0) >= 1 ? '#e74c3c' : '#27ae60' }">{{ (player.net_value || 0).toFixed(3) }}</div><div class="lbl">净值</div></div>
-      <div class="player-meta-item"><div class="val" :style="{ color: drawdownColor(player.max_drawdown) }">{{ (player.max_drawdown || 0).toFixed(1) }}%</div><div class="lbl">最大回撤</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: retColor(player.total_return) }">{{ pct(player.total_return) }}</div><div class="lbl">总收益</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: retColor(player.daily_return) }">{{ pct(player.daily_return) }}</div><div class="lbl">日收益</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: player.net_value == null ? '#666' : (player.net_value >= 1 ? '#e74c3c' : '#27ae60') }">{{ num(player.net_value, 3) }}</div><div class="lbl">净值</div></div>
+      <div class="player-meta-item"><div class="val" :style="{ color: drawdownColor(player.max_drawdown) }">{{ player.max_drawdown == null ? '—' : player.max_drawdown.toFixed(1) + '%' }}</div><div class="lbl">最大回撤</div></div>
       <div class="player-meta-item"><div class="val">{{ posLabel(player.total_position ?? player._total_position) }}</div><div class="lbl">当前仓位</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.win_rate || 0).toFixed(1) }}%</div><div class="lbl">胜率</div></div>
-      <div class="player-meta-item"><div class="val">{{ player.days || 0 }}天</div><div class="lbl">运行天数</div></div>
-      <div class="player-meta-item"><div class="val">{{ (player.followers || 0).toLocaleString() }}</div><div class="lbl">关注人数</div></div>
+      <div class="player-meta-item"><div class="val">{{ player.win_rate == null ? '—' : player.win_rate.toFixed(1) + '%' }}</div><div class="lbl">胜率</div></div>
+      <div class="player-meta-item"><div class="val">{{ player.days == null ? '—' : player.days + '天' }}</div><div class="lbl">运行天数</div></div>
+      <div class="player-meta-item"><div class="val">{{ player.followers == null ? '—' : player.followers.toLocaleString() }}</div><div class="lbl">关注人数</div></div>
       <div class="player-meta-item" style="grid-column:span 3;">
         <div style="font-size:13px;color:#666;text-align:left;">{{ player.intro || player.concept || '暂无简介' }}</div>
         <div class="lbl">简介</div>

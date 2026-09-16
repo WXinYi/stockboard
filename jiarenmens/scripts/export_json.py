@@ -171,11 +171,19 @@ def export(db_path, crawl_date, out_dir):
         if code and code not in player_stocks[pid]:
             player_stocks[pid].append(code)
 
+    # 采集覆盖度(2026-09-15 静默审计): 当日既无持仓行也无调仓行的选手 = 本班没采到, 不等于"空仓"。
+    # 与 09-13 清仓误报守卫同口径(真全清仓者当日必有卖出交易行) —— 这类选手的仓位输出 None,
+    # 前端显示 '—', 而不是无中生有的"空仓 0%"。
+    covered_ids = {x["zh_id"] for x in positions_raw} | {x["zh_id"] for x in trades_raw}
+
     players_flat = []
     quality_ids = set()
     for p in all_players_raw:
         pid = p["zh_id"]
-        tp = pos_by_player.get(pid, 0)
+        tp = pos_by_player.get(pid, 0) if pid in covered_ids else None
+        # 胜率源不可得(2026-09-15 实测: 东财 rtV2 对全部选手返回 dealRate=0, 库内 25556 行无一非零,
+        # 10 倍选手亦然; 旧 H5 页已失效无从补) → 0 视为"未知"而非真值 0%, 导出 None 让前端显示 '—'
+        wr = safe_float(p.get("win_rate"))
         entry = {
             "id": pid,
             "name": _safe_name(pid, p.get("name")),
@@ -187,13 +195,13 @@ def export(db_path, crawl_date, out_dir):
             "yearly_return": safe_float(p.get("yearly_return")),
             "net_value": safe_float(p.get("net_value")),
             "max_drawdown": safe_float(p.get("max_drawdown")),
-            "win_rate": safe_float(p.get("win_rate")),
+            "win_rate": wr if wr > 0 else None,
             "days": safe_int(p.get("days")),
             "labels": p.get("labels") or [],
             "ranks": p.get("ranks") or [],
             "concept": (p.get("concept") or "")[:100],
             "intro": p.get("intro") or "",
-            "total_position": round(tp, 1),
+            "total_position": round(tp, 1) if tp is not None else None,
             "quality": is_quality(p),
             "stocks": player_stocks.get(pid, []),
         }
@@ -612,6 +620,12 @@ def export(db_path, crawl_date, out_dir):
     crawl_start_file = ROOT / "data" / "crawl_start.txt"
     if crawl_start_file.exists():
         crawl_time = crawl_start_file.read_text().strip()
+        # 时戳与数据日一致性(2026-09-15 静默审计纵深防御): crawl_start.txt 是"本班采集开始时间",
+        # 若它与导出锚定日不同, 说明页面会用"今天的采集时刻"配"更早的数据" —— 这正是
+        # "假新鲜"的形态(CI 侧已用采集失败非零退出来堵, 这里再报一次, 免得静默)。
+        if crawl_time[:10] != str(crawl_date)[:10]:
+            print(f"  ⚠️ 采集时戳({crawl_time[:10]})与本次导出数据日({crawl_date})不一致 — "
+                  "页面时点会显示比数据新的时间, 请核对本班采集是否真的产出了当日数据")
     else:
         crawl_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
     summary["crawl_time"] = crawl_time
@@ -652,7 +666,7 @@ def export(db_path, crawl_date, out_dir):
          round(p["total_return"], 2), round(p["daily_return"], 2),
          round(p["weekly_return"], 2), round(p["monthly_return"], 2),
          round(p["yearly_return"], 2), round(p["net_value"], 3),
-         round(p["max_drawdown"], 2), round(p["win_rate"], 2),
+         round(p["max_drawdown"], 2), round(p["win_rate"], 2) if p["win_rate"] is not None else None,
          p["days"], len(p["labels"] or []), p["ranks"],
          p["total_position"], p["quality"],
          p["stocks"]]
@@ -823,8 +837,9 @@ def build_my_positions(latest_dir: Path, crawl_date: str):
                         "SELECT DISTINCT date FROM limit_pool ORDER BY date DESC LIMIT 3"):
                     if d not in days:
                         days.append(d)
-        except Exception:
-            pass
+        except Exception as e:
+            # 原为裸 pass: 少几天涨停池统计会让板块统计口径悄悄变窄, 至少留一行线索
+            print(f"  ⚠️ limit_pool 历史日读取失败(板块统计只看当日): {e}")
         stats_by_day = {}
         for d in days[:2]:
             j = sp._get({"a": "GetPlateInfo_w38", "c": "HisLimitResumption", "st": 1000,
@@ -1374,6 +1389,14 @@ def build_strike_review(latest_dir: Path, crawl_date: str):
         # 存档为旧规则(无弱转强条目)或当日重算缺位 → 合成补齐(口径同 stage_candidates 弱转强块)
         if not out["today_wzq"]:
             out["today_wzq"] = _synthesize_wzq(c, crawl_date, prev, out["stage"] or "")
+            # 合成行必须可辨(2026-09-15 静默审计 C2): 口径与 stage_candidates 一致故数值可信,
+            # 但它不是当日 9:25 存档也不完全等于当日重算 —— 标出来, 页面才能说明来源
+            if out["today_wzq"]:
+                out["today_wzq_src"] = "合成"
+                for p in out["today_wzq"]:
+                    p.setdefault("src", "合成")
+        else:
+            out["today_wzq_src"] = "存档" if arc_today else "重算"
         try:
             from src.analysis.six_emotions import six_scores
             out["six"] = six_scores(crawl_date)
@@ -1432,6 +1455,30 @@ def build_six_history(latest_dir: Path):
     print(f"   six_history.json → {len(out['rows'])} 天 × 15分量, as_of {out['as_of']}")
 
 
+class _WarnTee:
+    """记录本次导出里所有「⚠️/跳过」行, 结束时汇总输出。
+
+    2026-09-15 静默审计 C3: 导出层有 15+ 处 per-feature 降级(单项跳过总比整页崩好),
+    但没有汇总时"这次导出缺了哪几块"只能靠翻长日志 —— 收尾打一份缺席清单。
+    """
+
+    def __init__(self, real):
+        self.real = real
+        self.warns = []
+
+    def write(self, s):
+        # 只认真正的降级行: 以 ⚠️ 开头, 或含"跳过/输出空/失败"。
+        # (踩坑: 泛匹配 "⚠️" 会把 "点评 …: ❌11 ⚠️0 ✅7" 这类正常统计行也收进清单)
+        line = s.strip()
+        if line.startswith("⚠️") or ("跳过" in line or "输出空" in line or "失败" in line):
+            if line and line not in self.warns:
+                self.warns.append(line)
+        return self.real.write(s)
+
+    def flush(self):
+        return self.real.flush()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="导出 SQLite 数据为 JSON（双轨输出）")
     parser.add_argument("--date", type=str, help="指定日期 (YYYY-MM-DD)，默认最新")
@@ -1448,4 +1495,16 @@ if __name__ == "__main__":
         conn.close()
         args.date = (row[0] if row and row[0] else date.today().isoformat())
 
-    export(DB_PATH, args.date, args.out)
+    _tee = _WarnTee(sys.stdout)
+    sys.stdout = _tee
+    try:
+        export(DB_PATH, args.date, args.out)
+    finally:
+        sys.stdout = _tee.real
+    # 缺席清单收尾汇总: 有降级就明说"这次少了什么", 没有就明确报"无降级"
+    if _tee.warns:
+        print(f"\n⚠️ 本次导出共 {len(_tee.warns)} 处降级/跳过, 清单:")
+        for w in _tee.warns:
+            print(f"   · {w}")
+    else:
+        print("\n✅ 本次导出无降级/跳过(全部 feature 正常产出)")

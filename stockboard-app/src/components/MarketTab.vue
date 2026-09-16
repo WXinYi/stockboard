@@ -23,6 +23,8 @@ const router = useRouter()
 // 竞价: 当日快照, 单次加载不轮询
 const auction = ref(null)
 const auctionLoading = ref(true)
+// 竞价快照拉取失败标记(与"盘外无快照"区分): 见 loadAuction
+const auctionError = ref(false)
 // 速览/六情绪输入: 30s 轮询(silent)
 const ladder = ref(null)
 const global = ref(null)
@@ -53,6 +55,11 @@ const staleDayNote = computed(() => (crawlDate.value && cycleDataDay.value && cr
 const dbRestore = ref(null)
 const dbRestoreNote = computed(() => (dbRestore.value?.degraded
   ? `⚠️ 本班为降级库（来源 ${dbRestore.value.source}，库龄 ${dbRestore.value.stale_days ?? '?'} 天），基线可能偏旧，变化类数字以钉钉实盘推送为准` : ''))
+// 失败必须可见(2026-09-15 静默审计): 这两条诚实提示的输入(core.json)拿不到时,
+// 提示会一起消失 —— 恰好在管线坏掉的时候失去披露, 所以单独给一条错误条。
+const coreError = ref(false)
+// 周期引擎拉取失败: 此前与"正在计算"共用一句文案, 失败会被读成"永远在加载"
+const cycleError = ref(false)
 
 async function loadMine(silent = false) {
   try { mine.value = await fetchMyPositions() } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
@@ -61,7 +68,16 @@ async function loadMine(silent = false) {
     const core = await fetchCore()
     crawlDate.value = core?.date || ''
     dbRestore.value = core?.db_restore || null
-  } catch (e) { /* 缺失就不提示 */ }
+    coreError.value = false
+  } catch (e) {
+    coreError.value = true
+    if (!silent) console.error('[MarketTab core]', e?.message)
+  }
+}
+
+async function retryCycle() {
+  cycleError.value = false
+  await loadCycleBattle(false)
 }
 
 async function loadCycleBattle(silent = false) {
@@ -87,7 +103,11 @@ async function loadCycleBattle(silent = false) {
     battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd, lb, (rv?.prev_broken || []).map(p => p.code))
     refreshSix()   // 六情绪实时版: 复用本轮已拉取的 KPL 数据, 不新增盘面请求
     loadStrikePx() // 候选实时价(一次批量行情, 供"距买点/止损参考")
-  } catch (e) { if (!silent) console.error('[MarketTab cycle]', e?.message) }
+    cycleError.value = false
+  } catch (e) {
+    cycleError.value = true
+    if (!silent) console.error('[MarketTab cycle]', e?.message)
+  }
 }
 
 // ── 昨日可买复核: 前一交易日 9:25 选股的可做名单 → 今日实时涨幅逐只判定 ──
@@ -272,8 +292,16 @@ async function loadAll(silent = false) {
   } catch (e) { if (!silent) console.error('[MarketTab]', e?.message) }
 }
 
-async function loadAuction() {
-  try { auction.value = await fetchAuction() } catch (e) { /* 盘外无快照 */ }
+async function loadAuction(silent = false) {
+  try {
+    auction.value = await fetchAuction()
+    auctionError.value = false
+  } catch (e) {
+    // 盘外无快照是常态, 但"取不到"与"今天没有"不能混为一谈(2026-09-15 审计 E5):
+    // 记下失败, 让大模型卡/盘前候选区如实说"加载失败"而不是"非交易日无此数据"。
+    auctionError.value = true
+    if (!silent) console.error('[MarketTab auction]', e?.message)
+  }
   auctionLoading.value = false
 }
 
@@ -357,6 +385,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
     <div class="pk-day">决策日 {{ cycleDataDay || auction?.date || '—' }}</div>
     <div v-if="staleDayNote" class="pk-stale">ℹ️ {{ staleDayNote }}</div>
     <div v-if="dbRestoreNote" class="pk-stale" style="color:#a94442;border-color:#e6b8b0;background:#fdf2f0;">⚠️ {{ dbRestoreNote }}</div>
+    <div v-if="coreError" class="pk-stale" style="color:#a94442;border-color:#e6b8b0;background:#fdf2f0;">⚠️ 基础数据(core.json)加载失败：采集日与降级库提示本次不可用 —— 这不代表数据正常，请刷新重试</div>
 
     <!-- ① 结论头: 当下可否买入(池 → 上限 → 一句话结论), 点击进 cycle 详情 -->
     <div v-if="battle && !battle.empty" class="pk-verdict" :class="'v-' + verdictShow.cls" :style="{ '--sc': STAGE_COLORS[cycle?.stage] || '#8a97a8' }" @click="open('cycle')">
@@ -366,12 +395,18 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         <span class="pk-more">选股依据 ›</span>
       </div>
       <div class="pk-sub" v-if="gateSentenceTxt">{{ gateSentenceTxt }}{{ stageShift ? '（' + stageShift + '）' : '' }}</div>
-      <div class="pk-sub muted" v-else>正在计算今日阶段与池…</div>
+      <div class="pk-sub muted" v-else-if="!cycleError">正在计算今日阶段与池…</div>
       <div v-if="riskSummary" class="pk-risk">
         <span v-if="riskSummary.sw">🔄 {{ riskSummary.sw }}</span>
         <span v-if="riskSummary.names.length">🚨 高标开板: {{ riskSummary.names.join('、') }}</span>
       </div>
       <div v-if="dvg" class="pk-warn">⚠️ {{ dvg }}</div>
+      <!-- 输入全空时引擎仍会给出阶段, 必须说明该结论不可作为依据(2026-09-15 审计) -->
+      <div v-if="cycle?.inputsEmpty" class="pk-warn">⚠️ 行情输入为空（接口可能失败，或今日非交易日）—— 本阶段结论不可作为依据</div>
+    </div>
+    <div v-else-if="cycleError" class="pk-verdict pk-load" @click="retryCycle">
+      <span class="pk-badge">!</span>
+      <span class="pk-sub muted">⚠️ 周期数据加载失败（非「正在加载」）— 点此重试；期间「可否买入」结论不可用</span>
     </div>
     <div v-else class="pk-verdict pk-load" @click="open('cycle')">
       <span class="pk-badge">…</span>
@@ -579,6 +614,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         </template>
         <div v-else-if="llm && showLlm && llm.degraded" class="mt-hold">今日无有效输出（模型输出异常，已降级存档待回测）</div>
         <!-- 竞价数据未到时不下"暂无"结论, 防加载闪现误导; llm 存在但收起时三分支全不命中=只留卡头 -->
+        <div v-else-if="auctionError" class="mt-hold">⚠️ 竞价快照加载失败 — 与"非交易日无此项"不同，请刷新重试</div>
         <div v-else-if="!auctionLoading && !llm" class="mt-hold">
           暂无模型输出 — 每个交易日 09:25 竞价班自动生成，非交易日/上线前的历史日期无此项
         </div>
@@ -620,7 +656,11 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         </template>
         <div v-else-if="!review.picks.length" class="mt-hold">{{ review.stage }}期无可买（空仓纪律正确）✓</div>
       </section>
-      <div v-if="!battle || battle.empty" class="mt-hold" style="padding:20px 0;text-align:center;">周期数据加载中…</div>
+      <!-- 失败与"加载中"分开说: 引擎拉取失败时不能显示成永远在加载(2026-09-15 静默审计 G4) -->
+      <div v-if="cycleError" class="mt-hold" style="padding:20px 0;text-align:center;">
+        ⚠️ 周期数据加载失败（非加载中）— <a href="javascript:void(0)" @click="retryCycle">点此重试</a>
+      </div>
+      <div v-else-if="!battle || battle.empty" class="mt-hold" style="padding:20px 0;text-align:center;">周期数据加载中…</div>
     </div>
 
     <!-- 行情速览(收起态, 顶替原 6 Tab 的看盘入口) -->

@@ -7,6 +7,8 @@ import '../styles/cards.css'
 
 const props = defineProps({
   history: { type: Array, default: null },
+  // 取数失败 ≠ "近期未上榜"(2026-09-15 审计)
+  failed: { type: Boolean, default: false },
 })
 
 const rows = computed(() => (Array.isArray(props.history) ? props.history.slice(0, 6) : []))
@@ -28,7 +30,7 @@ const DOWN = '#27ae60'
         <span class="lh-join">{{ r.joinNum }}家机构</span>
       </div>
     </div>
-    <div v-else class="fc-empty">近期未上榜</div>
+    <div v-else class="fc-empty">{{ failed ? '⚠️ 龙虎榜数据加载失败' : '近期未上榜' }}</div>
   </section>
 </template>
 

@@ -30,6 +30,17 @@ ROOT = Path(__file__).resolve().parent.parent
 ARCHIVE_DIR = ROOT / "data" / "archive"
 RETRIES = 3
 
+# ── 归档参数校验（2026-09-15 bug 修复）─────────────────────────────
+def _check_archive_arg(value: str, pattern: str, what: str) -> str:
+    """归档名由 CLI 参数拼成，必须先按固定模式校验：`--week ../../x` 这类输入
+    原本会把落盘路径写到 data/archive 之外（路径穿越）。"""
+    if not re.fullmatch(pattern, value):
+        sys.exit(f"❌ {what} 格式非法: {value!r}（应形如 {pattern}）")
+    dest = ARCHIVE_DIR / f"{what}-{value}.db"
+    if not str(dest.resolve()).startswith(str(ARCHIVE_DIR.resolve()) + os.sep):
+        sys.exit(f"❌ 目标路径越出 {ARCHIVE_DIR}: {dest}")
+    return value
+
 
 def _headers():
     h = {"User-Agent": "stockboard-fetch-db"}
@@ -193,12 +204,16 @@ def main():
     elif args.latest:
         download_gz("db-state", "crawl-latest.db.gz", ROOT / "data" / "crawl_data.db")
     elif args.week:
+        _check_archive_arg(args.week, r"\d{4}-W\d{2}", "week")
         download_gz(f"db-w{args.week}", f"crawl-{args.week}.db.gz",
                     ARCHIVE_DIR / f"crawl-{args.week}.db")
     elif args.month:
+        _check_archive_arg(args.month, r"\d{4}-\d{2}", "month")
         download_gz(f"db-m{args.month}", f"crawl-{args.month}.db.gz",
                     ARCHIVE_DIR / f"crawl-{args.month}.db")
     elif args.range:
+        for _m in args.range:
+            _check_archive_arg(_m, r"\d{4}-\d{2}", "month")
         cmd_range(args.range[0], args.range[1])
     else:
         ap.print_help()

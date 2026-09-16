@@ -44,7 +44,8 @@ jobs:
           fi
           sha256sum data/auction.db | awk '{print $1}' > /tmp/auction_sha_start
 
-      # 竞价跟单快报(09:26, 先于扫描推): 13 名关注选手竞价阶段成交 + 持仓快照
+      # 竞价跟单快报(09:26, 先于扫描推): 关注选手竞价阶段成交 + 持仓快照
+      # continue-on-error: 推送故障不得阻断竞价扫描/落库(主链路优先); 失败用末尾标志检查判红
       - name: 竞价跟单快报
         continue-on-error: true
         env:
@@ -119,6 +120,17 @@ jobs:
         if: steps.dist.outputs.cache-hit == 'true'
         run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
 
+      # 快报推送失败在此判红(2026-09-15 静默审计): 推送步骤 continue-on-error 是为了不阻断
+      # 竞价扫描/落库, 但"没送到"必须可见 —— watched_flash.py 失败时写下标志文件,
+      # 数据步骤全部完成后到这里才翻成 job 失败, 触发 alert job。
+      - name: 快报推送失败检查
+        if: always()
+        run: |
+          if [ -f /tmp/watched_flash_failed ]; then
+            echo "❌ 本班竞价跟单快报未送达:"; cat /tmp/watched_flash_failed; exit 1
+          fi
+          echo "✅ 快报推送无失败记录"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -138,3 +150,21 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+
+  # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,
+  # 失败只表现为"钉钉少一条推送 / 页面仍是上一次采集", 无法第一时间知晓。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [auction, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

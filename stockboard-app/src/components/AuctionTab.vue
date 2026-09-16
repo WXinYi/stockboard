@@ -12,10 +12,14 @@ const loading = ref(true)
 const error = ref(false)
 const router = useRouter()
 
-onMounted(async () => {
+onMounted(load)
+
+async function load() {
+  loading.value = true
+  error.value = false
   try { auction.value = await fetchAuction() } catch { error.value = true }
   loading.value = false
-})
+}
 
 function openStock(code, name) {
   router.push({ path: `/stock/${code}`, query: name ? { name } : {} })
@@ -49,7 +53,9 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
 <template>
   <div class="at-page">
     <div v-if="loading" class="sd-loading">正在加载竞价快照…</div>
-    <div v-else-if="error" class="sd-error">⚠️ 暂无竞价数据(非交易时段无快照)</div>
+    <!-- 失败与"非交易时段"必须分开说(2026-09-15 静默审计 E1): 原文案把网络失败说成时段原因 -->
+    <div v-else-if="error" class="sd-error">⚠️ 竞价数据加载失败 — 与是否交易时段无关，<a href="javascript:void(0)" @click="load">点此重试</a></div>
+    <div v-else-if="!auction" class="sd-error">非交易时段无竞价快照（今日 09:25 竞价班尚未产出）</div>
 
     <template v-else-if="auction">
       <!-- 竞价环境快照(2026-09-13 改版): env.pass 恒为 True(auction_env.py 2026-08-13 设计:

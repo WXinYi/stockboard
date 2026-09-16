@@ -505,7 +505,7 @@ function showPlayer(zhId) {
         '<div class="player-meta-item"><div class="val">' + (p.net_value||0).toFixed(3) + '</div><div class="lbl">净值</div></div>' +
         '<div class="player-meta-item"><div class="val">' + (p.max_drawdown||0).toFixed(1) + '%</div><div class="lbl">最大回撤</div></div>' +
         '<div class="player-meta-item"><div class="val">' + posLabel(p._total_position||0) + '</div><div class="lbl">当前仓位</div></div>' +
-        '<div class="player-meta-item"><div class="val">' + (p.win_rate||0).toFixed(1) + '%</div><div class="lbl">胜率</div></div>' +
+        '<div class="player-meta-item"><div class="val">' + (p.win_rate and p.win_rate.toFixed(1) + '%' or '—') + '</div><div class="lbl">胜率</div></div>' +
         '<div class="player-meta-item"><div class="val">' + (p.days||0) + '天</div><div class="lbl">运行天数</div></div>' +
         '<div class="player-meta-item"><div class="val">' + ((p.followers||0).toLocaleString()) + '</div><div class="lbl">关注人数</div></div>' +
         '<div class="player-meta-item" style="grid-column:span 3;"><div style="font-size:13px;color:#666;text-align:left;">' + (p.intro||p.concept||'暂无简介') + '</div><div class="lbl">简介</div></div>' +

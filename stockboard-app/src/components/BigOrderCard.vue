@@ -8,6 +8,8 @@ import '../styles/cards.css'
 
 const props = defineProps({
   orders: { type: Array, default: null },
+  // 取数失败 ≠ "今日没有大单"(2026-09-15 审计)
+  failed: { type: Boolean, default: false },
 })
 
 const rows = computed(() => (Array.isArray(props.orders) ? props.orders.slice(0, 8) : []))
@@ -31,7 +33,7 @@ const DOWN = '#27ae60'
         <span v-if="o.type" class="bo-tag" :class="o.type === '超大' ? 'xl' : 'md'">{{ o.type }}</span>
       </div>
     </div>
-    <div v-else class="fc-empty">暂无大单数据</div>
+    <div v-else class="fc-empty">{{ failed ? '⚠️ 大单数据加载失败' : '暂无大单数据' }}</div>
   </section>
 </template>
 

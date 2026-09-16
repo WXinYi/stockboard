@@ -36,6 +36,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -76,7 +77,13 @@ def _opt_token() -> str:
 
 
 def _api(method: str, url: str, *, token: str = "", data=None, ctype: str = "application/json"):
-    """返回 (status, 解析后的json或bytes)。404 时 status=404 不抛错。"""
+    """返回 (status, 解析后的json或bytes)。404 时 status=404 不抛错。
+
+    网络层故障(SSL中断/连接重置/DNS, 即 URLError 族)不再向上炸 traceback(2026-09-15):
+    --hot-status 需要把它判成 unreadable 而不是崩溃 —— 崩溃方向虽安全(不会覆盖热层),
+    但"读不到就是读不到"必须以受控形态报告。GET 重试 1 次(幂等), 写操作不重试。
+    """
+    tries = 2 if method == "GET" else 1
     req = urllib.request.Request(url, method=method, data=data)
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("User-Agent", "stockboard-release-db")
@@ -84,15 +91,27 @@ def _api(method: str, url: str, *, token: str = "", data=None, ctype: str = "app
         req.add_header("Authorization", f"Bearer {token}")
     if data is not None:
         req.add_header("Content-Type", ctype)
-    try:
-        with urllib.request.urlopen(req) as r:
-            body = r.read()
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(req) as r:
+                body = r.read()
+                try:
+                    return r.status, json.loads(body)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    return r.status, body
+        except urllib.error.HTTPError as e:
+            # 错误响应体未必是 JSON(代理/网关 30x、HTML 错误页), 解析失败不能抛出去
+            raw = e.read()
             try:
-                return r.status, json.loads(body)
+                return e.code, json.loads(raw or b"{}")
             except (json.JSONDecodeError, UnicodeDecodeError):
-                return r.status, body
-    except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b"{}")
+                return e.code, raw
+        except (urllib.error.URLError, OSError) as e:
+            if i + 1 < tries:
+                time.sleep(1)
+                continue
+            return 0, {"_neterr": f"{type(e).__name__}: {e}"}
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def get_release(tag: str, warn: bool = False):
@@ -100,8 +119,11 @@ def get_release(tag: str, warn: bool = False):
     if st != 200:
         # 静默返回 None 曾导致整班 workflow 在"下载热层库"步骤秒挂且日志无任何线索
         # (2026-09-09 09:30 首班): 403 多为匿名读被限流, 调用方务必带 GITHUB_TOKEN。
+        # st=0 = 网络层故障(非"不存在"): hot_status 据此判 unreadable, 不与 absent 混同。
         if warn:
-            print(f"[release] ⚠️ GET {tag} → HTTP {st}(403=匿名读被限流, 需 GITHUB_TOKEN)", file=sys.stderr)
+            reason = "网络层故障(SSL/连接中断, 与'不存在'不同)" if st == 0 else \
+                f"HTTP {st}(403=匿名读被限流, 需 GITHUB_TOKEN)"
+            print(f"[release] ⚠️ GET {tag} → {reason}", file=sys.stderr)
         return None
     return rel
 
@@ -433,18 +455,36 @@ def cmd_download_latest(dest: Path = None, retries: int = 3):
 # 读 marker 写入 core.json.db_restore, 前端可见。全链耗尽返回 1(照旧宁可停不可断链)。
 
 MARKER_PATH = DB_PATH.parent / ".db_restore_source"
+# auction.db 单独一个 marker: 它由竞价班/打标班/crawl 班共写, 降级语义与 crawl 不同,
+# 共用 marker 会让 crawl 的告警/前端红条误判来源(2026-09-15 静默审计 S2)。
+AUCTION_MARKER_PATH = DB_PATH.parent / ".auction_restore_source"
 MAX_STALE_DAYS = 4
 
 
-def _db_last_date(db_path: Path):
-    """库内最后采集日(date)或 None(表缺失/库坏)。"""
+def _last_date_of(db_path: Path, table: str, col: str):
+    """库内某表的最大日期或 None(表缺失/库坏)。"""
     try:
         mx = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True).execute(
-            "SELECT MAX(crawl_date) FROM positions").fetchone()[0]
+            f"SELECT MAX({col}) FROM {table}").fetchone()[0]
         return date.fromisoformat(str(mx)[:10]) if mx else None
     except Exception as e:
-        print(f"[fallback] ⚠️ 库龄读取失败({e})", file=sys.stderr)
+        print(f"[fallback] ⚠️ 库龄读取失败({table}.{col}: {e})", file=sys.stderr)
         return None
+
+
+def _db_last_date(db_path: Path):
+    """crawl_data.db 的最后采集日(positions.crawl_date)。"""
+    return _last_date_of(db_path, "positions", "crawl_date")
+
+
+def _auction_last_date(db_path: Path):
+    """auction.db 的最后落库日: 优先竞价池(每班必写), 其次出击池存档。"""
+    return (_last_date_of(db_path, "bid_pool", "date")
+            or _last_date_of(db_path, "strike_pool", "date"))
+
+
+def _days_since(last: date, today: date = None):
+    return None if last is None else (today or date.today()) - last
 
 
 def _db_age_days(db_path: Path, today: date = None):
@@ -453,9 +493,10 @@ def _db_age_days(db_path: Path, today: date = None):
     return None if last is None else (today or date.today()) - last
 
 
-def _write_marker(source: str, degraded: bool, extra: dict = None):
-    MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MARKER_PATH.write_text(json.dumps({
+def _write_marker(source: str, degraded: bool, extra: dict = None, path: Path = None):
+    path = path or MARKER_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
         "source": source, "degraded": degraded,
         "checked_at": datetime.now().isoformat(timespec="seconds"),
         **(extra or {}),
@@ -521,22 +562,60 @@ def cmd_download_fallback(cache_db: Path = None, today: date = None):
 
 
 def cmd_download_what(what: str, dest: Path = None):
-    """--what 分发下载: auction 先 latest, 失败回退最新日期快照(防 latest 被损坏/覆盖丢失)。"""
+    """--what 分发下载: auction 先 latest, 失败回退最新日期快照(防 latest 被损坏/覆盖丢失)。
+
+    2026-09-15 静默审计 S2: 原先回退到日期快照时既不校验库龄也不写 marker ——
+    auction 链路可能在无人知晓的情况下踩数周旧库。现与 crawl ④链同口径:
+    回退来源必须过 MAX_STALE_DAYS 库龄闸门, 并写 .auction_restore_source 供告警/前端展示。
+    """
     t = TARGETS[what]
     if what == "crawl":
         return cmd_download_latest(dest)
     dest = dest or t["db"]
-    rel = get_release(t["tag"])
+    rel = get_release(t["tag"], warn=True)
     if not rel:
-        print(f"[download] ❌ Release {t['tag']} 不存在", file=sys.stderr)
+        print(f"[download] ❌ Release {t['tag']} 不存在或不可读", file=sys.stderr)
         return 1
-    daily = sorted((a["name"] for a in rel.get("assets", [])
-                    if re.fullmatch(rf"{re.escape(t['prefix'])}-\d{{4}}-\d{{2}}-\d{{2}}\.db\.gz", a["name"])),
+    names = {a["name"] for a in rel.get("assets", [])}
+    # 当前态资产优先: 不算降级, 不写 marker
+    if t["asset"] in names and _download_asset_to_db(t["tag"], t["asset"], dest, retries=2) == 0:
+        return 0
+    # 回退: 最新日期快照(降级来源)
+    daily = sorted((n for n in names
+                    if re.fullmatch(rf"{re.escape(t['prefix'])}-\d{{4}}-\d{{2}}-\d{{2}}\.db\.gz", n)),
                    reverse=True)
-    for name in [t["asset"]] + daily:
-        if _download_asset_to_db(t["tag"], name, dest, retries=2) == 0:
-            return 0
+    for name in daily:
+        if _download_asset_to_db(t["tag"], name, dest, retries=2) != 0:
+            continue
+        age = _days_since(_auction_last_date(dest))
+        if age is None or age.days > MAX_STALE_DAYS:
+            print(f"[download] ❌ 快照 {name} 库龄 {age.days if age else '未知'} 天 > "
+                  f"{MAX_STALE_DAYS} 天, 库龄闸门拒绝(宁可不启动也不用过期竞价档案)", file=sys.stderr)
+            return 1
+        _write_marker(f"auction快照{name}", True, {"stale_days": age.days}, path=AUCTION_MARKER_PATH)
+        print(f"[download] ⚠️ 降级启用 auction 日快照 {name}(库龄 {age.days} 天) — 已写 marker, 应告警")
+        return 0
+    print(f"[download] ❌ {t['tag']} 无可用资产(现有: {sorted(names)[:5]})", file=sys.stderr)
     return 1
+
+
+def hot_status(what: str = "crawl") -> str:
+    """热层状态: present / absent / unreadable(读不到就是读不到, 不猜)。
+
+    db_upload 的"下载失败→用 git 历史旧库覆盖热层"回滚事故(2026-09-15 审计 S5)根因
+    就是把"读不到"当成了"不存在", 这里把两种情况分开。
+    """
+    t = TARGETS[what]
+    if what == "crawl":
+        # crawl 热层 = db-state 的 crawl-latest.db.gz, 与 auction 的 auction-state 不同档
+        rel = get_release(HOT_TAG, warn=True)
+        if not rel:
+            return "unreadable"
+        return "present" if any(a["name"] == HOT_ASSET for a in rel.get("assets", [])) else "absent"
+    rel = get_release(t["tag"], warn=True)
+    if not rel:
+        return "unreadable"
+    return "present" if any(a["name"] == t["asset"] for a in rel.get("assets", [])) else "absent"
 
 
 def cmd_sync():
@@ -568,6 +647,8 @@ def main():
                     help="--download-fallback 的第三级: actions/cache 恢复出的库 gz 副本路径")
     ap.add_argument("--dest", default=None, help="--download-latest 目标路径(默认按 --what 取注册表)")
     ap.add_argument("--retain-weeks", type=int, metavar="N")
+    ap.add_argument("--hot-status", action="store_true",
+                    help="只探测热层资产是否存在: 打印 present/absent/unreadable(不下载)")
     ap.add_argument("--gz-only", metavar="OUT", help="无 token, 本地生成快照 gz 自检")
     args = ap.parse_args()
 
@@ -594,13 +675,16 @@ def main():
         cmd_init()
     if args.download_latest:
         raise SystemExit(cmd_download_what(args.what, Path(args.dest) if args.dest else None))
+    if args.hot_status:
+        print(f"hot_status[{args.what}]: {hot_status(args.what)}")
+        return
     if args.download_fallback:
         if args.what != "crawl":
             sys.exit("--download-fallback 目前只支持 crawl 库(auction 已有日快照回退)")
         raise SystemExit(cmd_download_fallback(Path(args.cache_db) if args.cache_db else None))
     if not any([args.upload_latest, args.archive_weeks, args.archive_months,
                 args.sync, args.init, args.download_latest, args.download_fallback,
-                args.retain_weeks, args.gz_only]):
+                args.hot_status, args.retain_weeks, args.gz_only]):
         ap.print_help()
 
 

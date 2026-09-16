@@ -80,7 +80,20 @@ def build_markdown(date_str: str, data: dict, hhmm: str) -> str:
             lines.append(f"🏃🏻‍♂️ 卖: {ss}")
             lines.append("")
     else:
-        lines.append("13 名关注选手竞价阶段均无成交。")
+        # 全部拉取失败 ≠ 全部无成交(2026-09-15 静默审计: 原文案把"接口全挂"说成"均无成交",
+        # 是当天最容易误读成"今天没人动手"的一句假信号)
+        fetched_ok = len(WATCHED_PLAYERS) - len(hidden) - sum(
+            1 for zh, _ in WATCHED_PLAYERS if data.get(zh, {}).get("err"))
+        n_shown = len(WATCHED_PLAYERS) - len(hidden)
+        n_fail = sum(1 for zh, _ in WATCHED_PLAYERS if data.get(zh, {}).get("err"))
+        if fetched_ok <= 0:
+            lines.append(f"⚠️ {n_shown} 名关注选手全部拉取失败, "
+                         "本次快报无法判定竞价成交 —— 请勿读作「无成交」。")
+        elif n_fail:
+            # 部分失败时不能下"均无成交"的结论: 只能说出"已取到的都没成交"
+            lines.append(f"竞价阶段未见成交(其中 {n_fail} 名拉取失败, 结论不完整)。")
+        else:
+            lines.append(f"{n_shown} 名关注选手竞价阶段均无成交。")
         lines.append("")
     if quiet:
         lines.append(f"💤 无成交: {'、'.join(quiet)}")
@@ -96,6 +109,8 @@ def main():
     ap = argparse.ArgumentParser(description="竞价跟单快报")
     ap.add_argument("--date", help="YYYY-MM-DD(默认今天)")
     ap.add_argument("--dry-run", action="store_true", help="只打印不推送")
+    ap.add_argument("--fail-flag", default="/tmp/watched_flash_failed",
+                    help="推送失败写标志文件(workflow 在数据步骤后再判红, 不阻断竞价主链路)")
     args = ap.parse_args()
 
     date_str = args.date or datetime.now(BJ_TZ).strftime("%Y-%m-%d")
@@ -108,8 +123,17 @@ def main():
     if args.dry_run:
         print(text)
         return 0
-    DingTalk().send_markdown(f"竞价跟单快报 {date_str}", text)
-    print(f"✅ 竞价跟单快报已推送 ({date_str})")
+    try:
+        DingTalk().send_markdown(f"竞价跟单快报 {date_str}", text)
+        print(f"✅ 竞价跟单快报已推送 ({date_str})")
+    except Exception as e:
+        # 推送没送到必须可见: 写标志文件 + 非零退出, 由 workflow 末尾判红(不阻断竞价落库)
+        try:
+            Path(args.fail_flag).write_text(f"竞价跟单快报推送失败: {e}\n", encoding="utf-8")
+        except Exception:
+            pass
+        print(f"❌ 竞价跟单快报推送失败: {e}", file=sys.stderr)
+        return 1
     return 0
 
 

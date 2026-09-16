@@ -810,8 +810,9 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                                "prompt_ver": _r[6], "latency_s": _r[7], "degraded": bool(_r[8]),
                                "generated_at": _r[9]}
                 print(f"      llm 本班无新输出, 回填当日存档(regime={_r[0]}, prompt_ver={_r[6]})")
-        except Exception:
-            pass
+        except Exception as e:
+            # 原为裸 pass: 存档兜底也失败时毫无线索, 前端只会看到"大模型卡空着"
+            print(f"      ⚠️ llm 存档回填失败(本班大模型卡将为空): {e}")
 
     # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
     if not dry_run:

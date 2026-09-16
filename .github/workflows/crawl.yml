@@ -133,10 +133,17 @@ jobs:
         run: cd jiarenmens && python main.py --checkpoint-reset
 
       # 东财人气榜快照(每天最多两份: 09:25 auction 已存 am 则此处自动记 pm, 同(date,snap)去重)
+      # 三个 continue-on-error 步骤的可见化(2026-09-15 静默审计): 它们不能判红(人气/宽度/炸板
+      # 失败不该阻断落库与部署), 但失败必须留下可检索的 ::warning:: 注解, 而不是只有日志里一行。
       - name: 人气榜快照
         if: success()
         continue-on-error: true
-        run: cd jiarenmens && python scripts/auction_scan.py --hot-rank
+        run: |
+          cd jiarenmens
+          python scripts/auction_scan.py --hot-rank 2>&1 | tee /tmp/hotrank.log
+          if grep -qE "❌|失败|异常|Traceback" /tmp/hotrank.log; then
+            echo "::warning::本班人气榜快照未写入(该日人气榜数据将缺失)"
+          fi
 
       # 市场宽度(涨停/跌停/炸板率)每日落库: 仅收盘班次(≥15:00)写, 盘中班次跳过
       # 防止盘中写进半日数; 断档会使周期引擎用旧宽度误判阶段(9/4 曾误判"分歧")
@@ -150,7 +157,10 @@ jobs:
           cd jiarenmens
           H=$(TZ=Asia/Shanghai date +%H%M)
           if [ "$H" -ge 1500 ]; then
-            python scripts/backfill_emotion.py --breadth
+            python scripts/backfill_emotion.py --breadth 2>&1 | tee /tmp/breadth.log
+            if grep -qE "跳过本次|失败|Traceback" /tmp/breadth.log; then
+              echo "::warning::本班市场宽度未更新 — 断档会让周期引擎的涨停数/破板率分量缺失(9/4 误判同族)"
+            fi
           else
             echo "盘中班次($H), 跳过宽度更新"
           fi
@@ -162,7 +172,10 @@ jobs:
           cd jiarenmens
           H=$(TZ=Asia/Shanghai date +%H%M)
           if [ "$H" -ge 1500 ]; then
-            python scripts/backfill_broken.py
+            python scripts/backfill_broken.py 2>&1 | tee /tmp/broken.log
+            if grep -qE "⚠️|失败|Traceback" /tmp/broken.log; then
+              echo "::warning::本班炸板池归档有缺口(部分日期失败) — 弱转强判定会少数据"
+            fi
           else
             echo "盘中班次($H), 跳过炸板归档"
           fi
@@ -284,6 +297,17 @@ jobs:
           path: jiarenmens/data/.cache-db/
           key: crawl-db-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # 格局推送失败在此判红(2026-09-15 静默审计 W3): 推送步骤必须 continue-on-error
+      # (推送故障不得阻断落库/部署), 但失败不能无声 —— cycle_push.py 失败时写下标志文件,
+      # 到这里(数据步骤全部完成后)才把失败翻成 job 失败, 触发 failure 告警。
+      - name: 格局推送失败检查
+        if: always()
+        run: |
+          if [ -f /tmp/cycle_push_failed ]; then
+            echo "❌ 本班格局推送未送达:"; cat /tmp/cycle_push_failed; exit 1
+          fi
+          echo "✅ 格局推送无失败记录(或本班不在推送窗口)"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -303,3 +327,21 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+
+  # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,
+  # 失败只表现为"钉钉少一条推送 / 页面仍是上一次采集", 无法第一时间知晓。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [crawl, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

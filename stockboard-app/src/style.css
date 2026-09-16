@@ -134,6 +134,11 @@ h3 { font-size: 14px; font-weight: 450; }
 }
 .back-btn:hover { background: rgba(107,125,179,.1); }
 .footer { text-align: center; padding: 14px; font-size: 11px; font-weight: 350; color: #8e8e9a; flex-shrink: 0; }
+/* 页脚在 main 之外, 拿不到 .main-content 的 88px 底部让位留白; 而移动端(<768px)底部导航是
+   fixed, 会把它整块盖住(2026-09-15 实测: 页脚文字 y857-900 ⊂ 导航 y844-900) → 按同一口径让位。
+   页脚是"采集/数据截至"时点披露, 必须可见, 不能藏在导航下面。
+   条件用 .nav-bar ~ .footer: 详情页不渲染导航(App.vue v-if), 那种页面不需要留白。 */
+@media (max-width: 767px) { .nav-bar ~ .footer { padding-bottom: 88px; } }
 
 /* ═══════════════════════════════════════════════
    TABLE — light glass rows

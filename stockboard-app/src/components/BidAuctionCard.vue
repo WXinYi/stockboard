@@ -8,6 +8,8 @@ import '../styles/cards.css'
 const props = defineProps({
   bid: { type: Array, default: null },
   prevClose: { type: Number, default: null },
+  // 取数失败(2026-09-15 审计): 失败 ≠ "非竞价时段", 两者必须分开说
+  failed: { type: Boolean, default: false },
 })
 
 const hasData = computed(() => Array.isArray(props.bid) && props.bid.length > 1 && typeof props.prevClose === 'number')
@@ -37,7 +39,7 @@ const lineColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
       </svg>
       <div class="bd-scale"><span>09:15</span><span>09:25</span></div>
     </template>
-    <div v-else class="fc-empty">非竞价时段</div>
+    <div v-else class="fc-empty">{{ failed ? '⚠️ 竞价数据加载失败(与是否竞价时段无关)' : '非竞价时段' }}</div>
   </section>
 </template>
 

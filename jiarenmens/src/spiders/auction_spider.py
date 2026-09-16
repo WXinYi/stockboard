@@ -327,18 +327,36 @@ class AuctionStore:
 
     def save_bid_pool(self, date_str: str, rows: List[List], source: str):
         self._validate_date(date_str)
+
+        def _num(v):
+            # 缺失写 NULL 而不是 0(2026-09-15 静默审计 C1): "换手 0%" 与"没取到"在下游
+            # 曾是同一个值, 页面会把缺失显示成真实的 0%。所有 bid_pool 消费方都用
+            # `or 0` / `if not x` 判断, NULL 与 0 对其完全等价(补算链照样触发),
+            # 所以改 NULL 不改变行为, 只让"没取到"不再冒充 0。
+            if v is None or v == "":
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        n_null = 0
         with self._conn() as c:
             for r in rows:
                 if len(r) < 13:
                     continue
+                vals = [_num(r[i]) for i in (2, 3, 4, 5, 6, 7, 8)]
+                vals.append(_num(r[9]) if len(r) > 9 else None)
+                n_null += sum(1 for v in vals if v is None)
                 c.execute("""INSERT OR REPLACE INTO bid_pool
                     (date, code, name, price, change_pct, limit_up_buy, bid_pct, bid_net,
                      turnover_ratio, main_net, unfilled_buy, plates, circ_mv, tag, source)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (date_str, r[0], r[1], float(r[2] or 0), float(r[3] or 0), float(r[4] or 0),
-                     float(r[5] or 0), float(r[6] or 0), float(r[7] or 0), float(r[8] or 0),
-                     float(r[9] or 0) if len(r) > 9 else 0,
-                     str(r[11] or ""), float(r[12] or 0), str(r[16] or ""), source))
+                    (date_str, r[0], r[1], *vals,
+                     str(r[11] or ""), _num(r[12]), str(r[16]) if len(r) > 16 else "", source))
+        if n_null:
+            # 让"缺字段"这件事可见(下游腾讯补算链就是靠这些空缺触发的)
+            print(f"   ⚠️ bid_pool 落库 {n_null} 个数值字段为空(已存 NULL, 未用 0 冒充)")
 
     def save_limit_pool(self, date_str: str, groups: List[tuple]):
         """groups: [(pid_type, rows), ...] — DailyLimitPerformance 每个 PidType 的 info
