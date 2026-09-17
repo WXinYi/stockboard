@@ -318,6 +318,17 @@ Python `jiarenmens/src/analysis/stage_candidates.py`（09:25 存档 + 钉钉推�
 - ⚠️ 新增调 GitHub API 的 workflow 步骤必须显式 `env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`（09-06 演练实抓：secrets 不会自动进步骤环境）。
 - `jiarenmens/data/archive/`（fetch_db 回测产物）已 ignore，勿 `git add -A` 误提交。
 
+### 炸板池归档加固（2026-09-17）
+
+事故：`broken_pool`（弱转强"昨日分歧"的精确炸板源）09-07/08、09-14~09-16 共 **5 个交易日静默缺口**。09-16 缺口由生产巡检发现——`market_breadth.zhaban=11`（当日 11 只炸板）而 `broken_pool` 该日 0 行，源站 `limit_up_broken?date=2026-09-16` 实拉同为 11 只，确认为落库侧丢失而非无数据。根因与 09-09 `limit_pool` 事故同族：`backfill_broken.py` 只取 `limit_pool` 的 `MAX(date)` 这"一天"，而选股宝当日炸板池收盘后（实测 15:19）未定稿返回空 `data`，脚本 `DELETE` 后写 0 行、退出码 0；次日 `MAX(date)` 已翻篇，那天永不回头。crawl.yml 守卫 `grep -qE "⚠️|失败|Traceback"` 看不见这条路径（只打 `0 只炸板` + `✅`），故连缺三天无人察觉。
+
+加固（与 09-09 同款）：
+- `backfill_broken.py` 默认改**7 天滚动窗口**（`--days N`，幂等 `INSERT OR REPLACE`）——当前尚未定稿的那天由次日窗口自动补上，缺口不再累积。
+- 末尾交易日无数据重试 3×60s（等源站定稿）；**空返回不删旧数据**（重跑不得把已归档好的一天清空）。
+- 可见化由"匹配 ⚠️"改为**落后超一个交易日才打 ⚠️**（正常态=末尾日未定稿，由次日补上，不报噪），crawl.yml 守卫据此产出 `::warning::`；`--strict` 仅供手动/CI 一次性回补判红。
+- CI 补齐入口：`backfill-pool-history.yml` 新增 `broken_days`（默认 30 个交易日），与 limit_pool 回补解耦（不套用只认 `limit_pool` MIN 的幂等守卫，否则永不执行）。
+- 回补结果：41 天/1012 行 → **46 天/1141 行**（07-15 起交易日全覆盖，补 129 行；已有日重抓结果一致）。
+
 ### 3.5 前端消费链路
 
 前端只读 `stockboard-app/public/data/` 下的静态 JSON（Pages 无后端）；个股行情/K线/分时走浏览器直连东财/腾讯 JSONP（`stockboard-app/src/utils/eastmoney.js`、`stockSearch.js`），与采集管道无关。**改采集/存储不影响页面行情功能；只影响"重仓共识/抄作业"等选手数据模块的刷新。**
@@ -522,7 +533,7 @@ curl -s https://api.github.com/repos/WXinYi/stockboard/releases | \
 |---|---|
 | 失败告警（9/9 workflow） | 每个 workflow 新增 `alert-on-failure` job（`if: failure()`）→ `scripts/notify_failure.py` 发钉钉（列出失败/取消的 job + run 链接）。**以前失败只表现为"钉钉少一条/页面还是旧数据"** |
 | 推送失败判红 | 竞价跟单快报、午盘/尾盘格局推送保留 `continue-on-error`（不阻断落库/部署），但脚本写标志文件，workflow **末尾**检查 → 失败翻成 job 失败 |
-| 三步可见化 | 人气榜/市场宽度/炸板池归档失败产出 `::warning::` 注解（不判红） |
+| 三步可见化 | 人气榜/市场宽度/炸板池归档失败产出 `::warning::` 注解（不判红）。**炸板池 2026-09-17 起改为「落后超一个交易日」才告警**（正常态=末尾日收盘后未定稿、由滚动窗口次日补上，不报噪；原先的「失败/⚠️」匹配看不见 0 行路径，见 §3.4 炸板池归档加固） |
 | `db_upload` 热层分流 | 见 §5.1 表格（`--hot-status`） |
 | 探针真话 | KPL 连通性探针改为"两条通道都不通才判失败"（原先 `curl \|\| echo` 恒绿） |
 | cycle-eod 文案 | 恢复失败文案由"推送将降级"改为"本班尾盘推送终止（不做降级推送）"，与 `exit 1` 行为对齐 |

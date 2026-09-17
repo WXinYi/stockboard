@@ -165,6 +165,11 @@ jobs:
             echo "盘中班次($H), 跳过宽度更新"
           fi
 
+      # 炸板池归档(选股宝源): 收盘班写"最近 7 个交易日"滚动窗口(幂等, 见 backfill_broken.py)。
+      # 当日炸板池收盘后未定稿时源返回空 data, 该日由次日窗口自动补上; 末尾日无数据时脚本
+      # 自带 3×60s 重试等定稿。只有"落后超一个交易日"(自愈失效)才打 ⚠️ → 下面守卫翻成注解。
+      # 2026-09-17 加固前是"只取 limit_pool 最大值的单日" + 0 行当成功 → 09-07/08、09-14~09-16
+      # 共 5 天静默缺口(与 09-09 limit_pool 漏补同族, 见 docs/DATA_PIPELINE.md §3.4)。
       - name: 炸板池归档(选股宝)
         if: success()
         continue-on-error: true
@@ -174,7 +179,7 @@ jobs:
           if [ "$H" -ge 1500 ]; then
             python scripts/backfill_broken.py 2>&1 | tee /tmp/broken.log
             if grep -qE "⚠️|失败|Traceback" /tmp/broken.log; then
-              echo "::warning::本班炸板池归档有缺口(部分日期失败) — 弱转强判定会少数据"
+              echo "::warning::本班炸板池归档有缺口(部分日期失败或自愈失效) — 弱转强判定会少数据"
             fi
           else
             echo "盘中班次($H), 跳过炸板归档"

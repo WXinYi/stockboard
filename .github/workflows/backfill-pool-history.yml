@@ -1,12 +1,13 @@
-name: 涨停池历史回补(CI 一次性/手动)
+name: 涨停池/炸板池历史回补(CI 一次性/手动)
 
 # 背景(2026-09-09): 本地 keychain 凭据对 Release 只读(上传 404), 历史回补数据无法从本地推上
 # auction-state 热层; CI 用 secrets.GITHUB_TOKEN 有写权限 → 由本 workflow 执行并上传。
 #
 # 触发:
-#   1) 推送本文件(push paths)即自动跑一次(用于本次 2025-09 起的历史回补);
+#   1) 推送本文件/回补脚本(push paths)即自动跑一次(用于历史回补);
 #   2) 之后可 workflow_dispatch 指定区间复用(幂等 INSERT OR REPLACE)。
 # 口径: 历史日走 His(KPL_HIS_PROXY 中转), 当日走实时接口(见 backfill_emotion.py)。
+# 两条回补互不依赖: limit_pool 按区间(自带幂等守卫, 已覆盖则跳过), 炸板池按最近 N 个交易日滚动窗口。
 
 on:
   workflow_dispatch:
@@ -19,10 +20,15 @@ on:
         description: '结束日 YYYY-MM-DD(留空=今天)'
         required: false
         default: ''
+      broken_days:
+        description: '炸板池滚动窗口交易日数'
+        required: false
+        default: '30'
   push:
     paths:
       - '.github/workflows/backfill-pool-history.yml'
       - 'jiarenmens/scripts/backfill_emotion.py'
+      - 'jiarenmens/scripts/backfill_broken.py'
 
 permissions:
   contents: write
@@ -103,8 +109,27 @@ jobs:
           # --workers 8: 串行 1250 请求需 40-60min(经 SCF 中转), 并发后约 5min。
           python scripts/backfill_emotion.py --pool "$START" "$END" --workers 8 --skip-existing --retries 2 --retry-wait 30
 
+      # 炸板池(选股宝源, 不经 His): 与上面的 limit_pool 回补互不依赖, 不套 limit_pool 的幂等守卫
+      # (那个守卫只看 limit_pool 的 MIN, 已覆盖时会整段跳过, 那样炸板池永远补不上)。
+      # 2026-09-17 起 crawl.yml 收盘班已改 7 天滚动窗口自愈; 这里用更长的窗口一次性补齐历史盲区。
+      - name: 炸板池归档(滚动窗口重抓, 幂等自愈)
+        id: broken
+        env:
+          INPUT_BROKEN_DAYS: ${{ inputs.broken_days }}
+        run: |
+          cd jiarenmens
+          DAYS="${INPUT_BROKEN_DAYS:-30}"
+          echo "炸板池滚动窗口: 最近 $DAYS 个交易日"
+          python scripts/backfill_broken.py --days "$DAYS" --retries 2 --retry-wait 30
+          python3 -c "
+          import sqlite3
+          c = sqlite3.connect('data/auction.db')
+          mn, mx, n, d = c.execute('SELECT MIN(date), MAX(date), COUNT(*), COUNT(DISTINCT date) FROM broken_pool').fetchone()
+          print(f'broken_pool: {mn} -> {mx}, {n} 行 / {d} 天')
+          "
+
       - name: 上传 auction.db(热层 + 当日/当周快照)
-        if: steps.need.outputs.skip == '0'
+        if: steps.need.outputs.skip == '0' || steps.broken.conclusion == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cd jiarenmens && python3 scripts/release_db.py --what auction --upload-latest
