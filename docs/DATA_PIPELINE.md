@@ -202,7 +202,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 | 实时涨停池/格局 | 开盘啦 + 东财实时 | `scripts/cycle_push.py` | 只推钉钉，不落数据库 |
 | 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | 本机独享 |
 
-**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（11 人，硬编码 zh_id+name）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。改名单只改这一处。
+**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（10 人，硬编码 zh_id+name）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。改名单只改这一处。
 
 ### 2.3 采集过程（main.py）
 

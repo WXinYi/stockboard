@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 竞价跟单快报(09:26, auction.yml 第一步):
-只拉 13 名关注选手的组合接口(秒级, 不做全量采集) → 竞价阶段成交 + 最新持仓 → 钉钉。
+只拉关注选手的组合接口(秒级, 不做全量采集) → 竞价阶段成交 + 最新持仓 → 钉钉。
 全量采集与完整跟单日报仍由 09:30 的 crawl 流程完成, 本快报无状态不落库。
 
 用法:
@@ -33,7 +33,7 @@ def _stock_link(code: str, name: str) -> str:
 
 
 def fetch_all(date_str: str):
-    """串行拉 13 名选手组合接口 → {zh: {name, trades_today, positions, ok}}"""
+    """串行拉关注选手组合接口 → {zh: {name, trades_today, positions, ok}}"""
     out = {}
     for zh, nm in WATCHED_PLAYERS:
         try:
