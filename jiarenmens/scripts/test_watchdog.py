@@ -115,9 +115,9 @@ class TestTradingWindow(unittest.TestCase):
         return datetime(2026, 9, 14 + wd, int(hm[:2]), int(hm[2:]))
 
     def test_boundaries(self):
-        self.assertTrue(watchdog.in_trading_window(self._dt(0, "0926")))
+        self.assertTrue(watchdog.in_trading_window(self._dt(0, "0931")))
         self.assertTrue(watchdog.in_trading_window(self._dt(0, "1505")))
-        self.assertFalse(watchdog.in_trading_window(self._dt(0, "0925")))
+        self.assertFalse(watchdog.in_trading_window(self._dt(0, "0930")))
         self.assertFalse(watchdog.in_trading_window(self._dt(0, "1506")))
         self.assertFalse(watchdog.in_trading_window(self._dt(5, "1000")))   # 周六
         self.assertFalse(watchdog.in_trading_window(self._dt(6, "1000")))   # 周日

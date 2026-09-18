@@ -49,7 +49,7 @@ STATE_FILE = ROOT / "data" / ".watchdog_state.json"
 CHANGED_FILE = ROOT / "data" / ".watchdog_changed"
 PLAYER_DIR = ROOT.parent / "stockboard-app" / "public" / "data" / "latest" / "players"
 TRADING_CAL_JS = ROOT.parent / "stockboard-app" / "src" / "utils" / "tradingCalendar.js"
-WINDOW_START, WINDOW_END = "0926", "1505"   # 闸门必须早于 cron 末班; 15:05 收盘班前停
+WINDOW_START, WINDOW_END = "0931", "1505"   # 09:31 起(竞价段由 09:26 快报覆盖, 避免开盘重复响铃); 15:05 收盘班前停
 MAX_FAILS = 3                                # 连续 N 班全员失败 → 降级自曝
 
 _HOLIDAY_CACHE: dict | None = None
