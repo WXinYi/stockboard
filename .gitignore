@@ -71,3 +71,7 @@ jiarenmens/data/archive/
 # ④降级链产物(release_db --download-fallback / crawl.yml cache 副本)
 jiarenmens/data/.db_restore_source
 jiarenmens/data/.cache-db/
+
+# 盯盘 watchdog 的运行时状态(进 actions/cache, 不进 git)
+jiarenmens/data/.watchdog_state.json
+jiarenmens/data/.watchdog_changed

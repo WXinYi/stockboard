@@ -229,6 +229,17 @@ jobs:
         if: steps.dist.outputs.cache-hit == 'true'
         run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
 
+      # 盯盘共享状态(由 watchdog.yml 每 5 分钟写入): 日报读它跳过已实时推送的操作,
+      # 读不到(文件不存在)= watchdog 失灵 → 日报自动全量兜底。只读不写, 保存归 watchdog。
+      - name: 恢复盯盘状态(日报去重)
+        if: success()
+        uses: actions/cache/restore@v4
+        with:
+          path: jiarenmens/data/.watchdog_state.json
+          key: watchdog-state-notexist-${{ github.run_id }}
+          restore-keys: |
+            watchdog-state-
+
       # 钉钉通知放在「提交数据」之前：notify_daily.py 会写 last_notify_state.json，
       # 让状态文件跟随当次「提交数据」一起 commit 持久化，供下次对比"新增操作"
       - name: 钉钉通知

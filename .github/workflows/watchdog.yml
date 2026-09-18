@@ -1,0 +1,111 @@
+name: 关注盯盘 watchdog
+# 交易时段每 5 分钟由 cron-job.org 触发(repository_dispatch: watchdog):
+# 拉关注选手组合接口 → 当日新操作即时推钉钉 + 叠加更新该选手 players/{zh}.json → 轻量部署 Pages。
+#
+# 为什么独立于 crawl: 明细接口秒级/人, 全量采集一班要 5-8 分钟, 提频只会互相取消空转。
+# 明细只有日粒度(无盘中时间戳) → "即时" = 当日该笔首次出现/成交次数增加的时刻。
+#
+# 状态(actions/cache 按日滚动, watchdog-state-*): 当日已推集合 + 连续失败计数。
+# 日报(notify_daily)经 crawl.yml 的「恢复盯盘状态」步骤读同一缓存跳过已推操作
+# → 一条操作只响一次铃; 本 workflow 失灵时日报自动兜底(读不到缓存=全量推)。
+#
+# 并发组独立于 crawl 的 pages-main, 两边可同时跑互不取消;
+# cancel-in-progress: false —— 宁可排队也不掐班, 掐班会让"已推状态未落缓存"造成重复推送。
+
+on:
+  repository_dispatch:
+    types: [watchdog]
+  workflow_dispatch:
+
+concurrency:
+  group: watchdog-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 恢复盯盘状态(当日已推集合/失败计数)
+        uses: actions/cache/restore@v4
+        with:
+          path: jiarenmens/data/.watchdog_state.json
+          key: watchdog-state-notexist-${{ github.run_id }}
+          restore-keys: |
+            watchdog-state-
+
+      - name: 盯盘检测(新操作推钉钉 + 叠加选手 JSON)
+        id: run
+        run: cd jiarenmens && python scripts/watchdog.py
+
+      # 失败重试语义: 推送失败时脚本不落状态直接非零退出, 下一班自动补推(at-least-once);
+      # 因此状态文件只在成功路径存在, hashFiles 空串时跳过保存。
+      - name: 保存盯盘状态
+        if: always() && hashFiles('jiarenmens/data/.watchdog_state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: jiarenmens/data/.watchdog_state.json
+          key: watchdog-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 是否有页面更新
+        id: gate
+        run: |
+          if [ -s jiarenmens/data/.watchdog_changed ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "叠加更新选手: $(tr '\n' ' ' < jiarenmens/data/.watchdog_changed)"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "本轮无新操作, 不部署"
+          fi
+
+      # 轻量部署: dist 壳按代码指纹缓存命中(数据班不重编), 只拼接数据 + 部署
+      - name: 恢复 dist 壳
+        if: steps.gate.outputs.changed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: stockboard-app/dist
+          key: dist-shell-${{ hashFiles('stockboard-app/src/**', 'stockboard-app/index.html', 'stockboard-app/vite.config.js', 'stockboard-app/package-lock.json') }}
+
+      - name: 拼接最新数据
+        if: steps.gate.outputs.changed == 'true'
+        run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
+
+      - name: Upload Pages artifact
+        if: steps.gate.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: stockboard-app/dist
+
+      - name: Deploy to GitHub Pages
+        if: steps.gate.outputs.changed == 'true'
+        uses: actions/deploy-pages@v4
+
+  # 失败告警(与其它 workflow 同款): 推送失败/部署失败不再无声
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [watchdog]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

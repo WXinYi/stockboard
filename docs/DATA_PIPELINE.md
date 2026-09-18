@@ -191,6 +191,17 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 >
 > ⚠️ **待决（2026-09-15 登记，未改动）**：采集/扫描类班次（`crawl` / `auction` / `auction-label` / `cycle-eod`）的 `cancel-in-progress: true` 会掐掉进行中的班次，而被取消（cancelled）不等于失败、不触发失败告警 → 存在丢班风险（数据不可重采）。改成排队（`cancel-in-progress: false`）可避免丢班，但可能让首班数据延后（首班 09:26 是特意提前的），属产品取舍，故未擅自改动；部署类班次保留取消。
 
+### 2.1b 盯盘 watchdog（关注选手盘中即时提醒，2026-09-18 上线）
+
+`watchdog.yml`（cron-job.org 每 5 分钟 → `repository_dispatch: watchdog`，独立并发组 `watchdog-main` 且不掐班）：交易时段拉关注选手组合接口（秒级/人），当日新操作 → **立即推钉钉** + **叠加更新该选手 `players/{zh}.json`** → 轻量部署 Pages（dist 壳缓存命中，1~3 分钟）。操作发生后页面 6~8 分钟可见、钉钉推送后 1~3 分钟可见。
+
+- **语义**：东财调仓明细只有日粒度（`tzrq` 无盘中时间戳），"即时" = 当日该笔**首次出现/成交次数增加**的时刻，推送写的是首次发现时刻。
+- **去重**：键 = (选手, 股票, 方向) + 成交次数；次数变 → 补推"↩️追加"（修掉日内回买/加量盲区）。状态放 actions/cache 按日滚动（`watchdog-state-*`，对应 gitignore 的 `data/.watchdog_state.json`）。
+- **与日报的关系**：日报经 crawl.yml「恢复盯盘状态」步骤读同一缓存（`notify_daily.load_watchdog_pushed`），**跳过已实时推送的操作、不发空卡**；读不到缓存（=watchdog 失灵）→ 日报自动全量兜底。一条操作只响一次铃，两层互为备份。
+- **叠加安全**：以"线上已部署的选手文件"为底稿，积累历史（含 `_k/_id`）一行不丢，只刷 `p`（实时持仓）与今日 `t`；**不产生 git 提交**（下一班 crawl 的权威导出自愈覆盖）。底稿拉取失败 → 跳过叠加只推送（宁可页面慢，不可丢历史）。
+- **降级自曝**：连续 3 班全员拉取失败 → 主动推"盯盘已降级"告警；任一班成功即复位。失败退出走 `alert-on-failure` 钉钉告警。
+- **只在工作日执行**：三层闸门——cron-job.org 仅周一~五(wdays)、脚本解析前端 `tradingCalendar.js`（单一数据源，上交所节假日表，运行时读取避免双份日历漂移）跳过法定节假日、时段闸门 09:26~15:05。节假日不开机，免误触降级告警与空烧 runner。首班基线：当日首个班以线上快照为"已推"底（防与早班日报重复）。
+
 ### 2.2 数据源清单
 
 | 数据 | 接口 | 文件 | 说明 |
@@ -202,7 +213,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 | 实时涨停池/格局 | 开盘啦 + 东财实时 | `scripts/cycle_push.py` | 只推钉钉，不落数据库 |
 | 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | 本机独享 |
 
-**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（10 人，硬编码 zh_id+name）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。改名单只改这一处。
+**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（10 人，硬编码 zh_id+name）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。改名单只改这一处（盘中即时提醒 watchdog.yml 与钉钉推送自动跟随）。
 
 ### 2.3 采集过程（main.py）
 

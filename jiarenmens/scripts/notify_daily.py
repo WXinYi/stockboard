@@ -34,6 +34,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "stockboard-app" / "public" / "data" / "latest"
 BASE_URL = "https://WXinYi.github.io/stockboard"
 STATE_FILE = REPO_ROOT / "jiarenmens" / "data" / "last_notify_state.json"
+# 盯盘 watchdog 的当日已推状态(actions/cache 按日滚动, crawl.yml 有「恢复盯盘状态」步骤恢复)。
+# 日报读它跳过已即时推送的操作 → 一条操作只响一次铃; 读不到 = watchdog 失灵 → 日报全量兜底。
+WATCHDOG_STATE = REPO_ROOT / "jiarenmens" / "data" / ".watchdog_state.json"
 
 # 关注名单单一数据源 = main.py 的 WATCHED_PLAYERS（全部选手一个组, 顺序即置顶顺序）
 from main import WATCHED_PLAYERS  # noqa: E402
@@ -61,6 +64,23 @@ def save_state(seen: dict, sent_date: str | None = None) -> None:
     if sent_date:
         st["sent_date"] = sent_date
     STATE_FILE.write_text(json.dumps(st, ensure_ascii=False, indent=2))
+
+
+def load_watchdog_pushed(date_str: str) -> set:
+    """盯盘 watchdog 当日已推送的 (zh, sc, 方向) 集合(来自共享缓存恢复的状态文件)。
+    读不到或不是当天 → 空集: 日报回退为全量推送(watchdog 失灵时的兜底语义)。"""
+    try:
+        st = json.loads(WATCHDOG_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    if not isinstance(st, dict) or st.get("date") != date_str:
+        return set()
+    out = set()
+    for zh, by_code in (st.get("pushed") or {}).items():
+        for sc, by_dr in (by_code or {}).items():
+            for dr in (by_dr or {}):
+                out.add((str(zh), str(sc), str(dr)))
+    return out
 
 
 def _player_detail(wid: str, date_str: str):
@@ -184,7 +204,7 @@ def _trade_line(t: dict, quotes: dict, seen_set: set, same_day: bool, new_counte
     return f"- {seg}" + (" 🆕" if is_new else "")
 
 
-def build_follow_report(date_str: str, seen: dict, same_day: bool):
+def build_follow_report(date_str: str, seen: dict, same_day: bool, wd_pushed: frozenset = frozenset()):
     """合并版跟单日报。返回 (text, new_count, updated_seen)
     组合已隐藏/删除的选手自动跳过(visibility 状态由 watched_flash 每早探测更新)
     same_day=当日已推送过 → 新增单笔标 🆕; 当日首条为基线不标"""
@@ -240,20 +260,28 @@ def build_follow_report(date_str: str, seen: dict, same_day: bool):
     lines.append("")
 
     # ── 逐人卡片 ──
+    # 当日操作已由盯盘 watchdog 实时推送的(wd_pushed)不再重复发卡, 但仍记入 seen
+    # (台账语义: 它们是"已知", 不是"漏推"); watchdog 失灵时 wd_pushed 为空 → 日报全量兜底。
     for wid in active:
         trades, positions = details[wid]
         nm = WATCHED[wid]
-        head = f"**{_player_link(wid, nm)}**"
-        p = None
-        if trades:
-            head += f"（当日 {len(trades)} 笔）"
-        lines.append(head)
         if trades is None:
+            lines.append(f"**{_player_link(wid, nm)}**")
             lines.append("⚠️ 数据缺失")
             lines.append("")
             continue
+        card = []
         for t in sorted(trades, key=lambda x: x.get("_id") or 0):
-            lines.append(_trade_line(t, quotes, updated[wid], same_day, new_counter))
+            if (wid, t.get("sc", ""), t.get("dr", "")) in wd_pushed:
+                k = t.get("_k") or t.get("_id")
+                if k is not None:
+                    updated[wid].add(str(k))
+                continue
+            card.append(_trade_line(t, quotes, updated[wid], same_day, new_counter))
+        if not card:
+            continue   # 当日动作已全部实时推送 → 不发空卡
+        lines.append(f"**{_player_link(wid, nm)}**（当日 {len(trades)} 笔）")
+        lines.extend(card)
         lines.append("")
 
     if hidden:
@@ -291,7 +319,8 @@ def main():
     first_run = not STATE_FILE.exists()
     same_day = (not first_run) and state.get("sent_date") == date_str
 
-    text, new_count, updated = build_follow_report(date_str, seen, same_day)
+    text, new_count, updated = build_follow_report(
+        date_str, seen, same_day, frozenset(load_watchdog_pushed(date_str)))
 
     if args.dry_run:
         print(text)
