@@ -89,10 +89,13 @@ def bj_now() -> datetime:
 
 
 def in_trading_window(now: datetime) -> bool:
-    """交易日 + 盘中时段; 法定节假日(如国庆/中秋)不开机, 免误触降级告警与空烧 runner。"""
+    """交易日 + 盘中时段(午休 11:30~13:00 不开机, 免空烧); 法定节假日不开机, 免误触降级告警。"""
     if not is_trading_day(now.date()):
         return False
-    return WINDOW_START <= now.strftime("%H%M") <= WINDOW_END
+    hm = now.strftime("%H%M")
+    if "1130" <= hm < "1300":          # 午休: A股 11:30-13:00 停牌, 期间无新操作
+        return False
+    return WINDOW_START <= hm <= WINDOW_END
 
 
 def fresh_state(date_str: str) -> dict:

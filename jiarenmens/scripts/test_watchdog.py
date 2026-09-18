@@ -126,6 +126,14 @@ class TestTradingWindow(unittest.TestCase):
         self.assertFalse(watchdog.in_trading_window(self._dt(5, "1000")))   # 周六
         self.assertFalse(watchdog.in_trading_window(self._dt(6, "1000")))   # 周日
 
+    def test_lunch_break_excluded(self):
+        """午休 11:30-13:00 不开机(2026-09-18 用户拍板): 期间无成交, 空烧 runner。"""
+        self.assertFalse(watchdog.in_trading_window(self._dt(0, "1130")))
+        self.assertFalse(watchdog.in_trading_window(self._dt(0, "1200")))
+        self.assertFalse(watchdog.in_trading_window(self._dt(0, "1259")))
+        self.assertTrue(watchdog.in_trading_window(self._dt(0, "1301")))    # 13:00 复盘开盘
+        self.assertTrue(watchdog.in_trading_window(self._dt(0, "1100")))    # 午休前正常
+
 
 class TestDingTalkSharedDedup(unittest.TestCase):
     def test_load_watchdog_pushed(self):
