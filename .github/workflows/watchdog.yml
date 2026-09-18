@@ -50,6 +50,9 @@ jobs:
 
       - name: 盯盘检测(新操作推钉钉 + 叠加选手 JSON)
         id: run
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python scripts/watchdog.py
 
       # 失败重试语义: 推送失败时脚本不落状态直接非零退出, 下一班自动补推(at-least-once);
