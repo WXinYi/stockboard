@@ -219,6 +219,8 @@ def build_message(date_str: str, hhmm: str, pushes, quotes: dict) -> str:
     cur = None
     for zh, nm, t, is_add in pushes:
         if zh != cur:
+            if cur is not None:
+                lines.append("")   # 选手块之间必须空行: 钉钉渲染会把下个名字贴在上块尾部
             lines.append(f"**[{nm}]({BASE_URL}/#/player/{zh})**")
             cur = zh
         dr = t.get("direction", "")

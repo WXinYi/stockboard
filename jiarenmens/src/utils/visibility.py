@@ -13,7 +13,10 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-STATE = Path(__file__).resolve().parents[2] / "jiarenmens" / "data" / "player_visibility.json"
+# ⚠️ 路径: 本文件在 jiarenmens/src/utils/ 下, parents[2] 已是 jiarenmens/ 目录,
+# 再拼 "jiarenmens/data" 会变成 jiarenmens/jiarenmens/data(2026-09-18 修复的静默 bug:
+# 本机被残留同名文件掩盖, CI 里永远解析到空 → 隐藏选手从不被识别, 每班白拉)。
+STATE = Path(__file__).resolve().parents[2] / "data" / "player_visibility.json"
 
 
 def load() -> dict:

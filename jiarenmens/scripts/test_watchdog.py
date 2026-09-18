@@ -138,7 +138,33 @@ class TestDingTalkSharedDedup(unittest.TestCase):
                                  {("900461598", "600371", "买入")})
                 self.assertEqual(load_watchdog_pushed("2026-09-18"), set())  # 跨日=兜底
             finally:
-                watchdog.WATCHDOG_STATE = old
+                notify_daily.WATCHDOG_STATE = old
+
+
+class TestVisibilityPath(unittest.TestCase):
+    def test_state_path_points_at_tracked_file(self):
+        """回归(2026-09-18): STATE 曾多拼一层 jiarenmens → CI 解析到不存在的路径,
+        隐藏选手从不被识别(每班白拉), 可见性状态也从未被持久化。"""
+        repo = Path(__file__).resolve().parents[2]
+        self.assertEqual(notify_daily.WATCHDOG_STATE,
+                         repo / "jiarenmens" / "data" / ".watchdog_state.json")
+        import src.utils.visibility as vis
+        self.assertEqual(vis.STATE,
+                         repo / "jiarenmens" / "data" / "player_visibility.json")
+        self.assertTrue(vis.STATE.exists())
+
+
+class TestBuildMessage(unittest.TestCase):
+    def test_blank_line_between_players(self):
+        """回归(2026-09-18 用户实测): 选手块之间缺空行, 钉钉渲染会把下个名字贴在上块尾部。"""
+        pushes = [("900456476", "甲", _t("600371", "买入", 1), False),
+                  ("900461598", "乙", _t("000002", "买入", 1), False)]
+        msg = watchdog.build_message("2026-09-18", "10:00", pushes, {})
+        lines = msg.splitlines()
+        i_b = next(i for i, l in enumerate(lines) if "甲" in l)
+        i_2 = next(i for i, l in enumerate(lines) if "乙" in l)
+        self.assertEqual(lines[i_2 - 1], "", "第二个选手名前必须有空行")
+        self.assertGreater(i_2, i_b)
 
 
 class TestHolidayCalendar(unittest.TestCase):
