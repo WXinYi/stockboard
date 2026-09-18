@@ -26,28 +26,32 @@ def _t(code, dr, cnt, price=10.0, name="测试股"):
 class TestDecidePushes(unittest.TestCase):
     def test_new_op_pushed(self):
         pushed = {}
-        out = watchdog.decide_pushes([_t("600371", "买入", 1)], pushed)
-        self.assertEqual(len(out), 1)
-        self.assertFalse(out[0][1])                      # 非追加
+        new, known = watchdog.decide_pushes([_t("600371", "买入", 1)], pushed)
+        self.assertEqual(len(new), 1)
+        self.assertFalse(new[0][1])                      # 非追加
+        self.assertEqual(known, [])
         self.assertEqual(pushed["600371"]["买入"], 1)     # 已记次数
 
     def test_same_count_suppressed(self):
+        """次数不变 → 不推, 但进 known(消息里作台账展示, 不带 🆕)。"""
         pushed = {"600371": {"买入": 1}}
-        out = watchdog.decide_pushes([_t("600371", "买入", 1)], pushed)
-        self.assertEqual(out, [])
+        new, known = watchdog.decide_pushes([_t("600371", "买入", 1)], pushed)
+        self.assertEqual(new, [])
+        self.assertEqual(len(known), 1)
 
     def test_count_growth_is_add(self):
         """盘中补量/回买: 次数增加 → 补推"追加"(盲区修正)。"""
         pushed = {"600371": {"买入": 1}}
-        out = watchdog.decide_pushes([_t("600371", "买入", 2)], pushed)
-        self.assertEqual(len(out), 1)
-        self.assertTrue(out[0][1])
+        new, known = watchdog.decide_pushes([_t("600371", "买入", 2)], pushed)
+        self.assertEqual(len(new), 1)
+        self.assertTrue(new[0][1])
+        self.assertEqual(known, [])
         self.assertEqual(pushed["600371"]["买入"], 2)
 
     def test_directions_independent(self):
         pushed = {"600371": {"买入": 2}}
-        out = watchdog.decide_pushes([_t("600371", "卖出", 1)], pushed)
-        self.assertEqual(len(out), 1)                    # 卖出首次出现, 与买入互不影响
+        new, known = watchdog.decide_pushes([_t("600371", "卖出", 1)], pushed)
+        self.assertEqual(len(new), 1)                    # 卖出首次出现, 与买入互不影响
 
     def test_count_never_regresses(self):
         pushed = {"600371": {"买入": 3}}
@@ -155,16 +159,25 @@ class TestVisibilityPath(unittest.TestCase):
 
 
 class TestBuildMessage(unittest.TestCase):
-    def test_blank_line_between_players(self):
-        """回归(2026-09-18 用户实测): 选手块之间缺空行, 钉钉渲染会把下个名字贴在上块尾部。"""
-        pushes = [("900456476", "甲", _t("600371", "买入", 1), False),
-                  ("900461598", "乙", _t("000002", "买入", 1), False)]
-        msg = watchdog.build_message("2026-09-18", "10:00", pushes, {})
+    def test_full_list_format(self):
+        """全员列表格式(快报同款): 有新操作出卡并标 🆕, 块间空行, 无操作归 💤, 隐藏归 🔇。"""
+        t_a = _t("600371", "买入", 1)
+        t_b = _t("000002", "买入", 1)
+        data = {"900456476": {"name": "狼之行一", "ok": True, "trades": [t_a], "positions": []},
+                "900450475": {"name": "武研琳", "ok": True, "trades": [t_b], "positions": []},
+                "900240956": {"name": "股得猫咛", "ok": True, "trades": [], "positions": []},
+                "900438148": {"name": "我嘚财富", "hidden": True}}
+        new_mark = {"900456476": {id(t_a): False}}   # 只有甲有本轮新增
+        msg = watchdog.build_message("2026-09-18", "10:00", data, new_mark, {})
         lines = msg.splitlines()
-        i_b = next(i for i, l in enumerate(lines) if "甲" in l)
-        i_2 = next(i for i, l in enumerate(lines) if "乙" in l)
-        self.assertEqual(lines[i_2 - 1], "", "第二个选手名前必须有空行")
-        self.assertGreater(i_2, i_b)
+        i_a = next(i for i, l in enumerate(lines) if "狼之行一" in l)
+        i_b = next(i for i, l in enumerate(lines) if "武研琳" in l)
+        self.assertEqual(lines[i_b - 1], "", "选手块之间必须有空行")
+        self.assertIn("🆕", lines[i_a], "有本轮新增的选手名应标 🆕")
+        self.assertNotIn("🆕", lines[i_b], "无新增的选手不标 🆕")
+        self.assertTrue(any("🆕" in l and "买入" in l for l in lines[i_a:i_b]))
+        self.assertTrue(any("💤 今日暂无操作" in l and "股得猫咛" in l for l in lines))
+        self.assertTrue(any("🔇 组合已隐藏" in l and "我嘚财富" in l for l in lines))
 
 
 class TestHolidayCalendar(unittest.TestCase):

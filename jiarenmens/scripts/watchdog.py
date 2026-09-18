@@ -118,12 +118,13 @@ def save_state(st: dict, path: Path = STATE_FILE) -> None:
     path.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def decide_pushes(trades_today: list, pushed_player: dict) -> list:
-    """按 (code, 方向) 比对当日已推集合 → [(trade, is_add)]。
+def decide_pushes(trades_today: list, pushed_player: dict):
+    """按 (code, 方向) 比对当日已推集合 → (new_list, known_list)。
 
     pushed_player = pushed[zh] 引用 {code: {方向: 成交次数}}, 原地更新。
-    首次出现 → 推; 次数增加(盘中补量/回买) → 补推"追加"; 次数不变 → 静默。"""
-    out = []
+    new_list = [(trade, is_add)]: 首次出现(is_add=False)或次数增加(补量/回买, is_add=True),
+    需要本轮推送; known_list = 次数不变的(已在早前班次推送过, 消息里不带 🆕 仅作台账展示)。"""
+    new, known = [], []
     for t in trades_today:
         code = t.get("stock_code", "")
         dr = t.get("direction", "")
@@ -134,11 +135,13 @@ def decide_pushes(trades_today: list, pushed_player: dict) -> list:
         by_dr = pushed_player.setdefault(code, {})
         prev = by_dr.get(dr)
         if prev is None:
-            out.append((t, False))
+            new.append((t, False))
         elif cnt > prev:
-            out.append((t, True))
+            new.append((t, True))
+        else:
+            known.append(t)
         by_dr[dr] = max(prev or 0, cnt)
-    return out
+    return new, known
 
 
 def seed_baseline(pushed_player: dict, base_file: dict, date_str: str) -> int:
@@ -213,33 +216,63 @@ def fetch_all(players, date_str: str) -> dict:
     return out
 
 
-def build_message(date_str: str, hhmm: str, pushes, quotes: dict) -> str:
+def build_message(date_str: str, hhmm: str, data: dict, new_mark: dict, quotes: dict) -> str:
+    """全员关注列表格式(快报同款): 有今日操作的选手逐个出卡, 本轮新增标 🆕(次数增加标 ↩️追加),
+    已推送过的不标; 无操作/拉取失败/已隐藏分别汇总。仅在有新增操作时被调用。"""
     from urllib.parse import quote
     lines = [f"## 🚨 盯盘提醒 · {date_str} {hhmm}", ""]
+    quiet, fails, hidden = [], [], []
+    for zh, nm in WATCHED_PLAYERS:
+        o = data.get(zh) or {}
+        if o.get("hidden"):
+            hidden.append(nm)
+        elif o.get("err") or not o.get("ok", True):
+            fails.append(nm)
+        elif not (o.get("trades") or []):
+            quiet.append(nm)
+
     cur = None
-    for zh, nm, t, is_add in pushes:
+    for zh, nm in WATCHED_PLAYERS:
+        o = data.get(zh) or {}
+        trades_today = o.get("trades") or []
+        if o.get("hidden") or o.get("err") or not o.get("ok", True) or not trades_today:
+            continue
+        marks = new_mark.get(zh, {})
         if zh != cur:
             if cur is not None:
                 lines.append("")   # 选手块之间必须空行: 钉钉渲染会把下个名字贴在上块尾部
-            lines.append(f"**[{nm}]({BASE_URL}/#/player/{zh})**")
+            head = f"**[{nm}]({BASE_URL}/#/player/{zh})**"
+            if any(id(t) in marks for t in trades_today):
+                head += " 🆕"
+            lines.append(head)
             cur = zh
-        dr = t.get("direction", "")
-        label = ("↩️追加" if is_add else "") + ("买入" if dr == "买入" else "卖出")
-        sname, scode = t.get("stock_name", "?"), t.get("stock_code", "")
-        seg = f"- {label} [{sname}]({BASE_URL}/#/stock/{scode}?name={quote(sname)})"
-        rr = t.get("position_ratio")
-        if rr:
-            seg += f" {rr}"
-        price = t.get("price")
-        if price:
-            seg += f" @{float(price):.2f}"
-        q = quotes.get(t.get("stock_code", ""))
-        if q and q.get("price") is not None:
-            seg += f"，现价 {q['price']:.2f}"
+        for t in trades_today:
+            is_new = id(t) in marks
+            is_add = marks.get(id(t), False)
+            dr = t.get("direction", "")
+            label = ("↩️追加" if is_add else "") + ("买入" if dr == "买入" else "卖出")
+            sname, scode = t.get("stock_name", "?"), t.get("stock_code", "")
+            seg = f"- {'🆕 ' if is_new else ''}{label} [{sname}]({BASE_URL}/#/stock/{scode}?name={quote(sname)})"
+            rr = t.get("position_ratio")
+            if rr:
+                seg += f" {rr}"
+            price = t.get("price")
             if price:
-                seg += f" 较成交 {(q['price'] - price) / price * 100:+.1f}%"
-        lines.append(seg)
-    lines += ["", "— 盯盘 5 分钟一轮(明细只有日粒度, 时刻=首次发现); "
+                seg += f" @{float(price):.2f}"
+            q = quotes.get(t.get("stock_code", ""))
+            if q and q.get("price") is not None:
+                seg += f"，现价 {q['price']:.2f}"
+                if price:
+                    seg += f" 较成交 {(q['price'] - price) / price * 100:+.1f}%"
+            lines.append(seg)
+        lines.append("")
+    if quiet:
+        lines += [f"💤 今日暂无操作: {'、'.join(quiet)}", ""]
+    if fails:
+        lines += [f"⚠️ 拉取失败(下一班自动重试): {'、'.join(fails)}", ""]
+    if hidden:
+        lines += [f"🔇 组合已隐藏(自动跳过, 恢复公开自动回归): {'、'.join(hidden)}", ""]
+    lines += ["— 盯盘 5 分钟一轮(明细只有日粒度, 时刻=首次发现); "
               "持仓浮盈见[选手页](https://wxinyi.github.io/stockboard/)"]
     return "\n".join(lines)
 
@@ -274,7 +307,9 @@ def main():
     else:
         st["fails"], st["alerted"] = 0, 0
 
-    base_cache, changed, pushes = {}, [], []
+    base_cache, changed = {}, []
+    new_pushes = []   # (zh, nm, trade, is_add)
+    new_mark = {}     # zh -> {id(trade): is_add}, 供消息标记 🆕/↩️追加
     for zh, nm in WATCHED_PLAYERS:
         o = data.get(zh) or {}
         if o.get("hidden"):
@@ -288,18 +323,20 @@ def main():
             base = base_cache.get(zh)
             if base:
                 seed_baseline(pushed_player, base, date_str)
-        player_pushes = decide_pushes(o["trades"], pushed_player)
-        for t, is_add in player_pushes:
-            pushes.append((zh, nm, t, is_add))
+        newt, _known = decide_pushes(o["trades"], pushed_player)
+        if newt:
+            new_mark[zh] = {id(t): is_add for t, is_add in newt}
+            for t, is_add in newt:
+                new_pushes.append((zh, nm, t, is_add))
 
-    if pushes:
-        codes = sorted({t.get("stock_code", "") for _, _, t, _ in pushes if t.get("stock_code")})
-        msg = build_message(date_str, hhmm, pushes, fetch_quotes(codes))
+    if new_pushes:
+        codes = sorted({t.get("stock_code", "") for _, _, t, _ in new_pushes if t.get("stock_code")})
+        msg = build_message(date_str, hhmm, data, new_mark, fetch_quotes(codes))
         if args.dry_run:
             print(msg)
         else:
             DingTalk().send_markdown(f"🚨 盯盘提醒 {date_str} {hhmm}", msg)
-            print(f"✅ 已推送 {len(pushes)} 笔新操作")
+            print(f"✅ 已推送 {len(new_pushes)} 笔新操作(全员列表)")
 
     if st["fails"] >= MAX_FAILS and not st["alerted"] and not args.dry_run:
         try:
@@ -315,7 +352,7 @@ def main():
 
     # 叠加更新: 只对"本轮有推送"的选手做(无操作不动页面文件), 按选手去重
     if not args.dry_run:
-        for zh in dict.fromkeys(zh for zh, _nm, _t, _a in pushes):
+        for zh in dict.fromkeys(zh for zh, _nm, _t, _a in new_pushes):
             base = base_cache.get(zh)
             if base is None:
                 base = fetch_base_player(zh)
@@ -328,11 +365,11 @@ def main():
         changed_file.write_text("\n".join(changed), encoding="utf-8")
         save_state(st, state_file)
         print(f"盯盘检测: {n_ok}/{len(WATCHED_PLAYERS)} 人可用(隐藏 {n_hidden}), "
-              f"新操作 {len(pushes)} 笔, 页面更新 {len(changed)} 人, "
+              f"新操作 {len(new_pushes)} 笔, 页面更新 {len(changed)} 人, "
               f"连续失败 {st['fails']}")
     else:
-        will_fix = [zh for zh, nm, _t, _a in pushes]
-        print(f"[dry-run] 将推送 {len(pushes)} 笔; 将叠加更新 {len(will_fix)} 个选手文件: "
+        will_fix = [zh for zh, nm, _t, _a in new_pushes]
+        print(f"[dry-run] 将推送 {len(new_pushes)} 笔; 将叠加更新 {len(will_fix)} 个选手文件: "
               f"{will_fix}; 状态不落盘")
     return 0
 
