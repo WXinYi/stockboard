@@ -185,6 +185,19 @@ jobs:
             echo "盘中班次($H), 跳过炸板归档"
           fi
 
+      # 盘中实时宽度(2026-09-18): 只拉当日行 upsert 秒级完成, 让盘中周期/六情绪判定
+      # 用今日实时口径而非昨日顺延(今日行 captured_at 标记采样时刻; 15:15 专班的
+      # 市场宽度更新会用收盘定稿覆盖为 NULL)。失败不阻断采集, warning 可见。
+      - name: 盘中宽度刷新(实时当日行)
+        if: success()
+        continue-on-error: true
+        run: |
+          cd jiarenmens
+          python scripts/backfill_emotion.py --breadth-rt 2>&1 | tee /tmp/breadthrt.log
+          if grep -qE "❌|失败|Traceback" /tmp/breadthrt.log; then
+            echo "::warning::本班盘中实时宽度未刷新(周期引擎将用昨日顺延口径)"
+          fi
+
       - name: 导出 JSON
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
 

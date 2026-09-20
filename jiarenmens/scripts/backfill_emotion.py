@@ -32,8 +32,61 @@ def init_tables(conn: sqlite3.Connection):
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS market_breadth(
         date TEXT PRIMARY KEY, zt INTEGER, dt INTEGER, natural_zt INTEGER,
-        once_dt INTEGER, broke_rate REAL, zhaban INTEGER);
+        once_dt INTEGER, broke_rate REAL, zhaban INTEGER, captured_at TEXT);
     """)
+    # 旧库迁移(2026-09-18): captured_at 标记盘中采样时刻, 收盘定稿行由 15:15 专班覆盖为 NULL
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(market_breadth)")]
+    if cols and "captured_at" not in cols:
+        conn.execute("ALTER TABLE market_breadth ADD COLUMN captured_at TEXT")
+
+
+def _write_rt_rows(conn: sqlite3.Connection, rows: list, captured_at: str) -> None:
+    """当日行 upsert(captured_at=盘中采样时刻; 收盘定稿路径传 NULL 覆盖)。"""
+    for r in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO market_breadth"
+            "(date, zt, dt, natural_zt, once_dt, broke_rate, zhaban, captured_at) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (str(r[6]), r[0], r[1], r[2], r[3], r[4], r[5], captured_at))
+
+
+def upsert_rt_breadth(spider: KPLSpider, retries: int = 2,
+                      retry_wait: int = 30) -> int:
+    """盘中实时宽度行(2026-09-18 新增, --breadth-rt): 只拉 rise_fall_rt 当日行并 upsert
+    进 market_breadth, 秒级完成。供 crawl 盘中班高频刷新"今日宽度", 让盘中周期/六情绪
+    判定用当日实时口径而非昨日顺延(09-18 用户拍板)。
+
+    与收盘版 backfill_breadth 的区别: 不拉 His 250 天历史; captured_at 标记盘中采样
+    时刻(收盘定稿行由 15:15 专班的 backfill_breadth 覆盖为 NULL)。
+    口径注记: 盘中行为当日累计值(涨停数随时间增长), 与收盘定稿存在天然差异 —
+    这是盘中决策可得的诚实数据。仅回写今天的行(节假日 rt 返回旧日期时不落库)。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows, raw_dates = [], []
+    for attempt in range(retries + 1):
+        try:
+            rt = spider.rise_fall_rt()
+            raw_rows = [r for r in (rt.get("info") or [])
+                        if isinstance(r, list) and len(r) >= 7]
+            raw_dates = sorted({str(r[6]) for r in raw_rows})
+            rows = [r for r in raw_rows if str(r[6]) == today]
+        except Exception as e:
+            print(f"  ⚠️ breadth-rt 实时请求失败: {e}")
+        if rows:
+            break
+        if attempt < retries:
+            print(f"  ⏳ breadth-rt 无今日行, {retry_wait}s 后重试 {attempt + 1}/{retries}")
+            time.sleep(retry_wait)
+    if not rows:
+        print(f"  ⚠️ breadth-rt: 接口无今日宽度行(今日={today}, "
+              f"接口返回日期: {raw_dates or '无'}), 跳过")
+        return 0
+    captured = datetime.now().strftime("%H:%M")
+    with sqlite3.connect(DB) as conn:
+        init_tables(conn)
+        _write_rt_rows(conn, rows, captured)
+    print(f"  💾 breadth-rt 当日行落库: 涨停 {rows[0][0]} 跌停 {rows[0][1]} "
+          f"破板率 {rows[0][4]} (captured_at={captured})")
+    return len(rows)
 
 
 def backfill_breadth(spider: KPLSpider, strict: bool = False,
@@ -221,6 +274,8 @@ def backfill_pool(spider: KPLSpider, start: str, end: str,
 def main():
     ap = argparse.ArgumentParser(description="情绪/涨停池历史回补")
     ap.add_argument("--breadth", action="store_true", help="回补 250 天市场宽度")
+    ap.add_argument("--breadth-rt", action="store_true",
+                    help="盘中实时宽度: 只拉当日行 upsert(秒级, crawl 盘中班高频刷新用)")
     ap.add_argument("--pool", nargs=2, metavar=("START", "END"), help="回补涨停池(全字段)")
     ap.add_argument("--strict", action="store_true", help="末尾交易日 0 条且窗口内其它日有数据 → 非零退出")
     ap.add_argument("--retries", type=int, default=30, help="末尾日/宽度无数据重试次数(默认30)")
@@ -228,9 +283,12 @@ def main():
     ap.add_argument("--workers", type=int, default=6, help="历史日并发抓取数(默认6; 串行 1250 请求需 40-60min)")
     ap.add_argument("--skip-existing", action="store_true", help="跳过已有数据的日期(重跑/自愈窗口省请求)")
     args = ap.parse_args()
-    if not args.breadth and not args.pool:
+    if not args.breadth and not args.breadth_rt and not args.pool:
         ap.error("至少指定 --breadth 或 --pool")
     spider = KPLSpider()
+    if args.breadth_rt:
+        # 注意: 不继承 --retries/--retry-wait(EOD 默认 30×180s=90min, 会挂起盘中班)
+        upsert_rt_breadth(spider)
     if args.breadth:
         backfill_breadth(spider, strict=args.strict, retries=args.retries, retry_wait=args.retry_wait)
     if args.pool:
