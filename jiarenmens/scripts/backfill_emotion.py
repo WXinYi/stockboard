@@ -50,6 +50,16 @@ def _write_rt_rows(conn: sqlite3.Connection, rows: list, captured_at: str) -> No
             (str(r[6]), r[0], r[1], r[2], r[3], r[4], r[5], captured_at))
 
 
+def _now_bj() -> datetime:
+    """北京时间当前时刻。宽度 rt 的日期/采样时刻统一走此函数 — CI runner 是 UTC,
+    裸 datetime.now() 会把 captured_at 记成 UTC(慢 8 小时), 且北京 00:00~07:59
+    窗口内 UTC 日期=北京昨日, "只写今天的行"守卫会误匹配昨日定稿行(09-21 巡检发现)。"""
+    return datetime.now(timezone(timedelta(hours=8)))
+
+
+RT_CLOSE_CUTOFF = "15:05"  # His 当日行定稿时刻(实测 15:05 前 errcode=1020)
+
+
 def upsert_rt_breadth(spider: KPLSpider, retries: int = 2,
                       retry_wait: int = 30) -> int:
     """盘中实时宽度行(2026-09-18 新增, --breadth-rt): 只拉 rise_fall_rt 当日行并 upsert
@@ -59,8 +69,15 @@ def upsert_rt_breadth(spider: KPLSpider, retries: int = 2,
     与收盘版 backfill_breadth 的区别: 不拉 His 250 天历史; captured_at 标记盘中采样
     时刻(收盘定稿行由 15:15 专班的 backfill_breadth 覆盖为 NULL)。
     口径注记: 盘中行为当日累计值(涨停数随时间增长), 与收盘定稿存在天然差异 —
-    这是盘中决策可得的诚实数据。仅回写今天的行(节假日 rt 返回旧日期时不落库)。"""
-    today = datetime.now().strftime("%Y-%m-%d")
+    这是盘中决策可得的诚实数据。仅回写今天的行(节假日 rt 返回旧日期时不落库)。
+    收盘护栏(2026-09-21 补): 北京时间过 15:05 即跳过 — 收盘后 rt 仍返回当日终值,
+    写回会把 His 定稿行(captured_at=NULL)复活成盘中标记(09-21 17:29 push 班实测)。"""
+    now_bj = _now_bj()
+    if now_bj.strftime("%H:%M") > RT_CLOSE_CUTOFF:
+        print(f"  ⏭️ breadth-rt: 北京 {now_bj.strftime('%H:%M')} 已过 {RT_CLOSE_CUTOFF} 收盘定稿, "
+              f"跳过写回(保留 His 定稿的 captured_at=NULL)")
+        return 0
+    today = now_bj.strftime("%Y-%m-%d")
     rows, raw_dates = [], []
     for attempt in range(retries + 1):
         try:
@@ -80,7 +97,7 @@ def upsert_rt_breadth(spider: KPLSpider, retries: int = 2,
         print(f"  ⚠️ breadth-rt: 接口无今日宽度行(今日={today}, "
               f"接口返回日期: {raw_dates or '无'}), 跳过")
         return 0
-    captured = datetime.now().strftime("%H:%M")
+    captured = _now_bj().strftime("%H:%M")
     with sqlite3.connect(DB) as conn:
         init_tables(conn)
         _write_rt_rows(conn, rows, captured)
