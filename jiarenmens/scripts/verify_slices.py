@@ -1,19 +1,12 @@
-"""校验分片导出：每片字段与 summary.json 一致 + name_map 完整性 + changes_summary 结构"""
+"""校验分片导出：name_map 完整性 + changes_summary 结构自洽。
+
+(2026-09-21 summary.json 停写后, 原第一块"每片字段与 summary.json 对拍"已随基准
+一并移除; 分片正确性由 export_json 单一来源保证。)
+"""
 import json, sys
 from pathlib import Path
 
 base = Path(sys.argv[1] if len(sys.argv) > 1 else "stockboard-app/public/data/latest")
-s = json.loads((base / "summary.json").read_text(encoding="utf-8"))
-
-checks = {
-    "core.json":     ["date", "crawl_time", "qualityPlayerCount", "tradedPlayerIds", "fullRankCount"],
-    "copy.json":     ["copyTradeSignals", "tradeAlerts", "suspectedClears"],
-    "stocks.json":   ["stockStats"],
-}
-for fname, keys in checks.items():
-    d = json.loads((base / fname).read_text(encoding="utf-8"))
-    for k in keys:
-        assert d[k] == s[k], f"{fname}.{k} 与 summary.json 不一致"
 
 # name_map 必须覆盖 copy 当日所有被引用的名字
 nm = json.loads((base / "name_map.json").read_text(encoding="utf-8"))

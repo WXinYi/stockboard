@@ -299,7 +299,7 @@ def build_follow_report(date_str: str, seen: dict, same_day: bool, wd_pushed: fr
 def main():
     import argparse
     ap = argparse.ArgumentParser(description="超短跟单日报")
-    ap.add_argument("--date", help="YYYY-MM-DD(默认取 summary.json)")
+    ap.add_argument("--date", help="YYYY-MM-DD(默认取 core.json 的数据日)")
     ap.add_argument("--dry-run", action="store_true", help="只打印不推送不落状态")
     args = ap.parse_args()
 
@@ -309,8 +309,12 @@ def main():
     if args.date:
         date_str = args.date
     else:
-        s = json.loads((DATA_DIR / "summary.json").read_text())
-        date_str = s["date"]
+        # summary.json 已停写(2026-09-21), 日期改取 core.json.date —— 与原 summary["date"]
+        # 同源同语义(都是 export_json 的 crawl_date), 且 core.json 是每班必写的基础分片。
+        core_file = DATA_DIR / "core.json"
+        if not core_file.exists():
+            raise SystemExit("缺少 --date 且 core.json 不存在(先跑一次导出), 无法确定数据日")
+        date_str = json.loads(core_file.read_text())["date"]
 
     state = load_state()
     # str() 归一: 兼容旧 state 残留的 int(_id) 键, 避免 int/str 混合集合 sorted() 崩溃

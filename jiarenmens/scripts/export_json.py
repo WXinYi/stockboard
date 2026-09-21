@@ -2,7 +2,6 @@
 导出 SQLite 数据为 JSON，供 Vue 看板使用
 
 输出:
-  latest/summary.json      — 全量聚合数据（调试参照 + verify 基准，前端不再 fetch）
   latest/core.json         — 日期/爬取时间/高手数/今日操作选手/上榜数 等核心元信息
   latest/copy.json         — 抄作业信号 (copyTradeSignals) + 卖出预警 + 疑似清仓
   latest/stocks.json       — 重仓共识 stockStats
@@ -490,7 +489,9 @@ def export(db_path, crawl_date, out_dir):
     ))
 
     # ── 12. 构建 summary 分片（按页面切片，前端按需加载）──
-    # summary.json 仍全量输出作为调试参照 + verify 基准
+    # summary.json 全量参照已停写(2026-09-21): 前端从不 fetch、唯一生产读者 notify_daily
+    # 的日期来源已改 crawl_start.txt —— 它是 git 历史第二大反复提交 blob(累计 129MB),
+    # 停写后仓库日增约减半。分片(core/copy/stocks)不受影响, 仍独立写盘。
     summary_slices = {
         "core": {
             "date": crawl_date,
@@ -516,14 +517,10 @@ def export(db_path, crawl_date, out_dir):
     for alert in trade_alerts:
         for name, _pid in alert.get("players", []):
             referenced_names.add(name)
-    for sc in suspected_clears:
-        referenced_names.add(sc["player_name"])
+        for sc in suspected_clears:
+            referenced_names.add(sc["player_name"])
     name_map = {p["name"]: p["id"] for p in players_flat
                 if p["name"] and p["name"] in referenced_names}
-
-    # 全量参照文件（字段=各分片并集 + 精简后的 name_map）
-    summary = {**summary_slices["core"], **summary_slices["copy"],
-               **summary_slices["stocks"], "playerNameMap": name_map}
 
     # ── 13. 构建选手详情文件 ──────────────────
     # positions/trades by player
@@ -628,7 +625,6 @@ def export(db_path, crawl_date, out_dir):
                   "页面时点会显示比数据新的时间, 请核对本班采集是否真的产出了当日数据")
     else:
         crawl_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-    summary["crawl_time"] = crawl_time
     summary_slices["core"]["crawl_time"] = crawl_time
 
     # ④降级标记(2026-09-13 拍板③): release_db 降级链写入的 marker → core.json.db_restore,
@@ -644,7 +640,6 @@ def export(db_path, crawl_date, out_dir):
     latest_dir = out_dir / "latest"
     latest_dir.mkdir(parents=True, exist_ok=True)
 
-    # summary.json
     # players_index.json (独立文件，前端并行加载)
     # 体积优化：数字保留 2 位小数（net_value 保留 3 位）、labels 只存数量（前端仅用 .length）
     # 导出范围收窄：players 表只增不减(累计 23192 人, 多为早已跌榜的冻结数据), 全量导出曾致
@@ -673,8 +668,6 @@ def export(db_path, crawl_date, out_dir):
         for p in export_players
     ]
     _atomic_json(latest_dir / "players_index.json", players_list)
-
-    _atomic_json(latest_dir / "summary.json", summary)
 
     # 分片文件（前端按需加载）
     _atomic_json(latest_dir / "core.json", summary_slices["core"])
@@ -759,10 +752,8 @@ def export(db_path, crawl_date, out_dir):
     conn.close()
 
     n_players = len(list(players_out_dir.glob("*.json")))
-    summary_size = (latest_dir / "summary.json").stat().st_size / 1024
 
     print(f"✅ 导出完成 ({crawl_date})")
-    print(f"   summary.json → {summary_size:.0f}KB")
     print(f"   players/ → {n_players} 个选手详情文件 (清理旧文件 {removed_players} 个)")
     print(f"   选手: {len(all_players_raw)} | 持仓: {len(positions_raw)} | 调仓: {len(trades_raw)} | 高手: {len(quality_ids)}")
 

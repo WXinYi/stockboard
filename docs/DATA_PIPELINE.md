@@ -72,7 +72,7 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 ### E.【可选优化】后续观察项
 
 - ~~W36 周档缺 08-31~~ → ✅ 08-31 已回填并刷入 W36/M08（见事故记录 ②-b）
-- `summary.json`（117KB 全量参照）前端已不 fetch，观察一个月后可考虑停写，进一步减小每次提交体积；
+- ~~`summary.json`（117KB 全量参照）前端已不 fetch，观察一个月后可考虑停写，进一步减小每次提交体积~~ → ✅ **已停写（2026-09-21）**，配套 notify_daily 日期源改 core.json、verify_slices 摘除对拍块（见 §3.3）；
 - 温层 `--retain-weeks 12` 与 prune 40 采集日的衔接：若出现周档覆盖不到的边角日期（跨月边界），用 `fetch_db.py --range` 合并月档兜底。
 
 ---
@@ -291,7 +291,6 @@ latest/copy.json        — 抄作业信号 + 卖出预警 + 疑似清仓
 latest/stocks.json      — 重仓共识
 latest/name_map.json    — 被引用选手 name→id
 latest/changes_summary.json — 持仓变动计数
-latest/summary.json     — 全量聚合(调试参照, 前端不再 fetch)
 latest/players/<id>.json — 选手详情, 前端按需加载
   (✅ 08-31 起: 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件,
    曾累积 23192 个/92MB 的问题已根治, 远端实测 08-31 为 5133 个, 随集合每日浮动, 09-21 约 6120 个)
@@ -302,6 +301,10 @@ latest/six_history.json   — 六情绪历史序列(~270 交易日 × 15 分量)
 latest/lianban_bid.json   — 昨日连板·今日竞价换手 TOP5
 latest/my_positions.json  — 我的持仓价位表(纪律卡 UI 已 09-07 下线, 数据链保留供「已持仓」标记/触价明细)
 ```
+
+> **summary.json 已停写（2026-09-21）**：前端从不 fetch、唯一生产读者 notify_daily 的日期来源
+> 已改 core.json.date（同源同语义）；verify_slices 的 summary 对拍块随之移除（name_map /
+> changes_summary 检查保留）。它是 git 历史第二大反复提交 blob（累计 129MB），停写后仓库日增约减半。
 
 ### 3.4 Git 提交策略（✅ 08-31 已切换）
 
