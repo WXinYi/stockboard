@@ -77,6 +77,13 @@ jobs:
           if [ -s jiarenmens/data/.watchdog_changed ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "叠加更新选手: $(tr '\n' ' ' < jiarenmens/data/.watchdog_changed)"
+            # 部署让位(2026-09-22): 若 crawl 班进行中, 等它部署完再上——否则旧导出的
+            # 部署会覆盖冲刺的叠加(页面回退闪烁的根因)。公共仓匿名 API 可查, 上限 10 分钟。
+            for i in $(seq 1 20); do
+              N=$(curl -s --max-time 15 "https://api.github.com/repos/WXinYi/stockboard/actions/workflows/crawl.yml/runs?status=in_progress" | python3 -c "import json,sys;print(json.load(sys.stdin).get('total_count',0))" 2>/dev/null || echo 0)
+              if [ "$N" = "0" ]; then echo "无进行中 crawl, 直接部署"; break; fi
+              echo "⏳ crawl 班进行中, 部署让位 ($i/20)"; sleep 30
+            done
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "本轮无新操作, 不部署"
