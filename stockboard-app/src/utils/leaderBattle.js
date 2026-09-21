@@ -174,7 +174,7 @@ const STAGE_GATE = {
   启动: { cap: 100, banner: '启动期：打低位首板/1进2 为主，情绪低点做龙头' },
   发酵: { cap: 100, banner: '发酵期：上主线龙头/同梯队强者，五板封住定龙头' },
   高潮: { cap: 100, banner: '高潮期：只做龙头接力(秒板/放量分歧板)，跟风不碰' },
-  分歧: { cap: 60, banner: '分歧期：只抱团龙头低吸，避开中位股(核按钮高发)' },
+  分歧: { cap: 60, banner: '分歧期：只抱团龙头低吸，避开中位股(核按钮高发)。注：本条是买法姿势，副行闸门是梯队门票(两维度不矛盾)' },
 }
 
 // 高中位矩阵分层闸门: 同一阶段下, 高位/中位/低位可出击的类型不同(key=高位|中位, 语义对齐 MATRIX_DESC)
@@ -474,12 +474,20 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
 
 /* ============ 🚨 高标开板 + 🔭 明日卡位雷达 ============ */
 function computeRisks(todayJoined, unsealed, cycle) {
+  // 未涨停池桶口径修正(2026-09-22, kpl-api.md「未涨停的N板」): PidType=N = 今日冲N板未封,
+  // 昨日实际连板 = N-1 —— 旧版把桶号当既有板数, 高标开板显示"4板"实为昨3板(09-14 云煤能源案例)。
+  // 选择器保持 u.pid>=4(昨日≥3板的高位开板, 业务口径不变); 出击候选的 level 仍为冲板位
+  // (参与 tier 分层, 语义=尝试位置, 不在此列修正以免行为变化)。
   const brokenHighs = unsealed.filter(u => u.pid >= 4)
     .sort((x, y) => y.pid - x.pid || y.pct - x.pct)
-    .map(u => ({
-      code: u.code, name: u.name, level: u.pid >= 5 ? '≥5' : u.pid, pct: u.pct,
-      note: `${u.pid >= 5 ? '≥5' : u.pid}板开板 · 现${u.pct.toFixed(1)}%${u.mainNet < 0 ? ' · 主力净卖出' : ''}`,
-    }))
+    .map(u => {
+      const yst = u.pid >= 5 ? '≥4' : String(u.pid - 1)   // 昨日真实连板(桶5=≥5板封顶桶 → 昨≥4板)
+      const tgt = u.pid >= 5 ? '≥5' : String(u.pid)
+      return {
+        code: u.code, name: u.name, level: yst, pct: u.pct,
+        note: `昨${yst}板 · 今日冲${tgt}板未封${u.mainNet < 0 ? ' · 主力净卖出' : ''}`,
+      }
+    })
 
   const maxLevel = Math.max(0, ...todayJoined.map(r => r.level))
   const mainBoards = (cycle.mainlines || []).slice(0, 2).map(m => m.board)

@@ -390,7 +390,15 @@ function switchInfo(t) { infoType.value = t; loadInfo(true) }
 async function loadMoreInfo() { infoPage.value += 1; loadInfo(false) }
 // 资讯行 → 跳转独立详情页(新闻/研报/公告共用 /info/:code/:iid); 标题经 sessionStorage 传递
 function goInfo(it) {
-  try { sessionStorage.setItem('info_title_' + it.iid, it.title) } catch (e) { /* 隐私模式忽略 */ }
+  try {
+    sessionStorage.setItem('info_title_' + it.iid, it.title)
+    // 同时存 localStorage 池: 冷深链(分享直达/新会话)时 InfoDetail 可回查标题(2026-09-22 补)
+    const pool = JSON.parse(localStorage.getItem('info_titles') || '{}')
+    pool[it.iid] = it.title
+    const keys = Object.keys(pool)
+    while (keys.length > 200) delete pool[keys.shift()]   // 简单封顶, 防无限膨胀
+    localStorage.setItem('info_titles', JSON.stringify(pool))
+  } catch (e) { /* 隐私模式忽略 */ }
   router.push({ path: `/info/${code.value}/${it.iid}`, query: { type: infoType.value, name: qname.value } })
 }
 

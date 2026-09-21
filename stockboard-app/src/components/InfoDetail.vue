@@ -5,7 +5,8 @@ import { fetchInfoContent, fetchAnnounceContent } from '../composables/useKplApi
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 
 // 资讯/研报/公告 正文详情页 — 路由 /info/:code/:iid, query.type: 1新闻/2研报/3公告
-// 标题由列表页经 sessionStorage 传递(避免超长 URL); 公告接口自带 title
+// 标题来源: ① 列表页经 sessionStorage 传递 ② localStorage 池(StockDetailPage 列表逐条存入,
+// 冷深链同设备可命中; 2026-09-22 补, 9/13 深链标题缺失案例) ③ 公告接口自带 title
 defineOptions({ name: 'InfoDetail' })
 
 const route = useRoute()
@@ -13,7 +14,12 @@ const code = route.params.code
 const iid = route.params.iid
 const type = Number(route.query.type || 1)
 
-const title = ref(sessionStorage.getItem('info_title_' + iid) || '')
+function storedTitle(id) {
+  return sessionStorage.getItem('info_title_' + id)
+      || (JSON.parse(localStorage.getItem('info_titles') || '{}')[id] || '')
+}
+
+const title = ref(storedTitle(iid))
 const content = ref('')
 const sourceUrl = ref('')
 const loading = ref(true)
@@ -40,7 +46,7 @@ async function load() {
 watch(() => route.params.iid, (id) => {
   // 路由离开资讯页(iid 变 undefined)时不重载
   if (!id) return
-  title.value = sessionStorage.getItem('info_title_' + id) || ''
+  title.value = storedTitle(id)
   content.value = ''
   sourceUrl.value = ''
   load()

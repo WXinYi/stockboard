@@ -179,3 +179,32 @@ describe('whyNot 差什么提示', () => {
     expect(whyNot({ level: 1, score: 60 }, 100, '强', '强')).toBe('')
   })
 })
+
+describe('computeRisks 高标开板(未涨停池桶口径修正 2026-09-22)', () => {
+  // 桶 PidType=N = 今日冲N板未封(昨日实际 N-1 板): 展示昨N板, 不再把桶号当既有板数(09-14 云煤能源案例)
+  const unsealed = [
+    { code: '400001', name: '冲五失败', pid: 5, pct: -3.0, mainNet: 0 },
+    { code: '400002', name: '冲四失败', pid: 4, pct: 2.1, mainNet: -5e6 },
+    { code: '400003', name: '低位未封', pid: 2, pct: 1.0, mainNet: 0 },
+  ]
+  const tp = [{ code: '300001', name: '锚哥', pid: 6, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9 }]
+  const b = computeBattle({
+    ladderRows: tp.map(r => ({ code: r.code, name: r.name, level: r.pid, bkName: 'AI', cap: 0, seal: 0, plates: ['AI'] })),
+    todayPool: tp, prevFull: [], unsealed,
+    cycle: makeCycle('分歧'),
+  })
+  it('只收 pid>=4 的高位桶, 低位未封不进高标开板', () => {
+    expect(b.risks.brokenHighs.map(x => x.code)).toEqual(['400001', '400002'])
+  })
+  it('桶5=昨日≥4板, 桶4=昨日3板; note 表达"冲N板未封"而非"既成板数"', () => {
+    const [five, four] = b.risks.brokenHighs
+    expect(five.level).toBe('≥4')
+    expect(five.note).toContain('昨≥4板')
+    expect(five.note).toContain('今日冲≥5板未封')
+    expect(four.level).toBe('3')
+    expect(four.note).toContain('昨3板')
+    expect(four.note).toContain('今日冲4板未封')
+    expect(four.note).toContain('主力净卖出')
+    expect(four.pct).toBe(2.1)
+  })
+})
