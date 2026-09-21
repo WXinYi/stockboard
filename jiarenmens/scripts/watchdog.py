@@ -280,26 +280,11 @@ def build_message(date_str: str, hhmm: str, data: dict, new_mark: dict, quotes: 
     return "\n".join(lines)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="关注选手盯盘 watchdog")
-    ap.add_argument("--date", help="YYYY-MM-DD(默认今天; 回放用)")
-    ap.add_argument("--dry-run", action="store_true", help="只打印, 不推钉钉/不写文件/不落状态")
-    ap.add_argument("--force", action="store_true", help="无视交易时段闸门(排障用)")
-    ap.add_argument("--state-file", default=str(STATE_FILE))
-    ap.add_argument("--changed-file", default=str(CHANGED_FILE))
-    args = ap.parse_args()
-    state_file, changed_file = Path(args.state_file), Path(args.changed_file)
-
+def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int:
+    """单轮盯盘: 拉取→比对→推送(有新增时)→叠加→落状态。返回本轮新操作笔数。"""
+    state_file, changed_file = Path(state_file), Path(changed_file)
     now = bj_now()
-    date_str = args.date or now.strftime("%Y-%m-%d")
     hhmm = now.strftime("%H:%M")
-
-    if not args.dry_run and not args.force and not in_trading_window(now):
-        print(f"非盯盘时段({now.strftime('%H:%M')} %a), 跳过")
-        return 0
-
-    st = load_state(date_str, state_file)
-    first_of_day = not any(st["pushed"].values())
     data = fetch_all(WATCHED_PLAYERS, date_str)
 
     n_ok = sum(1 for zh, o in data.items()
@@ -374,7 +359,68 @@ def main():
         will_fix = [zh for zh, nm, _t, _a in new_pushes]
         print(f"[dry-run] 将推送 {len(new_pushes)} 笔; 将叠加更新 {len(will_fix)} 个选手文件: "
               f"{will_fix}; 状态不落盘")
+    return len(new_pushes)
+
+
+def open_sprint(args, st, date_str, first_of_day, state_file, changed_file) -> int:
+    """开盘冲刺(2026-09-22 拍板): 09:30~09:35 以 50 秒/轮加密检测, 抢开盘黄金窗口。
+
+    cron-job.org 粒度只有 1 分钟, 50 秒节奏靠本任务内自循环实现; 与常规 5 分钟班
+    共用并发组(排队串行)与同一份已推状态, 一条操作只响一次铃。"""
+    interval = max(10, args.sprint_interval)
+    deadline = args.sprint_deadline
+    t0 = bj_now()
+    rounds = total = 0
+    while True:
+        now = bj_now()
+        if now.strftime("%H%M") >= deadline:
+            break
+        rounds += 1
+        total += run_cycle(args, st, date_str, first_of_day and rounds == 1,
+                           state_file, changed_file)
+        now = bj_now()
+        if now.strftime("%H%M") >= deadline:
+            break
+        wait = rounds * interval - (now - t0).total_seconds()   # 对齐 50 秒节拍
+        if wait > 0:
+            time.sleep(wait)
+    print(f"🏁 开盘冲刺结束: {rounds} 轮, 累计推送 {total} 笔新操作")
     return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description="关注选手盯盘 watchdog")
+    ap.add_argument("--date", help="YYYY-MM-DD(默认今天; 回放用)")
+    ap.add_argument("--dry-run", action="store_true", help="只打印, 不推钉钉/不写文件/不落状态")
+    ap.add_argument("--force", action="store_true", help="无视交易时段闸门(排障用)")
+    ap.add_argument("--open-sprint", action="store_true",
+                    help="开盘冲刺: 50 秒/轮加密检测至 --sprint-deadline(默认 0935)")
+    ap.add_argument("--sprint-interval", type=int, default=50, help="冲刺轮间隔秒(默认 50)")
+    ap.add_argument("--sprint-deadline", default="0935", help="冲刺截止 HHMM(默认 0935)")
+    ap.add_argument("--state-file", default=str(STATE_FILE))
+    ap.add_argument("--changed-file", default=str(CHANGED_FILE))
+    args = ap.parse_args()
+    state_file, changed_file = Path(args.state_file), Path(args.changed_file)
+
+    now = bj_now()
+    date_str = args.date or now.strftime("%Y-%m-%d")
+
+    if not args.dry_run and not args.force:
+        if args.open_sprint:
+            hm = now.strftime("%H%M")
+            if not is_trading_day(now.date()) or not ("0930" <= hm <= "0935"):
+                print(f"非开盘冲刺时段({now.strftime('%H:%M')} %a), 跳过")
+                return 0
+        elif not in_trading_window(now):
+            print(f"非盯盘时段({now.strftime('%H:%M')} %a), 跳过")
+            return 0
+
+    st = load_state(date_str, state_file)
+    first_of_day = not any(st["pushed"].values())
+
+    if args.open_sprint:
+        return open_sprint(args, st, date_str, first_of_day, state_file, changed_file)
+    return run_cycle(args, st, date_str, first_of_day, state_file, changed_file)
 
 
 if __name__ == "__main__":

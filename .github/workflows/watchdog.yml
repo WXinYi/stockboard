@@ -14,7 +14,7 @@ name: 关注盯盘 watchdog
 
 on:
   repository_dispatch:
-    types: [watchdog]
+    types: [watchdog, watchdog-open]
   workflow_dispatch:
 
 concurrency:
@@ -53,7 +53,14 @@ jobs:
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
-        run: cd jiarenmens && python scripts/watchdog.py
+        run: |
+          cd jiarenmens
+          # watchdog-open = 开盘冲刺(09:30 触发): 50 秒/轮自循环至 09:35, 抢开盘黄金窗口
+          if [ "${{ github.event.action }}" = "watchdog-open" ]; then
+            python scripts/watchdog.py --open-sprint
+          else
+            python scripts/watchdog.py
+          fi
 
       # 失败重试语义: 推送失败时脚本不落状态直接非零退出, 下一班自动补推(at-least-once);
       # 因此状态文件只在成功路径存在, hashFiles 空串时跳过保存。
