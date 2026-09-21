@@ -184,7 +184,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 |---|---|
 | `workflow_dispatch: crawl.yml` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 20 班**（**首班 09:26**~末班 14:51）。首班与钉钉《竞价跟单快报》(09:26) 同批：快报直连东财实时接口，站点数据必须跟上，否则用户先收到推送、再打开页面却是昨天的数据（2026-09-09 反馈，首班由 09:30 提前，cron-job.org jobId 8167465） |
 | `repository_dispatch: crawl-eod` | 收盘专班，cron-job.org 15:15 触发，必做 Release sync |
-| `push: main` | 每次推送也会跑一遍（**2026-09-21 起有交易日守卫**：非交易日跳过采集/导出/上传/提交，仅保留构建部署——周末/节假日推代码仍可发版，不再产出幽灵数据桶；日历解析前端 tradingCalendar.js 单一数据源） |
+| `push: main` | 每次推送也会跑一遍（**2026-09-21 起有交易日守卫**：非交易日跳过采集/导出/上传/提交，仅保留构建部署；**09-22 延伸至时段**——push 仅在交易时段 09:00-15:15 采集，盘后/夜间/清晨 push 纯发版不采集，时钟统一北京时间；日历解析前端 tradingCalendar.js 单一数据源） |
 | `workflow_dispatch` | 手动触发（Actions 页面 Run workflow） |
 
 > 并发控制：`concurrency: pages-${{ github.ref }}`，新 run 会取消正在跑的旧 run。白天高频 dispatch 是设计使然（盯盘时效），非异常。

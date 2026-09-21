@@ -43,25 +43,33 @@ jobs:
       # push 班把周日持仓写进库, 抄作业页"昨天"标签指向非交易日)。日历解析前端
       # tradingCalendar.js 单一数据源, 正则与 watchdog.parse_holidays 同款(改动两处同步);
       # 日历未覆盖年份退回周一~五近似(A股周末永不交易, 与交易所口径一致)。
+      # 2026-09-22 延伸: ① 时钟改北京时间(runner 是 UTC, 北京 00:00~08:00 的 push 会判错日期);
+      # ② push 触发仅在 09:00-15:15 采集 —— 盘后/夜间数据不变, 只做纯发版(09-21 实测夜间
+      # push 班被盘后慢接口拖 45min+, 白烧机时); dispatch/crawl-eod 班保持原行为不受影响。
       # 守卫自身失败按交易日放行(fail-open, 保持原行为), 不新增失败面。
       - name: 交易日守卫
         id: dayguard
         run: |
           python3 - <<'PY'
           import os, re
-          from datetime import date
+          from datetime import datetime
           from pathlib import Path
+          from zoneinfo import ZoneInfo
           try:
+              now = datetime.now(ZoneInfo("Asia/Shanghai"))
               js = Path("stockboard-app/src/utils/tradingCalendar.js").read_text(encoding="utf-8")
               hol = {}
               for m in re.finditer(r"const\s+HOLIDAYS_(\d{4})\s*=\s*new Set\(\[([^\]]*)\]", js):
                   hol[int(m.group(1))] = set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", m.group(2)))
-              today = date.today()
-              trading = today.weekday() < 5 and today.isoformat() not in hol.get(today.year, ())
-              print(f"📅 交易日历年份: {sorted(hol) or '无'} | {today} → "
-                    f"{'交易日' if trading else '非交易日(跳过采集/导出/提交, 仅部署)'}")
+              trading_day = now.weekday() < 5 and now.strftime("%Y-%m-%d") not in hol.get(now.year, ())
+              if os.environ.get("GITHUB_EVENT_NAME") == "push":
+                  trading = trading_day and "0900" <= now.strftime("%H%M") <= "1515"
+              else:
+                  trading = trading_day   # dispatch/crawl-eod 班保持原行为(不按时段收窄)
+              verdict = "采集+部署" if trading else "仅部署(跳过采集)"
+              print(f"📅 交易日历年份: {sorted(hol) or '无'} | 北京 {now:%Y-%m-%d %H:%M} → {verdict}")
           except Exception as e:
-              print(f"⚠️ 交易日历解析失败({e}), 按交易日放行(保持原行为)")
+              print(f"⚠️ 交易日历/时钟解析失败({e}), 按交易日放行(保持原行为)")
               trading = True
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"trading={'true' if trading else 'false'}\n")
