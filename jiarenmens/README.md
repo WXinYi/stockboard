@@ -1,21 +1,23 @@
 # StockBoard - 股票数据看板
 
-个人投资数据追踪工具，定时拉取公开数据，生成可交互的 Web 分析看板。
+个人超短决策看板：跟踪东财模拟炒股大赛选手持仓，叠加情绪周期引擎给出每日选股结论。
 
-## 功能
+## 功能（页面名以线上导航为准）
 
-- **数据看板** — HTML 看板，含选手排行、持仓分析、调仓共识等模块
-- **多维度排序** — 按总收益 / 年收益 / 月收益 / 周收益 / 日收益 / 净值 灵活切换
-- **标的质量筛选** — 按运行时长 + 回撤过滤优质标的
-- **重仓共识** — 按加权仓位发现市场重仓方向
-- **增量更新** — 每天运行一次，数据按日期隔离存储
-- **SQLite 存储** — 数据持久化到本地数据库，支持历史回溯
+- **选股首页** `/market` — 今日定性一句话 + 可买/禁买结论、🎯 今日出击、接力盈亏仪表、持仓触价提醒明细
+- **竞价抢筹** `/auction` — 09:25 竞价结论、出击选股存档、昨日连板·竞价换手 TOP5
+- **抄作业** `/copy` — 选手调仓信号/卖出预警/疑似清仓（导航不暴露，URL 直达保留）
+- **排行榜** `/rankings` — 选手按总/年/月/周/日收益、净值多维排序
+- **重仓共识** `/stocks` — 按加权仓位发现市场重仓方向
+- **盯盘推送** — watchdog 每交易日 5 分钟轮询关注选手（09:30~09:35 开盘 50 秒/轮冲刺），新操作即时钉钉
+
+数据由 cron-job.org 触发的 GitHub Actions **每交易日 20+ 班**自动采集（首班 09:26、收盘专班 15:15），SQLite 持久化走 Release 三层存储——全链路见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
 
 ## 数据持久化（2026-08-31 起）
 
 `crawl_data.db` **不再进 git**，持久化走 GitHub Release 三层存储（热层 40 采集日 / 温层 12 周滚动 / 冷层永久），完整方案与运维手册见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
 
-`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照留 7 天 + 周快照留 26 周——当前周随每班刷新、周切换自然冻结为周末状态；bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
+`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照留 **30 天**(09-09 由 7 提升) + 周快照留 26 周——当前周随每班刷新、周切换自然冻结为周末状态；bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
 
 ```bash
 python3 scripts/fetch_db.py --latest          # 热层(最近40采集日) → data/crawl_data.db
@@ -30,22 +32,25 @@ python3 scripts/fetch_db.py --list            # 查看可用归档
 
 ## 快速开始
 
+生产链路全自动（cron-job.org → Actions → Pages），日常无需手动跑任何东西。本地开发：
+
 ```bash
-# 安装依赖
-pip install -r requirements.txt
+# 前端(Vue, 在 stockboard-app/)
+cd stockboard-app && npm ci && npm run dev
 
-# 运行数据采集
-python main.py
-
-# 生成看板
-python scripts/dashboard.py
+# 采集端本地试跑(不碰生产; 库不在先 fetch_db 恢复)
+cd jiarenmens && pip install -r requirements.txt
+python scripts/fetch_db.py --latest        # 恢复主库(空库导出会产出退化数据)
+python main.py --checkpoint-reset --test   # 测试模式只采 10 人
 ```
+
+`scripts/dashboard.py` / `dashboard.html` 是 7 月代的旧 HTML 看板，仅留档，不再是生产出口。
 
 ## 命令行参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--limit` | 100 | 每类数据获取数量 |
+| `--limit` | 500 | 每类数据获取数量 |
 | `--workers` | 20 | 并发数 |
 | `--test` | - | 测试模式（只处理 10 个） |
 | `--no-skip` | - | 不跳过已有数据 |
@@ -60,13 +65,13 @@ stockboard/
 ├── data/
 │   ├── checkpoint.json        # 进度记录
 │   ├── crawl_data.db          # SQLite 数据库(运行时从 Release 热层恢复, 永不进 git, 见 docs/DATA_PIPELINE.md)
-│   ├── auction.db             # 竞价/情绪/涨停池（auction_scan 写，Actions 与本地共享）
-│   ├── analysis.db            # 周期引擎判定（本地独享，不提交）
+│   ├── auction.db             # 竞价/情绪/涨停池（auction/auction-label/crawl/cycle-eod 四 workflow 共写，Release 热层托管）
+│   ├── analysis.db            # 周期引擎判定（⚠️ .gitignore 有它但文件已被跟踪、数据班提交实际携带——是否解除跟踪待拍板）
 │   ├── intraday.db            # 盘中监控数据（已停用，本地独享）
 │   ├── archive/               # fetch_db.py 回测产物（gitignore，勿 git add -A 误提交）
 │   └── dashboard.html         # 生成的看板页面
 ├── scripts/
-│   ├── auction_scan.py        # 竞价扫描：出击选股Top5 + 昨日连板·竞价换手Top5 钉钉推送（存量评分漏斗 09-06 停跑, V5 转内部喂养）
+│   ├── auction_scan.py        # 竞价扫描：出击选股Top5 + 昨日连板·竞价换手Top5 钉钉推送（存量评分漏斗与 V5 已 09-06 整链删除）
 │   ├── cycle_push.py          # 午盘/尾盘格局钉钉推送（每日三推之二/三）
 │   ├── cycle_brief.py         # 当前超短格局报告 CLI
 │   ├── backfill_emotion.py    # 市场宽度/涨停池历史回补
@@ -101,11 +106,11 @@ stockboard/
   python scripts/backfill_emotion.py --breadth         # 宽度数据回补
   ```
 
-## 我的纪律卡（2026-09-05 新增）
+## 我的持仓数据链（原「纪律卡」；纪律卡 UI 已 2026-09-07 下线）
 
-盘面页入口卡 + `/market/discipline` 详情页：今日定性→仓位上限（`STAGE_RULES`，双实现同源 `emotionCycle.js`）、盘前五数、冰点确认四菜单（A+B 试错许可 / C+D 仓位恢复）、持仓处理价位表（触价高亮 + 板块涨停统计 + rtV2 调仓自动核对）、每日三行卡（localStorage `sb-discipline-log`）。
+纪律卡执法页（今日定性→仓位上限/盘前五数/冰点确认菜单/价位表执法）已按用户拍板下线，前端仅余下线注释与轻量回补。`my_positions.json` 数据链保留，供选股首页「已持仓」标记与触价提醒明细：
 
-数据链（每天 12 班自动刷新）：
+数据链（每班自动刷新）：
 ```
 jiarenmens/data/my_positions.json   # 手编配置: 价位表/板块归属/weekly_focus, 每周复盘更新
   └─ export_json.py: build_my_positions()   # rtV2 调仓轧差 + GetPlateInfo_w38(HisLimitResumption) 板块统计 + 腾讯行情
@@ -117,7 +122,7 @@ jiarenmens/data/my_positions.json   # 手编配置: 价位表/板块归属/weekl
 
 **09:29 钉钉推送换血（2026-09-06）**：竞价班推送从"评分漏斗候选池 + V5 首枪"换成 **🎯出击选股 Top5（strike_pool 9:26 口径存档，与盘面页出击 Tab 同源）+ 🪜昨日连板·今日竞价换手 Top5**（口径同 `build_lianban_bid`/`lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯 0930 补算，`rank_lianban_bid` 纯函数+单测）；09:31 开盘确认**已整链移除（2026-09-10，用户拍板"拿到数据直接发版"）**——auction job 提交 auction.json 后立即 build+部署，约 09:28 上线，不再搭 crawl 便车（09:32）晚 7 分钟，也不再在 09:25-09:32 之间让线上竞价页显示昨日数据；`--confirm` 入口及 E 层确认函数**已随之一并删除**。存量评分漏斗与 V5 首枪当日先停跑、随后**整链删除**（漏斗评分/涨停基因/全池竞价分时采集、v5_results/candidates/candidate_results 等回测表、`--label`/`--v5-report`/`--backfill-factors` 入口全移除）——每交易日省去数百请求，auction.db 热层 2.19MB→0.7MB。页面『观察(容量)』= 龙头谱系中军（JS/Python 两端都有），与 V5 无关。前端同步：auction.json 去掉 `candidates`/`watch`/`rejected`，新增 `strike`/`strike_watch`/`bidrank`；竞价页（AuctionTab）换出击选股+连板换手两段，盘面页竞价迷你卡改显出击前2。`--dry-run` 语义收紧：不推钉钉**且不写生产 auction.json**（演练不覆盖前端快照）。
 
-盘面页「🎯 今日出击」Tab = 唯一出击展示位（周期详情页已移除该模块）：阶段闸门×九宫格 → 四池候选（龙头谱系/阶段扩展/半路/退潮火种）→ 评分排序（`leaderBattle.js` computeStrike，纯规则可回测）。每只候选带 定位标签（龙头/中军/补涨/跟风，跟风强制回避）、买点三件套（`candTipOf` 共用函数）、按闸门换算的建议仓位；启动期含首板试错池（早封+主力净买），退潮期火种入候选。Python 对偶 `src/analysis/stage_candidates.py` 同步候选范围与状态语义。
+选股首页「🎯 今日出击」Tab = 唯一出击展示位（周期详情页已移除该模块；该页原称「盘面页」，2026-09 更名选股，路由仍为 /market）：阶段闸门×九宫格 → 四池候选（龙头谱系/阶段扩展/半路/退潮火种）→ 评分排序（`leaderBattle.js` computeStrike，纯规则可回测）。每只候选带 定位标签（龙头/中军/补涨/跟风，跟风强制回避）、买点三件套（`candTipOf` 共用函数）、按闸门换算的建议仓位；启动期含首板试错池（早封+主力净买），退潮期火种入候选。Python 对偶 `src/analysis/stage_candidates.py` 同步候选范围与状态语义。
 
 特殊标记「🔥 竞价换手TOP5」= 昨日连板股中今晨 9:25 竞价实际换手率前五（口径同 `scripts/lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯分时 0930 首行÷流通市值补算）：
 ```
@@ -137,10 +142,9 @@ export_json.py: build_lianban_bid()   # limit_pool 昨日连板(pid≥2) × bid_
 
 ## 技术栈
 
-- Python 3.11+
-- SQLite（数据持久化）
-- Chart.js（前端图表）
-- 纯请求模式，无需浏览器
+- 采集端：Python 3.11+ + SQLite，纯请求模式（requests/aiohttp），无需浏览器
+- 前端：Vue 3 + Vite + PWA（`stockboard-app/`），图表自绘 SVG、无图表库依赖
+- 调度与部署：cron-job.org + GitHub Actions + GitHub Pages；长期数据走 GitHub Release 三层存储
 
 ## License
 

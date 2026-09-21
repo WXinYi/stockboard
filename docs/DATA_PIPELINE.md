@@ -10,12 +10,12 @@
 | 事项 | 状态 | 说明 |
 |---|---|---|
 | 文档 | ✅ 完成 | 本文件；含实施调试记录 |
-| ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 按设计当月不封版（9 月首个收盘 run 自动封入冷层） |
+| ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 已按设计于 9 月首个收盘 run 封版（2026-09-21 核实 tag 在位） |
 | ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 09-01 15:52 run 完成首次真实 sync：热层(09-01, trades 207046) + 温层 db-w2026-W36 + 冷层 db-m2026-08(159315 trades) 全部就位，manifest integrity ok。⚠️ 同时发现并修复调度缺口（闸门 15:10 > cron 末班 14:51，08-31 db 丢一天，见事故记录②）：新增 `crawl-eod` 收盘专班 + 14:45 兜底闸门。**09-02 15:15 专班首跑 repository_dispatch success**——首次由专用 cron 自动触发收盘 sync，链路闭合 |
 | ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
 | ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
 | ④ 恢复降级链 | ✅ 完成(2026-09-13) | 热层下载失败不再直接断链：三级降级 **热层→温层最新周快照→actions/cache 副本**(`release_db.py --download-fallback`)。三条配套：**①库龄闸门** `MAX(crawl_date)≤今天-4 天`(4 天窗口自然拒绝春节/国庆长假缺口，周一用周五库放行)，超龄照旧宁可停；**②降级必发钉钉告警**(来源+库龄)；**③降级来源写 marker→`core.json.db_restore`→选股页红条提示**。cache 副本与 Release 相互独立(限流时仍可用)，每成功班打包入 `actions/cache`(key 前缀 `crawl-db-`)。全链耗尽仍 exit 1(宁可停不可断链)。单测 `test_release_db.py` 5 例 |
-| ④ git 历史重写(filter-repo) | ⏸ 待用户确认 | 前置条件①已满足；会重写全部 commit hash，需 force push。详见下方待办 C |
+| ④ git 历史重写(filter-repo) | ✅ 完成(2026-09-06) | 已执行并强推：pack 387→172MiB、`.git` 398MB→200MB，详见下方待办 C |
 | ⑦ Build Vue 提速 | ✅ **上线并双分支验证** | dist 壳按代码指纹缓存，数据班跳过 npm ci+vite 全量构建（原慢班 Build Vue 可达 425s）。09-05 两次 push 触发实测：cache-miss 全量构建分支 ✅ / cache-hit rsync 拼接分支 ✅，详见 A2 |
 | 观察期 ⑥ | ✅ **观察期结束(5/5天全过) + 追加日 09-09 ✅** | 观察期 09-02~09-08 五天全部通过；09-09 定时任务第5/5次(末次)继续全绿：主链路 eod #574 success、热层 18:15 更新、Pages 四 JSON 日期=09-09、竞价 #30(09:25) + 涨停池回补 #19(15:05) 均 success、manifest integrity ok (trades 214304, range 07-29~09-09)。定时自检任务到期结束，详细逐日记录见 B |
 | ⑧ 对账巡检（本地工具） | ✅ 脚本完成 / ⏸ 不进 CI（09-14 拍板） | `data_reconcile.py`：现场重拉原始接口 + 生产页 DOM，核对选股页 6 模块，❌→钉钉告警。**用户拍板巡检不加到生产环境**，仅手动本地跑，crawl.yml 不改动。同批修复：stage_candidates 弱转强/首板"昨日"锚 off-by-one（9:26 盘前班名单恒旧一个交易日，巡检⑤实锤）、`_synthesize_wzq` bid_pct 存字符串（与 09-14 早盘竞价班崩溃同类隐患）、MarketTab llm 卡 UTC 时戳直显 + snapTxt 切位错（恒判"早盘曾判"） |
@@ -171,7 +171,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 另有独立机器：
 - **竞价扫描** `auction_scan.py`（09:25 cron 单独触发，写 `auction.db`，钉钉推**出击选股Top5 + 昨日连板·竞价换手Top5**；2026-09-10 起**提交 auction.json 后直接 build+部署上线**，不再等 09:31 开盘确认——`--confirm` 入口及整套 E 层确认函数**已整链删除**；存量评分漏斗与 V5 首枪 2026-09-06 **整链删除**——代码/回测表/打标全移除，活函数迁 `src/analysis/auction_env.py`）；
-- **盘中监控** `intraday_monitor.py`（本机 LaunchAgent 09:26–15:10，写 `intraday.db`，本地独享不提交）；
+- **盘中监控** `intraday_monitor.py` —— **已停用**（本机 LaunchAgent 已撤、`intraday.db` 最后写入 2026-08-29；代码保留仅留档）；
 - **尾盘格局** `cycle_push.py --session eod`（14:30–14:55 窗口，搭 crawl dispatch 便车）。
 
 ---
@@ -242,7 +242,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 | 竞价池/板块/情绪 | 开盘啦实时接口 (apphwhq: GetBKJJ_W36 / RealRankingInfo / MorningBiddingList 等) | `scripts/auction_scan.py` | 当天走实时路径，历史回放走 His 路径 |
 | 人气榜 | 东财人气榜 TOP100 | `scripts/auction_scan.py --hot-rank` | am/pm 每(date,snap)去重，最多两份/天 |
 | 实时涨停池/格局 | 开盘啦 + 东财实时 | `scripts/cycle_push.py` | 只推钉钉，不落数据库 |
-| 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | 本机独享 |
+| 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | **已停用**（2026-08-29 后未再运行，代码保留） |
 
 **关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（10 人，硬编码 zh_id+name）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。改名单只改这一处（盘中即时提醒 watchdog.yml 与钉钉推送自动跟随）。
 
@@ -274,9 +274,10 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 | 库 | 写入方 | 内容 | 是否提交 git |
 |---|---|---|---|
-| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/情绪/梯队/涨停池/宽度/炸板池/指数/出击存档 8 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 **30 天**(09-09 由 7 提升) + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
+| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/六情绪日档(mood_daily)/梯队/涨停池/宽度/炸板池/指数/出击存档/LLM存档(llm_review) 9 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 **30 天**(09-09 由 7 提升) + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
 | `hot_rank.db` | auction_scan --hot-rank | 东财人气榜 am/pm 快照 | 是 |
-| `intraday.db` / `analysis.db` | intraday_monitor.py | 盘中信号快照 | **否**（.gitignore，本机独享） |
+| `analysis.db` | cycle_brief / emotion_cycle(周期引擎) | 周期判定快照 | **是(事实如此)** —— .gitignore 有它但文件已被跟踪，每班数据提交实际携带（09-21 巡检实锤；是否 `git rm --cached` 解除跟踪待拍板） |
+| `intraday.db` | intraday_monitor.py(已停用) | 盘中信号快照 | **否**（.gitignore，本机独享） |
 | `crawl_data.db-shm/-wal` | SQLite WAL | — | 否（.gitignore） |
 
 ### 3.3 导出 JSON（存数的"前端镜像"，`scripts/export_json.py`）
@@ -293,9 +294,13 @@ latest/changes_summary.json — 持仓变动计数
 latest/summary.json     — 全量聚合(调试参照, 前端不再 fetch)
 latest/players/<id>.json — 选手详情, 前端按需加载
   (✅ 08-31 起: 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件,
-   曾累积 23192 个/92MB 的问题已根治, 远端实测已降至 5133 个)
-latest/auction.json     — 竞价扫描快照(intraday_monitor 也读)
+   曾累积 23192 个/92MB 的问题已根治, 远端实测 08-31 为 5133 个, 随集合每日浮动, 09-21 约 6120 个)
+latest/auction.json     — 竞价扫描快照
 latest/players_index.json
+latest/strike_review.json — 出击候选复核 + 今日弱转强 + 六情绪快照
+latest/six_history.json   — 六情绪历史序列(~270 交易日 × 15 分量)
+latest/lianban_bid.json   — 昨日连板·今日竞价换手 TOP5
+latest/my_positions.json  — 我的持仓价位表(纪律卡 UI 已 09-07 下线, 数据链保留供「已持仓」标记/触价明细)
 ```
 
 ### 3.4 Git 提交策略（✅ 08-31 已切换）
@@ -379,6 +384,8 @@ Python `jiarenmens/src/analysis/stage_candidates.py`（09:25 存档 + 钉钉推�
 
 ## 四、问题量化（为什么必须改造）
 
+> ⚠️ 下表为 **2026-08-30 改造前的实测存档**，仅作历史动机保留，问题已于 09-06 git 重写解决（§0 待办 C）。`.git` 2026-09-21 实测 ~233MB——回升主因是每班全量重提交 players_index 等派生 JSON，2026-09-17 已 gc 收敛并拍板维持现状（远端年增 ~2GB 接受）。
+
 | 指标 | 实测值 | 趋势 |
 |---|---|---|
 | `.git` 体积 | **721MB** | 随每日 db commit 线性增长 |
@@ -399,7 +406,7 @@ Python `jiarenmens/src/analysis/stage_candidates.py`（09:25 存档 + 钉钉推�
 | 层 | 载体 | 内容 | 更新 | 保留 | 容量(5年) |
 |---|---|---|---|---|---|
 | **热层** | Release tag `db-state` 资产 `crawl-latest.db.gz` | 最新一个采集日全量 db | 每交易日收盘后覆盖上传（Release 资产可重复上传替换） | 永远最新一份 | 恒定 ~22MB |
-| **温层** | Release tag `db-w2026W35`… 资产 `crawl-<week>.db.gz` | 按周聚合的归档 db | 每周五收盘后从"当周每日增量"合并导出 | 滚动 12 周（≈3个月，与 prune 窗口匹配） | ≈12×7MB |
+| **温层** | Release tag `db-w2026-W35`… 资产 `crawl-<week>.db.gz` | 按周聚合的归档 db | 每周五收盘后从"当周每日增量"合并导出 | 滚动 12 周（≈3个月，与 prune 窗口匹配） | ≈12×7MB |
 | **冷层** | Release tag `db-m2026-08` 资产 `crawl-<month>.db.gz` | 按月聚合归档 | 每月首个交易日，把上月温层周档合并成月档 | **永久** | ~30MB/年×5年 ≈ 150MB |
 
 > Release 资产单文件限 2GB、总仓限远超需求；匿名可下载（公开仓库）；完全在 GitHub 免费额度内。
@@ -444,12 +451,10 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 
 匿名可下（公开仓），本机/任何机器无需 token。现有 `backtest_factors.py`、`verify_slices.py` 等脚本读 db 的方式不变。
 
-### 5.4 git 历史瘦身（可选第③步，需明确授权后执行）
+### 5.4 git 历史瘦身（✅ 已于 2026-09-06 执行，详见 §0 待办 C）
 
-- `git filter-repo --path jiarenmens/data/crawl_data.db --invert-paths` 剥离全部历史 db blob（顺带 `latest/players/`），再 `--force` push。
-- 前置条件：**冷/温/热层归档确认可下载后**才执行（先传后删，不留裸窗口）。
-- 效果：`.git` 721MB → 预计 <100MB；clone 从 700MB+ 级降到常规水平。
-- 注意：filter-repo 重写所有 commit hash，若有 fork/本地旧 clone 需重新 clone；公开仓 force push 后旧 PR 引用会失效。
+- 实测结果：剥离 `crawl_data.db` + `auction.db` 全历史，pack 387→172MiB，`.git` 398MB→200MB（原估 <100MB 未达——每班全量重提交 players_index 等派生 JSON 持续回填，2026-09-17 实测 453MB 后 gc 收敛，用户拍板维持现状、接受远端年增 ~2GB）。
+- 注意留档：filter-repo 重写了所有 commit hash，旧 SHA 仅作考古；fork/旧 clone 需重新 clone；公开仓 force push 后旧 PR 引用失效。
 
 ---
 
@@ -458,9 +463,9 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 - [x] **① 存量数据上云**：当前 crawl_data.db 已上传 Release `db-state`（热层）+ `db-m2026-07`（冷层首档）；匿名下载 + integrity_check 已验证。✅ 2026-08-31
 - [x] **② 改造 crawl.yml**：下载热层（失败且有 git 内 db 则过渡放行）、`--sync` 上传（失败即终止）、integrity_check+manifest；提交数据步骤 `git reset` db（git 永不提交）。✅ 代码已推送
 - [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+curl 兜底）。✅ 端到端验证
-- [ ] **④ （可选）filter-repo 历史重写** + force push（需用户确认；前置条件①已满足）
+- [x] **④ filter-repo 历史重写** + force push。✅ 2026-09-06 执行（详见 §0 待办 C）
 - [x] **⑤ 导出收窄**：players/ 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件。✅ 远端实测 23192→5133
-- [~] **⑥ 观察期**：第 1/5 天(09-01)——首日 sync 三层就位已核对；09-02 起每日核对 manifest 行数单调、热层资产日期=当日、页面选手数据模块正常、钉钉正常。
+- [x] **⑥ 观察期**：5/5 天全过（09-02~09-08）+ 追加日 09-09 ✅，逐日记录见 §0 待办 B。
 
 ## 七、影响分析
 
@@ -472,7 +477,7 @@ python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合�
 | 白天 20 班采集 | 零影响。只有收盘后那次做"下载→采集→上传"；白天 run 依旧只采+导出 JSON |
 | 回测 | **变好**：fetch_db.py 按周/月直取，不再依赖 git 历史里的 db 快照；支持任意历史日期 |
 | 数据安全 | **变好**：三层窗口首尾相接 + manifest + integrity_check + 失败即告警；git 历史不再是唯一备份 |
-| 仓库体积 | 721MB → <100MB（做完④）；之后 git 增量仅 JSON，恒定低速 |
+| 仓库体积 | 721MB → 200MB（09-06 历史重写）；之后每班 JSON 增量缓慢回升，09-17 gc 收敛至 200MB，拍板维持现状 |
 | 风险点 | ①Release 资产覆盖上传 API 需先删旧资产再传（脚本内处理）；②filter-repo 重写 hash——放最后且需授权；③迁移当天先传归档、再改 workflow，顺序不可颠倒 |
 
 ## 八、日常运维手册
