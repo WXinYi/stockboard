@@ -53,17 +53,21 @@ jobs:
       # ⚠️ 每次 push 到 main 也会触发 crawl.yml(它恢复→写宽度→上传 auction 热层)。
       # 若本任务与 crawl 并发, crawl 后上传会用"无回补"的库覆盖结果(2026-09-09 实测踩坑)。
       # 2026-09-15 静默审计: 原为固定 sleep 1200(盲等, 若那班 crawl 超过 20min 竞态照旧发生)。
-      # 现改为轮询 crawl.yml 是否有进行中的班次, 等到确实没有为止(上限 40min, 超时告警但仍继续)。
+      # 2026-09-21 补丁: 轮询改统计"非 completed"班次 + 首轮 45s 宽限 —— 原 status=in_progress
+      # 过滤漏掉刚触发还在 queued 的班次, 09-17 实测 0 秒放行、补数先于 crawl 上传(顺序颠倒),
+      # 撞上会写库的 EOD 班时补数会被无回补的库静默覆盖。API 失败按"有班次"处理(fail-closed,
+      # 宁可多等, 上限 40min 后告警放行)。
       - name: 等待并发 crawl 完成(防热层后写覆盖)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          sleep 45   # 首轮宽限: 同 push 触发的 crawl 班从创建到 API 列表可见有秒级索引延迟
           for i in $(seq 1 40); do
-            N=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-                 "https://api.github.com/repos/${{ github.repository }}/actions/workflows/crawl.yml/runs?status=in_progress" \
-                 | python3 -c "import json,sys;print(json.load(sys.stdin).get('total_count',0))" 2>/dev/null || echo 0)
-            if [ "$N" = "0" ]; then echo "✅ 无进行中的 crawl 班次, 继续"; exit 0; fi
-            echo "⏳ 有 $N 个 crawl 班次进行中, 等待 60s ($i/40)"; sleep 60
+            N=$(curl -s --max-time 20 -H "Authorization: Bearer $GITHUB_TOKEN" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/workflows/crawl.yml/runs?per_page=30" \
+                 | python3 -c "import json,sys;d=json.load(sys.stdin);print(sum(1 for r in (d.get('workflow_runs') or []) if r.get('status')!='completed'))" 2>/dev/null || echo 1)
+            if [ "$N" = "0" ]; then echo "✅ 无排队/进行中的 crawl 班次, 继续"; exit 0; fi
+            echo "⏳ 有 $N 个 crawl 班次排队/进行中, 等待 60s ($i/40)"; sleep 60
           done
           echo "::warning::等待 crawl 超时(40min), 仍继续 — 存在热层后写覆盖风险, 请核对回补结果"
 
@@ -146,7 +150,6 @@ jobs:
           assert mn <= '2025-09-01', f'回补未生效: MIN={mn}'
           print('✅ 回补覆盖校验通过')
           "
-          PY
 
 
   # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,

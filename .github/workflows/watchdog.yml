@@ -79,10 +79,14 @@ jobs:
             echo "叠加更新选手: $(tr '\n' ' ' < jiarenmens/data/.watchdog_changed)"
             # 部署让位(2026-09-22): 若 crawl 班进行中, 等它部署完再上——否则旧导出的
             # 部署会覆盖冲刺的叠加(页面回退闪烁的根因)。公共仓匿名 API 可查, 上限 10 分钟。
+            # 2026-09-21 补丁: 统计口径改"非 completed"——原 status=in_progress 过滤漏掉
+            # 刚触发还在 queued 的班次(同款盲区已在 backfill-pool-history 09-17 实锤),
+            # 会让让位闸门在同 push 场景 0 秒放行、闪烁照旧。API 失败仍放行(叠加自愈,
+            # 不值得为它卡部署); 0 秒放行的索引延迟由下一轮 30s 重查兜底。
             for i in $(seq 1 20); do
-              N=$(curl -s --max-time 15 "https://api.github.com/repos/WXinYi/stockboard/actions/workflows/crawl.yml/runs?status=in_progress" | python3 -c "import json,sys;print(json.load(sys.stdin).get('total_count',0))" 2>/dev/null || echo 0)
-              if [ "$N" = "0" ]; then echo "无进行中 crawl, 直接部署"; break; fi
-              echo "⏳ crawl 班进行中, 部署让位 ($i/20)"; sleep 30
+              N=$(curl -s --max-time 15 "https://api.github.com/repos/WXinYi/stockboard/actions/workflows/crawl.yml/runs?per_page=15" | python3 -c "import json,sys;d=json.load(sys.stdin);print(sum(1 for r in (d.get('workflow_runs') or []) if r.get('status')!='completed'))" 2>/dev/null || echo 0)
+              if [ "$N" = "0" ]; then echo "无排队/进行中 crawl, 直接部署"; break; fi
+              echo "⏳ crawl 班排队/进行中, 部署让位 ($i/20)"; sleep 30
             done
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
