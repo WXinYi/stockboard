@@ -66,7 +66,7 @@ stockboard/
 │   ├── checkpoint.json        # 进度记录
 │   ├── crawl_data.db          # SQLite 数据库(运行时从 Release 热层恢复, 永不进 git, 见 docs/DATA_PIPELINE.md)
 │   ├── auction.db             # 竞价/情绪/涨停池（auction/auction-label/crawl/cycle-eod 四 workflow 共写，Release 热层托管）
-│   ├── analysis.db            # 周期引擎判定（⚠️ .gitignore 有它但文件已被跟踪、数据班提交实际携带——是否解除跟踪待拍板）
+│   ├── analysis.db            # 周期引擎判定（本地独享不提交；09-21 已解除历史误跟踪）
 │   ├── intraday.db            # 盘中监控数据（已停用，本地独享）
 │   ├── archive/               # fetch_db.py 回测产物（gitignore，勿 git add -A 误提交）
 │   └── dashboard.html         # 生成的看板页面

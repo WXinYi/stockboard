@@ -184,7 +184,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 |---|---|
 | `workflow_dispatch: crawl.yml` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 20 班**（**首班 09:26**~末班 14:51）。首班与钉钉《竞价跟单快报》(09:26) 同批：快报直连东财实时接口，站点数据必须跟上，否则用户先收到推送、再打开页面却是昨天的数据（2026-09-09 反馈，首班由 09:30 提前，cron-job.org jobId 8167465） |
 | `repository_dispatch: crawl-eod` | 收盘专班，cron-job.org 15:15 触发，必做 Release sync |
-| `push: main` | 每次推送也会跑一遍（数据照采，JSON 照导出） |
+| `push: main` | 每次推送也会跑一遍（**2026-09-21 起有交易日守卫**：非交易日跳过采集/导出/上传/提交，仅保留构建部署——周末/节假日推代码仍可发版，不再产出幽灵数据桶；日历解析前端 tradingCalendar.js 单一数据源） |
 | `workflow_dispatch` | 手动触发（Actions 页面 Run workflow） |
 
 > 并发控制：`concurrency: pages-${{ github.ref }}`，新 run 会取消正在跑的旧 run。白天高频 dispatch 是设计使然（盯盘时效），非异常。
@@ -276,7 +276,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 |---|---|---|---|
 | `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/六情绪日档(mood_daily)/梯队/涨停池/宽度/炸板池/指数/出击存档/LLM存档(llm_review) 9 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 **30 天**(09-09 由 7 提升) + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
 | `hot_rank.db` | auction_scan --hot-rank | 东财人气榜 am/pm 快照 | 是 |
-| `analysis.db` | cycle_brief / emotion_cycle(周期引擎) | 周期判定快照 | **是(事实如此)** —— .gitignore 有它但文件已被跟踪，每班数据提交实际携带（09-21 巡检实锤；是否 `git rm --cached` 解除跟踪待拍板） |
+| `analysis.db` | cycle_brief / emotion_cycle(周期引擎) | 周期判定快照 | **否（✅ 2026-09-21 已解除跟踪）** —— 此前 .gitignore 有它但文件已被跟踪、每班数据提交实际携带（09-21 巡检实锤），已 `git rm --cached` 归位 |
 | `intraday.db` | intraday_monitor.py(已停用) | 盘中信号快照 | **否**（.gitignore，本机独享） |
 | `crawl_data.db-shm/-wal` | SQLite WAL | — | 否（.gitignore） |
 

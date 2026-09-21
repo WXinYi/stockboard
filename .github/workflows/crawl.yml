@@ -38,10 +38,40 @@ jobs:
       - name: 安装依赖
         run: pip install requests aiohttp
 
+      # 交易日守卫(2026-09-21): 非交易日(周末/法定节假日)跳过全部采集/导出/上传/提交路径,
+      # 只保留构建部署 —— 周末/节假日 push 代码仍可发版, 但不再产出幽灵数据桶(09-20 周日实测:
+      # push 班把周日持仓写进库, 抄作业页"昨天"标签指向非交易日)。日历解析前端
+      # tradingCalendar.js 单一数据源, 正则与 watchdog.parse_holidays 同款(改动两处同步);
+      # 日历未覆盖年份退回周一~五近似(A股周末永不交易, 与交易所口径一致)。
+      # 守卫自身失败按交易日放行(fail-open, 保持原行为), 不新增失败面。
+      - name: 交易日守卫
+        id: dayguard
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from datetime import date
+          from pathlib import Path
+          try:
+              js = Path("stockboard-app/src/utils/tradingCalendar.js").read_text(encoding="utf-8")
+              hol = {}
+              for m in re.finditer(r"const\s+HOLIDAYS_(\d{4})\s*=\s*new Set\(\[([^\]]*)\]", js):
+                  hol[int(m.group(1))] = set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", m.group(2)))
+              today = date.today()
+              trading = today.weekday() < 5 and today.isoformat() not in hol.get(today.year, ())
+              print(f"📅 交易日历年份: {sorted(hol) or '无'} | {today} → "
+                    f"{'交易日' if trading else '非交易日(跳过采集/导出/提交, 仅部署)'}")
+          except Exception as e:
+              print(f"⚠️ 交易日历解析失败({e}), 按交易日放行(保持原行为)")
+              trading = True
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"trading={'true' if trading else 'false'}\n")
+          PY
+
       # auction.db 恢复: 竞价/宽度/炸板/六情绪多班共写(Release 三层迁移), 每班开跑前必恢复,
       # sha 起点也在此记录(上传闸门用)。Release 内部自带日快照回退, 失败即终止
       # (2026-09-14 删"git 内库兜底"分支: 批次2后 checkout 已无库, 该分支不可达)。
       - name: 下载 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -56,7 +86,7 @@ jobs:
       # 格局推送搭 crawl 便车(每日12次 dispatch), 时间窗各只触发一次:
       # 午盘=13:05 那次 / 尾盘=14:40 那次; push 触发不推
       - name: 午盘格局推送
-        if: github.event_name == 'repository_dispatch'
+        if: github.event_name == 'repository_dispatch' && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
@@ -71,7 +101,7 @@ jobs:
           fi
 
       - name: 尾盘格局推送
-        if: github.event_name == 'repository_dispatch'
+        if: github.event_name == 'repository_dispatch' && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
@@ -91,6 +121,7 @@ jobs:
       # ④降级链前置: 恢复 actions/cache 里的库副本(与 Release 独立的容错来源;
       # 精确 key 永不命中, 靠 restore-keys 前缀取最近一份)
       - name: 恢复库副本缓存(降级兜底)
+        if: steps.dayguard.outputs.trading != 'false'
         uses: actions/cache/restore@v4
         with:
           path: jiarenmens/data/.cache-db/
@@ -99,6 +130,7 @@ jobs:
             crawl-db-
 
       - name: 下载热层库(含④三级降级链)
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           # 必须带 token: 缺了会走匿名 API(60 次/小时/IP), 被限流时 get_release 返回 None,
           # 脚本静默 exit 1 → 整班 skipped(2026-09-09 09:30 首班就是这么挂的)。
@@ -130,13 +162,14 @@ jobs:
           fi
 
       - name: 数据采集
+        if: steps.dayguard.outputs.trading != 'false'
         run: cd jiarenmens && python main.py --checkpoint-reset
 
       # 东财人气榜快照(每天最多两份: 09:25 auction 已存 am 则此处自动记 pm, 同(date,snap)去重)
       # 三个 continue-on-error 步骤的可见化(2026-09-15 静默审计): 它们不能判红(人气/宽度/炸板
       # 失败不该阻断落库与部署), 但失败必须留下可检索的 ::warning:: 注解, 而不是只有日志里一行。
       - name: 人气榜快照
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         run: |
           cd jiarenmens
@@ -148,7 +181,7 @@ jobs:
       # 市场宽度(涨停/跌停/炸板率)每日落库: 仅收盘班次(≥15:00)写, 盘中班次跳过
       # 防止盘中写进半日数; 断档会使周期引擎用旧宽度误判阶段(9/4 曾误判"分歧")
       - name: 市场宽度更新
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           # His 域名对 Actions 出口 IP 风控(08-29 起), 走 SCF 中转(同 auction-label.yml)
@@ -171,7 +204,7 @@ jobs:
       # 2026-09-17 加固前是"只取 limit_pool 最大值的单日" + 0 行当成功 → 09-07/08、09-14~09-16
       # 共 5 天静默缺口(与 09-09 limit_pool 漏补同族, 见 docs/DATA_PIPELINE.md §3.4)。
       - name: 炸板池归档(选股宝)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         run: |
           cd jiarenmens
@@ -189,7 +222,7 @@ jobs:
       # 用今日实时口径而非昨日顺延(今日行 captured_at 标记采样时刻; 15:15 专班的
       # 市场宽度更新会用收盘定稿覆盖为 NULL)。失败不阻断采集, warning 可见。
       - name: 盘中宽度刷新(实时当日行)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         run: |
           cd jiarenmens
@@ -199,11 +232,13 @@ jobs:
           fi
 
       - name: 导出 JSON
+        if: steps.dayguard.outputs.trading != 'false'
         run: cd jiarenmens && python scripts/export_json.py --out ../stockboard-app/public/data
 
       # auction.db 上传闸门: sha 变更才传(夜间空转班自动跳过)。竞价档案易逝不可重采,
       # 失败即让 run 失败(同 crawl_data 的"宁可停, 不可断链"), 不吞错。
       - name: 上传 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -245,7 +280,7 @@ jobs:
       # 盯盘共享状态(由 watchdog.yml 每 5 分钟写入): 日报读它跳过已实时推送的操作,
       # 读不到(文件不存在)= watchdog 失灵 → 日报自动全量兜底。只读不写, 保存归 watchdog。
       - name: 恢复盯盘状态(日报去重)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         uses: actions/cache/restore@v4
         with:
           path: jiarenmens/data/.watchdog_state.json
@@ -256,7 +291,7 @@ jobs:
       # 钉钉通知放在「提交数据」之前：notify_daily.py 会写 last_notify_state.json，
       # 让状态文件跟随当次「提交数据」一起 commit 持久化，供下次对比"新增操作"
       - name: 钉钉通知
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
@@ -265,6 +300,7 @@ jobs:
 
       # 保留窗口外采集日删除+VACUUM, 封顶 crawl_data.db 体积(不清理则每天 +2~3MB 无限增长)
       - name: 清理过期采集数据
+        if: steps.dayguard.outputs.trading != 'false'
         run: cd jiarenmens && python3 scripts/prune_crawl_db.py --apply
 
       # 收盘 run: 快照→热层覆盖 + 当周→温层 + 已完成月→冷层 + 温层滚动清理。
@@ -274,7 +310,7 @@ jobs:
       # ⚠️ 闸门必须早于 cron 末班(14:51): 08-31 曾因闸门 15:10 高于末班车,
       # 当天 db 数据未持久化而丢失(页面 JSON 不受影响, 但 40 日窗口缺一天)。
       - name: 上传 Release 存储(热/温/冷层)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -286,6 +322,7 @@ jobs:
           cd jiarenmens && python3 scripts/release_db.py --sync
 
       - name: 提交数据
+        if: steps.dayguard.outputs.trading != 'false'
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
@@ -317,10 +354,10 @@ jobs:
       # ④降级链备份: 把本班(成功且基线合格)的库打包存入 actions/cache, 供下个班热层失败时降级沿用。
       # restore-keys 按"最近创建"取用; cache 与 Release 独立, Release 限流时它仍可用。
       - name: 打包库副本(降级兜底)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         run: cd jiarenmens && mkdir -p data/.cache-db && gzip -c data/crawl_data.db > data/.cache-db/crawl_data.db.gz
       - name: 保存库副本缓存(降级兜底)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         uses: actions/cache/save@v4
         with:
           path: jiarenmens/data/.cache-db/
