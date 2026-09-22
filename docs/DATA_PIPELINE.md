@@ -189,7 +189,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 > 并发控制：`concurrency: pages-${{ github.ref }}`，新 run 会取消正在跑的旧 run。白天高频 dispatch 是设计使然（盯盘时效），非异常。
 >
-> ⚠️ **待决（2026-09-15 登记，未改动）**：采集/扫描类班次（`crawl` / `auction` / `auction-label` / `cycle-eod`）的 `cancel-in-progress: true` 会掐掉进行中的班次，而被取消（cancelled）不等于失败、不触发失败告警 → 存在丢班风险（数据不可重采）。改成排队（`cancel-in-progress: false`）可避免丢班，但可能让首班数据延后（首班 09:26 是特意提前的），属产品取舍，故未擅自改动；部署类班次保留取消。
+> ✅ **已拍板维持现状（2026-09-22 关闭）**：采集/扫描类班次（`crawl` / `auction` / `auction-label` / `cycle-eod`）的 `cancel-in-progress: true` 会掐掉进行中的班次，而被取消（cancelled）不等于失败、不触发失败告警 → 存在丢班风险（数据不可重采）。改成排队（`cancel-in-progress: false`）可避免丢班，但可能让首班数据延后（首班 09:26 是特意提前的），属产品取舍。**09-22 实例**：09:26 首班被 09:38 班取消，数据由 09:38 班全量重采落地、无损失（首班 12 分钟未跑完是东财限流因素）。权衡已接受，部署类班次保留取消。
 
 ### 2.1b 盯盘 watchdog（关注选手盘中即时提醒，2026-09-18 上线）
 
