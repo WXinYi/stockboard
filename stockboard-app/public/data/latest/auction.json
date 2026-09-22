@@ -1,231 +1,231 @@
 {
- "date": "2026-09-21",
- "generated_at": "09:25",
+ "date": "2026-09-22",
+ "generated_at": "09:28",
  "env": {
   "pass": true,
   "reasons": [
    "环境正常"
   ],
   "data": {
-   "strong": 40,
-   "lbgd": 5,
+   "strong": 49,
+   "lbgd": 6,
    "capacity_ratio": null,
-   "red_ratio": 0.6122094286334999,
+   "red_ratio": 0.662444585180494,
    "bid_count": [
-    203,
-    187,
+    223,
+    205,
     50,
-    33,
+    54,
     1
    ],
-   "bid_total": "186亿",
-   "bid_total_prev": "182亿"
+   "bid_total": "209亿",
+   "bid_total_prev": "186亿"
   }
  },
  "boards": [
   {
    "code": "801001",
    "name": "芯片",
-   "burst": 19.5,
-   "amount": 3526288557.0,
-   "main_net": 256727116.0,
+   "burst": 22.1,
+   "amount": 4381522972.0,
+   "main_net": 752320089.0,
    "src": "爆量+强度",
-   "strength": 43.0
+   "strength": 1593.0
   },
   {
-   "code": "801387",
-   "name": "数字货币",
+   "code": "801351",
+   "name": "科创板",
+   "burst": 12.1,
+   "amount": 1090006188.0,
+   "main_net": 111120178.0,
+   "src": "爆量+强度",
+   "strength": 83.0
+  },
+  {
+   "code": "801260",
+   "name": "云计算",
+   "burst": 11.9,
+   "amount": 322680636.0,
+   "main_net": 123410556.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801660",
+   "name": "通信",
    "burst": 7.8,
-   "amount": 156041058.0,
-   "main_net": 44570031.0,
+   "amount": 1878620379.0,
+   "main_net": 345234671.0,
+   "src": "爆量+强度",
+   "strength": 88.0
+  },
+  {
+   "code": "801584",
+   "name": "数字经济",
+   "burst": 7.3,
+   "amount": 302488799.0,
+   "main_net": 56394913.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "803021",
+   "name": "CPU",
+   "burst": 6.4,
+   "amount": 893002285.0,
+   "main_net": 309626683.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801017",
+   "name": "苹果概念",
+   "burst": 6.1,
+   "amount": 424648829.0,
+   "main_net": 155017144.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801045",
    "name": "医药",
-   "burst": 7.8,
-   "amount": 417994044.0,
-   "main_net": 34110890.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801723",
-   "name": "创新药",
-   "burst": 7.8,
-   "amount": 230294523.0,
-   "main_net": 36321181.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801660",
-   "name": "通信",
-   "burst": 7.0,
-   "amount": 1678084138.0,
-   "main_net": 286302017.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801584",
-   "name": "数字经济",
-   "burst": 6.5,
-   "amount": 249775745.0,
-   "main_net": 150373.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801159",
-   "name": "机器人概念",
-   "burst": 6.5,
-   "amount": 313272284.0,
-   "main_net": 16183544.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801062",
-   "name": "军工",
    "burst": 6.0,
-   "amount": 167448232.0,
-   "main_net": 864073.0,
-   "src": "爆量L1",
+   "amount": 210307320.0,
+   "main_net": 12169893.0,
+   "src": "爆量L2",
    "strength": 0.0
   },
   {
-   "code": "801065",
-   "name": "注册制次新股",
-   "burst": 6.0,
-   "amount": 97379333.0,
-   "main_net": 11010594.0,
-   "src": "爆量L1",
+   "code": "801007",
+   "name": "房地产",
+   "burst": 5.8,
+   "amount": 245480592.0,
+   "main_net": 55739898.0,
+   "src": "爆量L2",
    "strength": 0.0
   },
   {
-   "code": "801070",
-   "name": "光伏",
-   "burst": 6.0,
-   "amount": 129503645.0,
-   "main_net": 6773221.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "code": "801031",
+   "name": "文化传媒",
+   "burst": 5.1,
+   "amount": 305842903.0,
+   "main_net": 54389126.0,
+   "src": "爆量+强度",
+   "strength": 1061.0
   },
   {
-   "code": "801694",
-   "name": "非金属材料",
+   "code": "801273",
+   "name": "股权转让",
    "burst": 0.0,
-   "amount": 623957234.0,
-   "main_net": 10726236.0,
+   "amount": 4442249101.0,
+   "main_net": 25224964.0,
    "src": "强度",
-   "strength": 565.0
+   "strength": 1529.0
   },
   {
-   "code": "801114",
-   "name": "外贸",
+   "code": "801807",
+   "name": "算力",
    "burst": 0.0,
-   "amount": 2387598847.0,
-   "main_net": 11482147.0,
+   "amount": 8351592343.0,
+   "main_net": 422031054.0,
    "src": "强度",
-   "strength": 527.0
+   "strength": 1072.0
   },
   {
    "code": "801250",
    "name": "并购重组",
    "burst": 0.0,
-   "amount": 3216192117.0,
-   "main_net": 1224009.0,
+   "amount": 4062240740.0,
+   "main_net": 18538171.0,
    "src": "强度",
-   "strength": 520.0
+   "strength": 1042.0
   },
   {
-   "code": "801878",
-   "name": "端侧AI",
+   "code": "803023",
+   "name": "AI应用",
    "burst": 0.0,
-   "amount": 2274917117.0,
-   "main_net": 31731897.0,
+   "amount": 3065571730.0,
+   "main_net": 217441141.0,
    "src": "强度",
-   "strength": 376.0
+   "strength": 950.0
   },
   {
-   "code": "803003",
-   "name": "摩尔线程概念",
+   "code": "801694",
+   "name": "非金属材料",
    "burst": 0.0,
-   "amount": 145113699.0,
-   "main_net": 380000.0,
+   "amount": 416541816.0,
+   "main_net": 24278575.0,
    "src": "强度",
-   "strength": 70.0
+   "strength": 595.0
   },
   {
-   "code": "801611",
-   "name": "虚拟人",
+   "code": "801445",
+   "name": "元器件",
    "burst": 0.0,
-   "amount": 529864623.0,
-   "main_net": 2221896.0,
+   "amount": 938525267.0,
+   "main_net": 46184821.0,
    "src": "强度",
-   "strength": 67.0
-  },
-  {
-   "code": "801493",
-   "name": "光储充一体化",
-   "burst": 0.0,
-   "amount": 82149580.0,
-   "main_net": 5602528.0,
-   "src": "强度",
-   "strength": 52.0
+   "strength": 572.0
   },
   {
    "code": "801451",
    "name": "wifi6/7",
    "burst": 0.0,
-   "amount": 234976817.0,
-   "main_net": 403331.0,
+   "amount": 188312302.0,
+   "main_net": 2678064.0,
    "src": "强度",
-   "strength": 50.0
+   "strength": 134.0
   },
   {
-   "code": "801637",
-   "name": "文创产品",
+   "code": "801672",
+   "name": "web3.0",
    "burst": 0.0,
-   "amount": 307381714.0,
-   "main_net": 630500.0,
+   "amount": 366318432.0,
+   "main_net": 1397031.0,
    "src": "强度",
-   "strength": 48.0
+   "strength": 111.0
   },
   {
-   "code": "801328",
-   "name": "消费电子",
+   "code": "801420",
+   "name": "蓝宝石",
    "burst": 0.0,
-   "amount": 4766961971.0,
-   "main_net": 4835790.0,
+   "amount": 336441050.0,
+   "main_net": 1957341.0,
    "src": "强度",
-   "strength": 46.0
+   "strength": 110.0
+  },
+  {
+   "code": "801468",
+   "name": "电子烟",
+   "burst": 0.0,
+   "amount": 253075350.0,
+   "main_net": 888237.0,
+   "src": "强度",
+   "strength": 109.0
   }
  ],
  "strike": [
   {
-   "code": "001216",
-   "name": "华瓷股份",
-   "height": 4,
-   "status": "可做(接力)",
-   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 封单 0.98亿",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "603248",
-   "name": "锡华科技",
-   "height": 4,
-   "status": "可做(接力)",
-   "reason": "龙头谱系[总龙头] 主线[次新股] 9只涨停, 封单 0.49亿；主线高位(秒板接力对象)",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
    "code": "002285",
    "name": "世联行",
+   "height": 4,
+   "status": "可做(接力)",
+   "reason": "龙头谱系[总龙头] 主线[地产链] 13只涨停, 封单 0.42亿；主线高位(秒板接力对象)",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "603230",
+   "name": "内蒙新华",
+   "height": 4,
+   "status": "可做(谨慎接力)",
+   "reason": "主线高位(秒板接力对象)",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "600630",
+   "name": "龙头股份",
    "height": 3,
    "status": "可做(谨慎接力)",
    "reason": "主线高位(秒板接力对象)",
@@ -236,49 +236,49 @@
  "strike_watch": false,
  "bidrank": [
   {
-   "code": "603230",
-   "name": "内蒙新华",
-   "height": 3,
-   "bid_pct": 10.01,
-   "turnover": 6.46
-  },
-  {
    "code": "600448",
    "name": "华纺股份",
-   "height": 2,
-   "bid_pct": 7.34,
-   "turnover": 4.8744326413673305
+   "height": 3,
+   "bid_pct": 7.97,
+   "turnover": 4.604317010550763
   },
   {
-   "code": "603248",
-   "name": "锡华科技",
+   "code": "603230",
+   "name": "内蒙新华",
    "height": 4,
-   "bid_pct": 4.52,
-   "turnover": 2.666388794847747
+   "bid_pct": 2.9,
+   "turnover": 4.17
   },
   {
-   "code": "301390",
-   "name": "经纬股份",
+   "code": "600630",
+   "name": "龙头股份",
+   "height": 3,
+   "bid_pct": -1.64,
+   "turnover": 2.010918695446734
+  },
+  {
+   "code": "601123",
+   "name": "马矿股份",
    "height": 2,
-   "bid_pct": -4.94,
-   "turnover": 2.36
+   "bid_pct": 4.81,
+   "turnover": 1.7718155744832593
   },
   {
    "code": "002453",
    "name": "华软科技",
-   "height": 2,
-   "bid_pct": 9.55,
-   "turnover": 2.19
+   "height": 3,
+   "bid_pct": -0.68,
+   "turnover": 1.61
   }
  ],
  "regime": {
   "regime": "主线",
-  "relay": 0.2553191489361702,
-  "max_board": 4,
+  "relay": 0.2692307692307692,
+  "max_board": 5,
   "top1_days": 3,
   "detail": [
-   "昨日再板率26%",
-   "最高4板",
+   "昨日再板率27%",
+   "最高5板",
    "TOP1连续3日"
   ]
  },
@@ -287,56 +287,69 @@
   "confidence": 7,
   "gate": "open",
   "mainlines": [
-   "次新股",
-   "通信",
-   "服装家纺",
-   "AI应用",
    "地产链",
-   "物业服务"
+   "医药",
+   "农业",
+   "零售",
+   "房地产",
+   "服装家纺"
   ],
   "leaders": [
    {
     "code": "001216",
     "name": "华瓷股份",
-    "pid": 4,
+    "pid": 5,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "603248",
-    "name": "锡华科技",
+    "code": "002285",
+    "name": "世联行",
     "pid": 4,
     "role": "总龙头"
    },
    {
-    "code": "301583",
-    "name": "托伦斯",
+    "code": "000560",
+    "name": "我爱我家",
     "pid": 1,
-    "role": "中军(次新股)"
+    "role": "中军(地产链)"
    },
    {
-    "code": "002980",
-    "name": "华盛昌",
+    "code": "000910",
+    "name": "大亚圣象",
+    "pid": 2,
+    "role": "补涨/卡位(地产链)"
+   },
+   {
+    "code": "000504",
+    "name": "南华生物",
+    "pid": 3,
+    "role": "板块龙头(医药)"
+   },
+   {
+    "code": "600664",
+    "name": "哈药股份",
     "pid": 1,
-    "role": "中军(通信)"
+    "role": "中军(医药)"
    }
   ]
  },
  "empty_reason": "",
  "llm": {
-  "date": "2026-09-21",
-  "regime": "观察",
-  "why": "竞价情绪值47→40续降7点,昨日涨停股今竞价均值+3.01%(54/78红盘,未破25%极弱线),高标承接分化:4板华瓷股份+10%一字仅主净+0.17亿属弱承接、4板锡华科技+4.5%主净0,仅3板内蒙新华+0.96亿局部有量;情绪续降且无全面修复,不符合攻击(情绪回升+高标有承接)也不到试错(止跌企稳)标准",
-  "position_today": "0-1成,观察日以空仓为主,等情绪值止跌回升+高标出现内蒙新华级大额主净扩散再评估",
+  "date": "2026-09-22",
+  "regime": null,
+  "why": null,
+  "position_today": null,
   "picks": [],
-  "avoid": "竞价高开>5%的票一律不碰——新宏泽+8.5%、华软科技+9.6%、南华生物/龙头股份/内蒙新华一字+10%,兑现盘最重;4板华瓷+10%一字买不到且0.17亿主净承接不足,只作风向标;昨炸板弱转强(澳洋健康+7.8%、泓博医药+9.0%)在观察日属诱多,不做;缩量板与高位2板以上不接",
+  "avoid": null,
   "model": "deepseek-flash",
   "prompt_ver": "v2",
-  "latency_s": 8.9,
-  "degraded": false,
-  "generated_at": "2026-09-21T01:25:43"
+  "latency_s": 3.1,
+  "degraded": true,
+  "raw_head": "{\"environment\":{\"regime\":\"试错\",\"why\":\"情绪值40→49回升9点,昨涨停股竞价红盘60/103=58%≥45%,高标5板华瓷+10%一字有承接、南华生物3板+10%,涨停105→103持平;情绪未破50、涨停未增,属修复初期→试错\",\"picks\":[{\"code\":\"002453\",\"name\":\"华软科技\",\"action\":\"修复低吸\",\"rank\":1,\"",
+  "generated_at": "2026-09-22T01:28:57"
  },
  "stats": {
-  "pool": 512,
+  "pool": 548,
   "boards": 20,
   "genes": 0
  },
