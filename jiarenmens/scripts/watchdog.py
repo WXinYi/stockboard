@@ -419,8 +419,13 @@ def main():
     first_of_day = not any(st["pushed"].values())
 
     if args.open_sprint:
-        return open_sprint(args, st, date_str, first_of_day, state_file, changed_file)
-    return run_cycle(args, st, date_str, first_of_day, state_file, changed_file)
+        open_sprint(args, st, date_str, first_of_day, state_file, changed_file)
+        return 0
+    run_cycle(args, st, date_str, first_of_day, state_file, changed_file)
+    return 0
+    # ⚠️ 两者返回值是"本轮推送笔数", 不能作为退出码 —— 09-22 早盘实测: 推 3 笔 = exit 3 =
+    # job 判失败 + 失败告警误报 ×3(冲刺提交引入的回归, 冲刺前脚本恒 exit 0)。正常完成
+    # 一律 0; 真异常走未捕获异常非零退出, 语义不变。
 
 
 if __name__ == "__main__":
