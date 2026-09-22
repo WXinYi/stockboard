@@ -1,0 +1,189 @@
+name: 大模型盘中选股 10:00
+# 2026-09-22 拍板: LLM 选股从 09:25 竞价段移至 10:00 盘中 —— 竞价时点存在结构性盲区
+# (当日涨跌停/晋级/溢价均未产生, 实测"涨停105→103持平"式硬凑, 当日真实收盘 64 家),
+# 10:00 喂实时因子(实时涨跌停/晋级率/昨日涨停股实时溢价/梯队/指数)后定性基于已展开的
+# 当日结构。引擎 09:25 出击选股(auction.yml)不受影响; 09:25 班只回填最新 llm 存档。
+# cron-job.org 10:00(工作日) repository_dispatch: llm-1000。
+
+on:
+  repository_dispatch:
+    types: [llm-1000]
+  workflow_dispatch:
+
+concurrency:
+  group: llm-1000
+  cancel-in-progress: false
+
+jobs:
+  llm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      # 交易日守卫: 非交易日跳过(节假日 rise_fall_rt 返回旧日期行, 无意义), 与 crawl.yml 同款解析
+      - name: 交易日守卫
+        id: dayguard
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from datetime import datetime, date
+          from pathlib import Path
+          try:
+              js = Path("stockboard-app/src/utils/tradingCalendar.js").read_text(encoding="utf-8")
+              hol = {}
+              for m in re.finditer(r"const\s+HOLIDAYS_(\d{4})\s*=\s*new Set\(\[([^\]]*)\]", js):
+                  hol[int(m.group(1))] = set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", m.group(2)))
+              trading = date.today().weekday() < 5 and date.today().isoformat() not in hol.get(date.today().year, ())
+              print(f"📅 交易日历年份: {sorted(hol) or '无'} → {'交易日' if trading else '非交易日, 跳过'}")
+          except Exception as e:
+              print(f"⚠️ 交易日历解析失败({e}), 按交易日放行(保持原行为)")
+              trading = True
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"trading={'true' if trading else 'false'}\n")
+          PY
+
+      - name: 下载 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd jiarenmens
+          if python3 scripts/release_db.py --what auction --download-latest; then
+            echo "✅ 已恢复 auction 热层"
+          else
+            echo "❌ auction.db 恢复失败, 终止防数据断链"; exit 1
+          fi
+          sha256sum data/auction.db | awk '{print $1}' > /tmp/auction_sha_start
+
+      # v3 实时因子喂入 + DeepSeek 定性选股; picks 记录 10:00 信号时点价(entry_px, 回测金标准)
+      - name: 大模型盘中选股(v3 实时因子)
+        if: steps.dayguard.outputs.trading != 'false'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          LLM_MODEL: deepseek-flash
+        run: |
+          cd jiarenmens
+          D=$(TZ=Asia/Shanghai date +%F)
+          python3 -m src.analysis.llm_review --live --date "$D" --out data/llm_1000_payload.json
+
+      - name: 更新 auction.json 大模型卡
+        if: steps.dayguard.outputs.trading != 'false'
+        run: |
+          cd jiarenmens
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("../stockboard-app/public/data/latest/auction.json")
+          a = json.loads(p.read_text(encoding="utf-8"))
+          payload = Path("data/llm_1000_payload.json")
+          if payload.exists():
+              a["llm"] = json.loads(payload.read_text(encoding="utf-8"))
+              p.write_text(json.dumps(a, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+              print(f"✅ auction.json.llm 已更新(prompt_ver={a['llm'].get('prompt_ver')}, slot={a['llm'].get('slot')})")
+          else:
+              print("⚠️ llm payload 不存在(降级未产文件), auction.json 保持原样")
+          PY
+
+      - name: 上传 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd jiarenmens
+          NOW=$(sha256sum data/auction.db | awk '{print $1}')
+          if [ "$NOW" = "$(cat /tmp/auction_sha_start)" ]; then
+            echo "auction.db 无变更, 跳过上传"
+          else
+            python3 scripts/release_db.py --what auction --upload-latest
+          fi
+
+      - name: 提交 auction.json
+        if: steps.dayguard.outputs.trading != 'false'
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f stockboard-app/public/data/latest/auction.json
+          if git diff --staged --quiet; then
+            echo "auction.json 无变化, 跳过提交"
+          else
+            git commit -m "🤖 大模型盘中选股 10:00 $(date +%Y-%m-%d) [skip ci]"
+            for i in 1 2 3; do
+              if git pull --rebase && git push; then
+                echo "✅ 推送成功"
+                exit 0
+              fi
+              echo "⚠️ 推送失败, 重试 $i/3..."
+              sleep 5
+            done
+            echo "❌ 推送失败"; exit 1
+          fi
+
+      # 拿到 LLM 结论直接发版: 同 auction.yml 的 dist 壳缓存机制
+      - name: 恢复 dist 壳
+        id: dist
+        uses: actions/cache@v4
+        with:
+          path: stockboard-app/dist
+          key: dist-shell-${{ hashFiles('stockboard-app/src/**', 'stockboard-app/index.html', 'stockboard-app/vite.config.js', 'stockboard-app/package-lock.json') }}
+
+      - name: Setup Node
+        if: steps.dist.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: stockboard-app/package-lock.json
+
+      - name: Build Vue
+        if: steps.dist.outputs.cache-hit != 'true'
+        run: cd stockboard-app && npm ci && npm run build
+
+      - name: 拼接最新数据
+        if: steps.dist.outputs.cache-hit == 'true'
+        run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: stockboard-app/dist
+
+  deploy:
+    needs: llm
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [llm, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

@@ -784,32 +784,25 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         except Exception as e:
             print(f"      ⚠️ 昨日连板换手排名失败(不影响主流程): {e}")
 
-    # 大模型竞价独立选股(影子, 2026-09-12): 与规则引擎完全隔离, 只喂原始数据;
-    # 未配置 DEEPSEEK_API_KEY 时静默跳过; dry-run 跳过(演练不花钱不落档)。
-    # 双写: auction.db.llm_review(回测真相源, 随 Release 三层存档) + auction.json.llm(页面展示)。
+    # 大模型独立选股已移至 10:00 盘中班(2026-09-22 拍板): 竞价时点存在结构性盲区
+    # (当日涨跌停/晋级/溢价均未产生, 09-22 实测"105→103持平"式硬凑), 详见 docs/DATA_PIPELINE.md。
+    # 09:25 班只做存档回填: 取 ≤ 今天的最新 llm 行(通常为昨日 v3), 卡片带日期展示;
+    # 当日 10:00 llm-1000 班会以 v3 实时因子覆盖刷新。
     llm_payload = None
-    if not dry_run and (os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("LLM_API_KEY")):
-        print("      大模型独立选股(影子)…")
-        try:
-            from src.analysis.llm_review import run as llm_run
-            llm_payload = llm_run(date_str)
-        except Exception as e:
-            print(f"      ⚠️ 大模型选股失败(不影响主流程): {e}")
-    if llm_payload is None and not dry_run:
-        # 兜底: 本班调用失败/无 key 但存档已有当日行(手工回填或早班成功), 用存档补展示, 不留空
+    if not dry_run:
         try:
             import sqlite3
             with sqlite3.connect(f"file:{Path(__file__).resolve().parent.parent / 'data' / 'auction.db'}?mode=ro", uri=True) as _c:
                 _r = _c.execute(
-                    "SELECT regime, why, position, picks, avoid, model, prompt_ver, latency_s, degraded, created_at"
-                    " FROM llm_review WHERE date=? ORDER BY prompt_ver DESC, created_at DESC LIMIT 1", (date_str,)).fetchone()
+                    "SELECT date, regime, why, position, picks, avoid, model, prompt_ver, latency_s, degraded, created_at"
+                    " FROM llm_review WHERE date<=? ORDER BY date DESC, prompt_ver DESC, created_at DESC LIMIT 1", (date_str,)).fetchone()
             if _r:
                 import json as _json
-                llm_payload = {"date": date_str, "regime": _r[0], "why": _r[1], "position_today": _r[2] or "",
-                               "picks": _json.loads(_r[3] or "[]"), "avoid": _r[4] or "", "model": _r[5],
-                               "prompt_ver": _r[6], "latency_s": _r[7], "degraded": bool(_r[8]),
-                               "generated_at": _r[9]}
-                print(f"      llm 本班无新输出, 回填当日存档(regime={_r[0]}, prompt_ver={_r[6]})")
+                llm_payload = {"date": _r[0], "regime": _r[1], "why": _r[2], "position_today": _r[3] or "",
+                               "picks": _json.loads(_r[4] or "[]"), "avoid": _r[5] or "", "model": _r[6],
+                               "prompt_ver": _r[7], "latency_s": _r[8], "degraded": bool(_r[9]),
+                               "generated_at": _r[10]}
+                print(f"      llm 存档回填(regime={_r[1]}, prompt_ver={_r[7]}, 数据日={_r[0]})")
         except Exception as e:
             # 原为裸 pass: 存档兜底也失败时毫无线索, 前端只会看到"大模型卡空着"
             print(f"      ⚠️ llm 存档回填失败(本班大模型卡将为空): {e}")
