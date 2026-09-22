@@ -283,7 +283,7 @@ export async function loadCycleData(kpl, dateStr) {
   if (!prevDay) {
     const cycle = computeCycle({ ladderRows, prevPool: [], riseFall, moodSeries: mood || [], dateStr: todayDay })
     if (inputEmpty) cycle.inputsEmpty = true
-    return { cycle, ladderRows, prevFull: [] }
+    return { cycle, ladderRows, prevFull: [], riseFallToday: riseFall?.today || null }
   }
   if (_prevPoolCache.key !== prevDay) {
     const prevLists = await Promise.all(pids.map(p => kpl.fetchLimitPool(prevDay, p, { rt: false, silent: true })))
@@ -293,5 +293,6 @@ export async function loadCycleData(kpl, dateStr) {
   const prevPool = prevFull.map(r => ({ code: r.code, pid: r.pid }))
   const cycle = computeCycle({ ladderRows, prevPool, riseFall, moodSeries: mood || [], dateStr: todayDay })
   if (inputEmpty) cycle.inputsEmpty = true
-  return { cycle, ladderRows, prevFull }
+  // riseFallToday 透传(2026-09-23): 跌停家数防守线展示用(数据已在手, 零新增请求)
+  return { cycle, ladderRows, prevFull, riseFallToday: riseFall?.today || null }
 }

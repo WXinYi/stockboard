@@ -208,3 +208,33 @@ describe('computeRisks 高标开板(未涨停池桶口径修正 2026-09-22)', ()
     expect(four.pct).toBe(2.1)
   })
 })
+
+describe('computePremium 昨日涨停股实时表现(赚钱效应读数, 2026-09-23)', () => {
+  const prevFull = [
+    { code: '300001', name: '锚哥', pid: 6 },   // 今仍涨停
+    { code: '300002', name: '首板开板', pid: 1 }, // 开板·红
+    { code: '300003', name: '三板无行情', pid: 3 }, // 桶3未拉取 → 无行情
+  ]
+  const todayPool = [{ code: '300001', name: '锚哥', pid: 6, plates: ['AI'], ztTime: T930, mainNet: 1e7, seal: 9.5e8, maxSeal: 1e9 }]
+  const unsealed = [
+    { code: '300002', name: '首板开板', pid: 1, pct: 2.5 },
+  ]
+  const b = computeBattle({
+    ladderRows: todayPool.map(r => ({ code: r.code, name: r.name, level: r.pid, bkName: 'AI', cap: 0, seal: 0, plates: ['AI'] })),
+    todayPool, prevFull, unsealed,
+    cycle: makeCycle('分歧'),
+  })
+  it('仍涨停计数与开板股红绿统计', () => {
+    expect(b.premium.total).toBe(3)
+    expect(b.premium.still).toBe(1)
+    expect(b.premium.open).toBe(1)
+    expect(b.premium.red).toBe(1)
+    expect(b.premium.green).toBe(0)
+  })
+  it('缺桶3的票计 noq, 不污染溢价均值; 首板/连板分档', () => {
+    expect(b.premium.noq).toBe(1)
+    expect(b.premium.avgPct).toBe(2.5)
+    expect(b.premium.avgFirst).toBe(2.5)
+    expect(b.premium.avgLian).toBe(null)
+  })
+})

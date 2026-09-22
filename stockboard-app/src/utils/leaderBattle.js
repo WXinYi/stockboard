@@ -473,6 +473,27 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
 }
 
 /* ============ 🚨 高标开板 + 🔭 明日卡位雷达 ============ */
+
+// 昨日涨停股实时表现(赚钱效应读数, 2026-09-23): 今仍涨停 + 开板股实时涨跌(未涨停池, 桶1/2/4/5)
+// 覆盖口径: 未涨停池缺桶3(昨3板今未封, 09-23 核验=当前无消费点故未拉取), 覆盖数随 Bucket 显示。
+function computePremium(prevFull, todayPool, unsealed) {
+  const limitNow = new Set(todayPool.map(r => r.code))
+  const unMap = new Map(unsealed.map(u => [u.code, u]))
+  let still = 0, red = 0, green = 0, noq = 0, sum = 0, n = 0
+  const firsts = [], lians = []
+  for (const p of prevFull) {
+    if (limitNow.has(p.code)) { still++; continue }
+    const u = unMap.get(p.code)
+    if (!u || u.pct == null) { noq++; continue }
+    n++; sum += u.pct
+    if (u.pct > 0) red++; else green++
+    ;(p.pid === 1 ? firsts : lians).push(u.pct)
+  }
+  const avg = xs => xs.length ? +(xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2) : null
+  return { total: prevFull.length, still, open: n, red, green, noq,
+           avgPct: avg([sum]), avgFirst: avg(firsts), avgLian: avg(lians) }
+}
+
 function computeRisks(todayJoined, unsealed, cycle) {
   // 未涨停池桶口径修正(2026-09-22, kpl-api.md「未涨停的N板」): PidType=N = 今日冲N板未封,
   // 昨日实际连板 = N-1 —— 旧版把桶号当既有板数, 高标开板显示"4板"实为昨3板(09-14 云煤能源案例)。
@@ -532,7 +553,8 @@ export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], 
     }
   }
   const risks = computeRisks(todayJoined, unsealed, cycle)
-  return { empty: false, strike, boardWars, duels, risks }
+  const premium = computePremium(prevFull, todayPool, unsealed)
+  return { empty: false, strike, boardWars, duels, risks, premium }
 }
 
 // 昨日可买复核判定(战法: 低于预期即卖·卖在一致·周期转防守只卖不买)。pct=今日实时涨幅
@@ -548,6 +570,8 @@ export function reviewVerdict(pct, code, stage) {
 
 /**
  * 装配: 今日 RT 涨停池(5板位) + 未涨停池(1/2/4/5) → computeBattle
+ * 未涨停池缺桶3(昨3板今未封): 半路候选只认 pid=1、高标开板只看 ≥4 桶, 桶3 当前无消费点
+ * —— 若日后新增"3进4"类策略需先补拉桶3(09-23 核验登记)。
  * 昨日全字段池复用 loadCycleData 的缓存结果(cd.prevFull); lianbanBid 为竞价换手标记数据(fetchLianbanBid), 可空
  */
 export async function loadBattleData(kpl, cd, lianbanBid = null, prevBroken = null) {

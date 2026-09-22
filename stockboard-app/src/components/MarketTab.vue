@@ -86,6 +86,7 @@ async function loadCycleBattle(silent = false) {
     const dayDash = day ? `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}` : ''
     const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
     cycle.value = cd.cycle
+    riseFallToday.value = cd.riseFallToday || null
     cycleDataDay.value = cd.cycle?.date || dayDash
     // 复核文件与竞价换手并行预取: review 的 prev_broken 供引擎标记"弱转强·炸板回封"
     const [lb, rv] = await Promise.all([fetchLianbanBid().catch(() => null), fetchStrikeReview().catch(() => null)])
@@ -165,6 +166,22 @@ const reviewValid = computed(() => review.value && (!cycle.value?.date || review
 const cycle = ref(null)
 const battle = ref(null)
 const cycleDataDay = ref('')
+const riseFallToday = ref(null)
+
+// 跌停家数防守线(2026-09-23): 258 日回放=极值日次日 80% 概率涨停≥50, 故只做"当日防守提示"
+// 不进 CYCLE_CFG 次日阶段判定(数据反对, 见 docs/DATA_PIPELINE.md 负结果记录)
+const limitDownAlert = computed(() => {
+  const dt = riseFallToday.value?.dt
+  return dt != null && dt >= 30 ? dt : null
+})
+// 昨日涨停股实时表现(赚钱效应读数, leaderBattle.computePremium)
+const premiumLine = computed(() => {
+  const p = battle.value?.premium
+  if (!p || !p.total) return ''
+  return `昨日涨停${p.total}：今仍涨停${p.still} · 开板${p.open}（红${p.red} 绿${p.green}` +
+         `${p.noq ? ` 无行情${p.noq}` : ''}）· 开板股实时溢价均值 ${p.avgPct ?? '-'}%` +
+         `（首板 ${p.avgFirst ?? '-'}% / 连板 ${p.avgLian ?? '-'}%）`
+})
 
 // ── 选股结论头(三层: 池判定 → 仓位上限 → 一句话结论; 口径见 utils/stockPicks.js / leaderBattle.gateSentence) ──
 const verdictTier = computed(() => gateTier(battle.value?.strike?.gate?.cap))
@@ -461,6 +478,9 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           <div>剧本(怎么买) · {{ battle.strike.gate.banner?.split('📐')[0] }}</div>
           <div v-if="battle.strike.relay?.txt" class="sb-mtx">🗡 {{ battle.strike.relay.txt }}</div>
           <div v-if="gateMatrix" class="sb-mtx">📐 高位{{ gateMatrix.high }}×中位{{ gateMatrix.mid }}：{{ gateMatrix.note }}</div>
+          <!-- 赚钱效应读数 + 跌停防守线(2026-09-23): 只读展示, 不参与阶段判定(数据反对, 见文档) -->
+          <div v-if="premiumLine" class="sb-mtx">💰 {{ premiumLine }}</div>
+          <div v-if="limitDownAlert" class="sb-mtx mt-defense">⚠️ 跌停 {{ limitDownAlert }} 家(极值≥30)：当日防守信号——禁止加仓, 持仓减半；次日 80% 概率涨停≥50, 不作次日看空依据</div>
         </div>
         <div v-if="noCandidate" class="pk-empty">
           <b>闸门开 · 今日暂无达标候选</b>
@@ -760,6 +780,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 
 /* ── 今日出击 ── */
 .mt-strike-banner { font-size: 12px; color: #556; background: #f8fafc; border: 1px solid #e8edf3; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; line-height: 1.6; }
+.mt-defense { color: #c0392b; font-weight: 520; }
 .sb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed #dfe6ee; color: #2b6cb0; }
 .mt-strike { border: 1px solid #e9edf3; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: #fbfcfe; }
 .mt-strike.st-go { border-left-color: #ff5a5a; background: #fff5f5; }
