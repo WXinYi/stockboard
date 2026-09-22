@@ -409,10 +409,10 @@ def main():
         if args.open_sprint:
             hm = now.strftime("%H%M")
             if not is_trading_day(now.date()) or not ("0930" <= hm <= "0935"):
-                print(f"非开盘冲刺时段({now.strftime('%H:%M')} %a), 跳过")
+                print(f"非开盘冲刺时段({now.strftime('%H:%M %a')}), 跳过")
                 return 0
         elif not in_trading_window(now):
-            print(f"非盯盘时段({now.strftime('%H:%M')} %a), 跳过")
+            print(f"非盯盘时段({now.strftime('%H:%M %a')}), 跳过")
             return 0
 
     st = load_state(date_str, state_file)
