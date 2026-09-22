@@ -7,9 +7,7 @@ import { RecycleScroller } from 'vue3-virtual-scroller'
 import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 
 const router = useRouter()
-const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality } = inject('stockData')
-
-const WATCHED = new Set(['900456476', '900450475', '900351276', '900401128', '900422074', '900443192', '900315547', '900240956', '900376763', '900439290'])
+const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality, watchedIds: WATCHED } = inject('stockData')
 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 

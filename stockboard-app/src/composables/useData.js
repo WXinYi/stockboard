@@ -3,8 +3,9 @@ import {
   fetchCore, fetchCopy, fetchStocks, fetchNameMap, fetchPlayersIndex,
 } from '../data/loader.js'
 
-// 置顶 = 钉钉推送的 10 名选手(2026-08-30 对齐 main.py WATCHED_PLAYERS + notify_daily DRAGON)
-const WATCHED_IDS = new Set(['900456476', '900450475', '900351276', '900401128', '900422074', '900443192', '900315547', '900240956', '900376763', '900439290'])
+// 置顶 = 关注选手(唯一数据源: jiarenmens/main.py WATCHED_PLAYERS; 2026-09-22 对齐:
+// 移除 9/5 淘汰的 900401128/900422074/900443192/900315547, 补 900438148/900407488/900237280/900461598)
+export const WATCHED_IDS = new Set(['900456476', '900450475', '900351276', '900240956', '900438148', '900376763', '900439290', '900407488', '900237280', '900461598'])
 
 // 分片 ref 表 + 加载器表（ensureSlices 用）
 const SLICE_REF = {
@@ -200,6 +201,7 @@ export function useData() {
     playerStyles, fullRankPlayers, copyTradeSignals,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
     playerLookup, sliceErrors, sliceLoaded,
+    watchedIds: WATCHED_IDS,
     ensureSlices, loadData, clearSlices,
   }
 }
