@@ -26,13 +26,20 @@ const viewStats = computed(() => (stats.value || [])
     ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h }
     : r))
 
-// ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动, 详情页返回后回到跳转前位置 ──
+// ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动 —— 窗口滚动与列表内部滚动
+// (max-height:500px 容器, 摘除 DOM 时 scrollTop 归零)双双保存/恢复 ──
 const savedScrollY = ref(0)
+const savedListY = ref(0)
+const listBox = ref(null)
 function onSaveScroll() { savedScrollY.value = window.scrollY }
+function onListScroll() { savedListY.value = listBox.value?.scrollTop || 0 }
 onMounted(() => window.addEventListener('scroll', onSaveScroll, { passive: true }))
 onBeforeUnmount(() => window.removeEventListener('scroll', onSaveScroll))
 onActivated(() => {
-  if (savedScrollY.value > 0) nextTick(() => window.scrollTo(0, savedScrollY.value))
+  nextTick(() => {
+    if (savedScrollY.value > 0) window.scrollTo(0, savedScrollY.value)
+    if (listBox.value && savedListY.value > 0) listBox.value.scrollTop = savedListY.value
+  })
 })
 
 const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(viewStats, 'tp')
@@ -93,7 +100,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
       <span class="badge">Top 20</span>
     </h2>
     <p class="hint">优质 = 仅优质选手持仓(稳定样本, 无优质持仓的票不显示) · 点击表头可切换排序</p>
-    <div style="max-height:500px;overflow-y:auto;">
+      <div ref="listBox" style="max-height:500px;overflow-y:auto;" @scroll="onListScroll">
       <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>
         <th style="cursor:pointer;" @click="tog('h')">持有人{{ ind('h') }}</th>
