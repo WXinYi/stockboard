@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, ref, onActivated, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { computed, inject, ref, onActivated, onDeactivated, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
