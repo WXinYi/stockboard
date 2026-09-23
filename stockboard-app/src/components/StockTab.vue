@@ -16,15 +16,22 @@ const stockSearch = ref('')
 const lookedUpHolders = ref(null)
 const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 
-// ── 口径切换(2026-09-23): 优质(默认, 稳定样本) / 全体(对照) ──
+// ── 口径切换(2026-09-23): 优质(默认, 优质选手最近已知持仓) / 全体(对照) ──
 // stocks.json 每行双口径: h/tp/ap=全体采集样本(随榜单漂移), qh/qtp/qap=仅优质选手。
 // 优质口径只显示 qh>0 的票 —— 小米集团这类无优质持仓的"幽灵共识"不再混入(09-23 小米案例)。
+// 兜底: 旧版 stocks.json 无 qh 字段(部署交错)时, 优质口径退回全体展示, 不出空白页。
 const scope = ref('q')
-const viewStats = computed(() => (stats.value || [])
-  .filter(r => scope.value === 'all' || (r.qh || 0) > 0)
-  .map(r => scope.value === 'q'
-    ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h }
-    : r))
+const hasQualityData = computed(() => (stats.value || []).some(r => (r.qh || 0) > 0))
+const viewStats = computed(() => {
+  const rows = stats.value || []
+  const useQ = scope.value === 'q' && hasQualityData.value
+  return rows
+    .filter(r => !useQ || (r.qh || 0) > 0)
+    .map(r => useQ
+      ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h }
+      : r)
+})
+const scopeEffective = computed(() => (scope.value === 'q' && hasQualityData.value) ? 'q' : 'all')
 
 // ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动 —— 详情返回后窗口滚动回到跳转前位置
 // (共识列表不再设内部滚动容器, 单滚动条; 之前的双滚动条与内部 scrollTop 丢失问题一并消除) ──
@@ -92,11 +99,11 @@ const { copiedKey, copyStockCode } = useCopyCode()
     <h2>
       重仓共识
       <span class="scope-switch">
-        <button :class="{ on: scope === 'q' }" @click="scope = 'q'">★ 优质</button><button :class="{ on: scope === 'all' }" @click="scope = 'all'">全体</button>
+        <button :class="{ on: scopeEffective === 'q' }" @click="scope = 'q'">★ 优质</button><button :class="{ on: scopeEffective === 'all' }" @click="scope = 'all'">全体</button>
       </span>
       <span class="badge">Top 20</span>
     </h2>
-    <p class="hint">优质 = 仅优质选手持仓(稳定样本, 无优质持仓的票不显示) · 点击表头可切换排序</p>
+    <p class="hint">优质 = 优质选手最近已知持仓(无优质持仓的票不显示; 全体含榜单漂移样本) · 点击表头可切换排序</p>
       <div>
         <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>

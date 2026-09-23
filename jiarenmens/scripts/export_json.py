@@ -212,10 +212,33 @@ def export(db_path, crawl_date, out_dir):
     quality_map = {p["id"]: p for p in players_flat if p["quality"]}
 
     # ── 3. 持仓聚合 → stockStats(双口径, 2026-09-23) ──
-    # h/tp/ap = 全体采集样本(随榜单漂移波动); qh/qtp/qap = 仅优质选手(稳定集合)。
-    # 09-23 起双口径: 小米集团曾因样本漂移 175家→4家 一日登顶又消失(全样本口径缺陷)。
-    stock_stats_map = {}
+    # h/tp/ap = 全体采集样本(随榜单漂移波动); qh/qtp/qap = 仅优质选手。
+    # 优质口径(09-23 二次修正): 按"每个优质选手的最近已知持仓"(max crawl_date)聚合 ——
+    # 不按当日采集算: 白天东财限流时采集覆盖缩水, 优质口径会退化成"每票1家"的空壳
+    # (09-23 盘中实测)。最近已知 = 稳定, 数据陈旧的选手以其最后快照计入(页面提示口径)。
     stock_stats_q = {}
+    if quality_ids:
+        qmarks = ",".join("?" * len(quality_ids))
+        qrows = conn.execute(
+            f"""SELECT p.stock_code, p.stock_name, p.position_ratio, p.profit_ratio
+                FROM positions p
+                JOIN (SELECT zh_id, MAX(crawl_date) AS md FROM positions
+                      WHERE zh_id IN ({qmarks}) GROUP BY zh_id) m
+                  ON p.zh_id = m.zh_id AND p.crawl_date = m.md
+                WHERE p.zh_id IN ({qmarks})""",
+            [*quality_ids, *quality_ids]).fetchall()
+        for qr in qrows:
+            code = qr["stock_code"]
+            if not code:
+                continue
+            sq = stock_stats_q.setdefault(code, {
+                "code": code, "name": qr["stock_name"] or "",
+                "holders": 0, "total_position": 0.0, "total_profit": 0.0,
+            })
+            sq["holders"] += 1
+            sq["total_position"] += safe_float(qr["position_ratio"])
+            sq["total_profit"] += safe_float(qr["profit_ratio"])
+    stock_stats_map = {}
     for p in positions_raw:
         code = p.get("stock_code", "")
         if not code:
@@ -234,11 +257,6 @@ def export(db_path, crawl_date, out_dir):
         s["total_position"] += safe_float(p.get("position_ratio"))
         s["total_profit"] += safe_float(p.get("profit_ratio"))
         s["count"] += 1
-        if p.get("zh_id") in quality_ids:
-            sq = stock_stats_q.setdefault(code, {"holders": 0, "total_position": 0.0, "total_profit": 0.0})
-            sq["holders"] += 1
-            sq["total_position"] += safe_float(p.get("position_ratio"))
-            sq["total_profit"] += safe_float(p.get("profit_ratio"))
     stock_stats = sorted(
         [{"c": s["code"], "n": s["name"],
           "h": s["holders"], "tp": round(s["total_position"], 1),
