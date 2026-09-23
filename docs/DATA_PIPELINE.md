@@ -288,7 +288,8 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 index.json              — 有效日期列表
 latest/core.json        — 日期/爬取时间/高手数 等元信息
 latest/copy.json        — 抄作业信号 + 卖出预警 + 疑似清仓
-latest/stocks.json      — 重仓共识
+latest/stocks.json      — 重仓共识（双口径 09-23: h/tp/ap=全体采集样本, qh/qtp/qap=仅优质选手——
+                            全样本随榜单漂移波动, 小米集团曾 175家→4家 一日登顶又消失）
 latest/name_map.json    — 被引用选手 name→id
 latest/changes_summary.json — 持仓变动计数
 latest/players/<id>.json — 选手详情, 前端按需加载

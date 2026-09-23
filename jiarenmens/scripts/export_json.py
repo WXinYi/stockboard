@@ -4,7 +4,7 @@
 输出:
   latest/core.json         — 日期/爬取时间/高手数/今日操作选手/上榜数 等核心元信息
   latest/copy.json         — 抄作业信号 (copyTradeSignals) + 卖出预警 + 疑似清仓
-  latest/stocks.json       — 重仓共识 stockStats
+  latest/stocks.json       — 重仓共识 stockStats(双口径: h/tp/ap 全体 + qh/qtp/qap 仅优质)
   latest/name_map.json     — 当日被引用选手 name→id 子集映射
   latest/changes_summary.json — 持仓变动计数摘要（无明细）
   latest/players/*.json    — 选手详情（按需加载）
