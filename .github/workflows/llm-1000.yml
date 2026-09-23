@@ -89,7 +89,8 @@ jobs:
           payload = Path("data/llm_1000_payload.json")
           if payload.exists():
               a["llm"] = json.loads(payload.read_text(encoding="utf-8"))
-              p.write_text(json.dumps(a, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+              # indent=1 与 auction_scan 的写格式一致, 防止逐日格式翻转造成 diff 噪音(09-23 实测)
+              p.write_text(json.dumps(a, ensure_ascii=False, indent=1), encoding="utf-8")
               print(f"✅ auction.json.llm 已更新(prompt_ver={a['llm'].get('prompt_ver')}, slot={a['llm'].get('slot')})")
           else:
               print("⚠️ llm payload 不存在(降级未产文件), auction.json 保持原样")
