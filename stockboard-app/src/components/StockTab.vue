@@ -28,13 +28,16 @@ const viewStats = computed(() => (stats.value || [])
 
 // ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动 —— 详情返回后窗口滚动回到跳转前位置
 // (共识列表不再设内部滚动容器, 单滚动条; 之前的双滚动条与内部 scrollTop 丢失问题一并消除) ──
+// ⚠️ 监听只在激活期挂载(09-23 修): KeepAlive 停用后监听器若残留, 会在其它页面滚动时
+// 污染 savedScrollY —— 返回本页时会恢复到错误位置。
 const savedScrollY = ref(0)
 function onSaveScroll() { savedScrollY.value = window.scrollY }
-onMounted(() => window.addEventListener('scroll', onSaveScroll, { passive: true }))
-onBeforeUnmount(() => window.removeEventListener('scroll', onSaveScroll))
 onActivated(() => {
-  if (savedScrollY.value > 0) nextTick(() => window.scrollTo(0, savedScrollY.value))
+  window.addEventListener('scroll', onSaveScroll, { passive: true })
+  nextTick(() => { if (savedScrollY.value > 0) window.scrollTo(0, savedScrollY.value) })
 })
+onDeactivated(() => window.removeEventListener('scroll', onSaveScroll))
+onBeforeUnmount(() => window.removeEventListener('scroll', onSaveScroll))
 
 const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(viewStats, 'tp')
 
