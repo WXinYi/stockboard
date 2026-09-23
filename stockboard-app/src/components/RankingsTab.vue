@@ -91,19 +91,26 @@ const sortHeaders = computed(() => {
 const ROW_H = 40
 const rankScroller = ref(null)
 
-// ── 详情返回保持列表位置(2026-09-23 改 page-mode 后滚动在 window 上) ──
-// 保留原重试思路: 重新插入初帧布局未稳, 恢复可能被钳回 → 验证不达就重试(最多 20×120ms)
+// ── 详情返回保持列表位置 ──
+// 关键坑(3个, 全踩过):
+// 1. 真实滚动容器是 RecycleScroller 内部(.rank-vscroll), 不是 window
+// 2. KeepAlive 停用时先摘 DOM 再触发 onDeactivated, 摘出后无布局盒 scrollTop 恒 0
+//    → 必须在路由离开守卫(onBeforeRouteLeave)里保存, DOM 尚在文档读数才准确
+// 3. 后台标签页 requestAnimationFrame 不触发 → 恢复用 setTimeout;
+//    重新插入初帧布局未稳 scrollTop 可能被钳回 0 → 验证不达就重试(最多 20×120ms)
 let savedListScroll = 0
 onBeforeRouteLeave(() => {
-  savedListScroll = window.scrollY
+  savedListScroll = rankScroller.value?.$el?.scrollTop ?? 0
 })
 onActivated(() => {
   if (!savedListScroll) return
   const pos = savedListScroll
   let tries = 0
   const restore = () => {
-    window.scrollTo(0, pos)
-    const got = window.scrollY
+    const sc = rankScroller.value
+    if (!sc) return
+    sc.scrollToPosition(pos)
+    const got = sc.$el?.scrollTop ?? 0
     if (Math.abs(got - pos) > 1 && tries++ < 20) setTimeout(restore, 120)
   }
   nextTick(restore)
@@ -113,7 +120,7 @@ onActivated(() => {
 watch(
   () => [search.value, qualityOn.value, todayOnly.value, minRanks.value, sortKey.value, sortDir.value],
   () => {
-    window.scrollTo(0, 0)
+    rankScroller.value?.scrollToPosition(0)
   }
 )
 
@@ -180,7 +187,6 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
           <RecycleScroller
             ref="rankScroller"
             class="rank-vscroll"
-            :page-mode="true"
             :items="searchList"
             :item-size="ROW_H"
             key-field="zh_id"
@@ -241,12 +247,15 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
   border-bottom: 0.5px solid rgba(0,0,0,.045);
   letter-spacing: .02em;
 }
-/* 2026-09-23 改 page-mode(用页面滚动, 消除双滚动条): 容器不再自约束高度,
-   随内容自然撑开(虚拟滚动的 item-wrapper ~39万px, 浏览器上限内安全)。
-   overflow-x:hidden 保留: iOS 上防止内层抢走横向手势(同前)。
-   注: overflow-x:hidden 会使 overflow-y 计算为 auto, 但容器高度=内容高度,
-   无溢出即无滚动条, 不会复辟内层滚动。 */
+/* 虚拟滚动容器必须自约束高度：RecycleScroller 内部 item-wrapper 高度=行数×行高（~39万px），
+   若靠父级 flex 撑出高度，clientHeight 会暴涨触发 "Rendered items limit reached"（>1000 行）。
+   overflow-y:auto + max-height 让它在内容超高时固定为视口高度、内容短时自适应。
+   overflow-x:hidden 关键：库 CSS 只设 overflow-y:auto，按规范 overflow-x 会被计算成 auto，
+   使本容器成为横向滚动候选。iOS 嵌套滚动时内层容器会抢走横向手势，导致行上左滑不滚动
+   .rank-hscroll（看起来右侧空白）。显式 hidden 让它只滚纵向，横向手势归外层容器。 */
 .rank-vscroll {
+  /* 去卡片化后列表高度=视口-固定头部(搜索/排序/筛选/导航), 整页不再嵌套滚动 */
+  max-height: calc(100vh - 300px);
   min-height: 120px;
   overflow-x: hidden;
   /* iOS Safari 上 .rank-cols 的 min-width:max-content 未能按表头撑宽(实测行被裁在视口宽)。
@@ -294,10 +303,10 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 .sortable { cursor: pointer; user-select: none; }
 @media (min-width: 768px) {
   /* 桌面: 无底部导航大留白, 头部更矮 → 列表更高 */
-  .rank-cols { position: sticky; top: 47px; z-index: 5; }
+  .rank-vscroll { max-height: calc(100vh - 240px); }
 }
 @media (max-width: 767px) {
-  .rank-cols { position: sticky; top: 47px; z-index: 5; }
+  .rank-vscroll { max-height: calc(100vh - 300px); }
   .rank-row { font-size: 12px; }
   .c-rank { flex-basis: 28px; }
   .c-name { flex-basis: 150px; min-width: 150px; }
