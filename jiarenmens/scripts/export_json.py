@@ -211,8 +211,11 @@ def export(db_path, crawl_date, out_dir):
     # Quality lookup dict
     quality_map = {p["id"]: p for p in players_flat if p["quality"]}
 
-    # ── 3. 持仓聚合 → stockStats ────────────
+    # ── 3. 持仓聚合 → stockStats(双口径, 2026-09-23) ──
+    # h/tp/ap = 全体采集样本(随榜单漂移波动); qh/qtp/qap = 仅优质选手(稳定集合)。
+    # 09-23 起双口径: 小米集团曾因样本漂移 175家→4家 一日登顶又消失(全样本口径缺陷)。
     stock_stats_map = {}
+    stock_stats_q = {}
     for p in positions_raw:
         code = p.get("stock_code", "")
         if not code:
@@ -231,10 +234,19 @@ def export(db_path, crawl_date, out_dir):
         s["total_position"] += safe_float(p.get("position_ratio"))
         s["total_profit"] += safe_float(p.get("profit_ratio"))
         s["count"] += 1
+        if p.get("zh_id") in quality_ids:
+            sq = stock_stats_q.setdefault(code, {"holders": 0, "total_position": 0.0, "total_profit": 0.0})
+            sq["holders"] += 1
+            sq["total_position"] += safe_float(p.get("position_ratio"))
+            sq["total_profit"] += safe_float(p.get("profit_ratio"))
     stock_stats = sorted(
         [{"c": s["code"], "n": s["name"],
           "h": s["holders"], "tp": round(s["total_position"], 1),
-          "ap": round(s["total_profit"] / s["count"], 2) if s["count"] else 0}
+          "ap": round(s["total_profit"] / s["count"], 2) if s["count"] else 0,
+          "qh": stock_stats_q[code]["holders"] if code in stock_stats_q else 0,
+          "qtp": round(stock_stats_q[code]["total_position"], 1) if code in stock_stats_q else 0,
+          "qap": round(stock_stats_q[code]["total_profit"] / stock_stats_q[code]["holders"], 2)
+                 if code in stock_stats_q and stock_stats_q[code]["holders"] else 0}
          for s in stock_stats_map.values()],
         key=lambda s: s["tp"], reverse=True
     )

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, ref } from 'vue'
+import { computed, inject, ref, onActivated, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
@@ -16,7 +16,26 @@ const stockSearch = ref('')
 const lookedUpHolders = ref(null)
 const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 
-const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(computed(() => stats.value), 'tp')
+// ── 口径切换(2026-09-23): 优质(默认, 稳定样本) / 全体(对照) ──
+// stocks.json 每行双口径: h/tp/ap=全体采集样本(随榜单漂移), qh/qtp/qap=仅优质选手。
+// 优质口径只显示 qh>0 的票 —— 小米集团这类无优质持仓的"幽灵共识"不再混入(09-23 小米案例)。
+const scope = ref('q')
+const viewStats = computed(() => (stats.value || [])
+  .filter(r => scope.value === 'all' || (r.qh || 0) > 0)
+  .map(r => scope.value === 'q'
+    ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h }
+    : r))
+
+// ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动, 详情页返回后回到跳转前位置 ──
+const savedScrollY = ref(0)
+function onSaveScroll() { savedScrollY.value = window.scrollY }
+onMounted(() => window.addEventListener('scroll', onSaveScroll, { passive: true }))
+onBeforeUnmount(() => window.removeEventListener('scroll', onSaveScroll))
+onActivated(() => {
+  if (savedScrollY.value > 0) nextTick(() => window.scrollTo(0, savedScrollY.value))
+})
+
+const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(viewStats, 'tp')
 
 function pct(v) {
   const n = parseFloat(v)
@@ -66,8 +85,14 @@ const { copiedKey, copyStockCode } = useCopyCode()
   </div>
 
   <div class="card">
-    <h2>重仓共识 <span class="badge">Top 20</span></h2>
-    <p class="hint">按加权总仓位排序，点击表头可切换排序</p>
+    <h2>
+      重仓共识
+      <span class="scope-switch">
+        <button :class="{ on: scope === 'q' }" @click="scope = 'q'">★ 优质</button><button :class="{ on: scope === 'all' }" @click="scope = 'all'">全体</button>
+      </span>
+      <span class="badge">Top 20</span>
+    </h2>
+    <p class="hint">优质 = 仅优质选手持仓(稳定样本, 无优质持仓的票不显示) · 点击表头可切换排序</p>
     <div style="max-height:500px;overflow-y:auto;">
       <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>
@@ -84,6 +109,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               </button>
               <span v-if="copiedKey === s.c" class="copied-tip">✓ 已复制</span>
+              <div v-if="scope === 'q'" class="sub-all">全体 {{ s.allH }} 家</div>
             </td>
             <td style="color:#999;">{{ s.c }}</td>
             <td>{{ s.h }}人</td>
@@ -106,4 +132,10 @@ const { copiedKey, copyStockCode } = useCopyCode()
 .stock-copy { border: none; background: none; cursor: pointer; color: #aaa; padding: 0 3px; vertical-align: middle; }
 .stock-copy:hover { color: #2980b9; }
 .copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
+.scope-switch { display: inline-flex; margin: 0 6px; vertical-align: middle; }
+.scope-switch button { border: 1px solid #d5dbe3; background: #fff; color: #667; font-size: 11px; padding: 3px 10px; cursor: pointer; }
+.scope-switch button:first-child { border-radius: 8px 0 0 8px; }
+.scope-switch button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.scope-switch button.on { background: #2980b9; border-color: #2980b9; color: #fff; }
+.sub-all { font-size: 10px; color: #98a2ae; margin-top: 1px; }
 </style>
