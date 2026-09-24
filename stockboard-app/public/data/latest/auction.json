@@ -1,1 +1,279 @@
-{"date":"2026-09-23","generated_at":"09:25","env":{"pass":true,"reasons":["环境正常"],"data":{"strong":29,"lbgd":3,"capacity_ratio":null,"red_ratio":0.41636931311329173,"bid_count":[128,139,50,40,2],"bid_total":"136亿","bid_total_prev":"209亿"}},"boards":[{"code":"801001","name":"芯片","burst":7.1,"amount":1872117200.0,"main_net":254007721.0,"src":"爆量L2","strength":0.0},{"code":"801168","name":"工业气体","burst":0.0,"amount":52854231.0,"main_net":13958142.0,"src":"强度","strength":27.0},{"code":"801048","name":"黄金","burst":0.0,"amount":335319812.0,"main_net":3020983.0,"src":"强度","strength":27.0},{"code":"801049","name":"租售同权","burst":0.0,"amount":153524913.0,"main_net":10756994.0,"src":"强度","strength":19.0},{"code":"801694","name":"非金属材料","burst":0.0,"amount":384959438.0,"main_net":23250016.0,"src":"强度","strength":16.0},{"code":"801408","name":"智能家居","burst":0.0,"amount":608463442.0,"main_net":675390.0,"src":"强度","strength":13.0},{"code":"801493","name":"光储充一体化","burst":0.0,"amount":23264219.0,"main_net":1011316.0,"src":"强度","strength":13.0},{"code":"801088","name":"有色金属","burst":0.0,"amount":991593068.0,"main_net":60032440.0,"src":"强度","strength":13.0},{"code":"801874","name":"电源","burst":0.0,"amount":285537838.0,"main_net":397230.0,"src":"强度","strength":12.0},{"code":"801433","name":"光学镜头","burst":0.0,"amount":97992851.0,"main_net":594777.0,"src":"强度","strength":11.0},{"code":"801139","name":"培育钻石","burst":0.0,"amount":78904738.0,"main_net":564750.0,"src":"强度","strength":11.0}],"strike":[{"code":"000607","name":"华媒控股","height":2,"status":"可做(接力)","reason":"龙头谱系[总龙头] 主线[AI应用] 13只涨停, 封单 1.49亿","tag":null,"bid_pct":null},{"code":"000910","name":"大亚圣象","height":3,"status":"可做(矩阵谨慎)","reason":"龙头谱系[板块龙头(地产链)] 主线[地产链] 7只涨停, 封单 0.18亿","tag":null,"bid_pct":null},{"code":"603230","name":"内蒙新华","height":5,"status":"可做(矩阵谨慎)","reason":"主线高位(秒板接力对象)","tag":null,"bid_pct":null}],"strike_watch":false,"bidrank":[{"code":"001216","name":"华瓷股份","height":5,"bid_pct":4.5,"turnover":8.31},{"code":"000504","name":"南华生物","height":4,"bid_pct":0.0,"turnover":5.24},{"code":"603230","name":"内蒙新华","height":5,"bid_pct":-4.9,"turnover":5.115903687422844},{"code":"601811","name":"新华文轩","height":3,"bid_pct":9.75,"turnover":4.249478468276959},{"code":"001234","name":"泰慕士","height":2,"bid_pct":10.02,"turnover":4.09}],"regime":{"regime":"主线","relay":0.23300970873786409,"max_board":5,"top1_days":3,"detail":["昨日再板率23%","最高5板","TOP1连续3日"]},"cycle":{"stage":"高潮","confidence":7,"gate":"open","mainlines":["AI应用","地产链","文化传媒","PCB","芯片","AI智能体"],"leaders":[{"code":"001216","name":"华瓷股份","pid":6,"role":"空间锚(最高连板)"},{"code":"000607","name":"华媒控股","pid":2,"role":"总龙头"},{"code":"603039","name":"泛微网络","pid":1,"role":"中军(AI应用)"},{"code":"000910","name":"大亚圣象","pid":3,"role":"板块龙头(地产链)"},{"code":"600641","name":"先导基电","pid":1,"role":"中军(地产链)"},{"code":"600743","name":"华远控股","pid":2,"role":"补涨/卡位(地产链)"}]},"empty_reason":"","llm":{"date":"2026-09-23","regime":"观察","why":"涨停64→28腰斩,晋级率仅14%(63→9),破板率22%→26%续升;昨涨停股红盘27/63约43%(25~45%弱区),实时溢价+0.74%但首板-0.48%亏钱;高标5板华瓷+7.0%尚可、另一5板内蒙新华-2.5%无承接,情绪续降未止跌","position_today":"0成,观察日不出手;等涨停数回升+晋级率修复+5板高标有实质承接再评估","picks":[],"avoid":"①高开兑现票:华瓷+7.0%、南华生物+7.6%均属高位兑现盘,且华瓷昨额仅0.5亿、南华0.7亿为缩量板(规则5不接);②一字/涨停开盘如新华文轩、大亚圣象、新华传媒、泰慕士、奥佳华,买不到只作风向标;③断板杀跌股三羊马-8.3%、博通集成-3.8%、华仁药业-8.4%、延华智能-8.1%、新华制药-5.0%,逆势接刀;④首板群体昨额大而今日溢价-0.48%,弱转强在本环境属诱多;⑤破板率升至26%,追高封板风险高","model":"deepseek-flash","prompt_ver":"v3","latency_s":7.0,"degraded":false,"generated_at":"2026-09-23T02:01:10","slot":"1000"},"stats":{"pool":258,"boards":11,"genes":0},"candidates":[],"watch":[]}
+{
+ "date": "2026-09-24",
+ "generated_at": "09:25",
+ "env": {
+  "pass": true,
+  "reasons": [
+   "红盘占比 26% < 40% (参考)"
+  ],
+  "data": {
+   "strong": 25,
+   "lbgd": 4,
+   "capacity_ratio": null,
+   "red_ratio": 0.26199575371549894,
+   "bid_count": [
+    128,
+    126,
+    50,
+    32,
+    1
+   ],
+   "bid_total": "132亿",
+   "bid_total_prev": "136亿"
+  }
+ },
+ "boards": [
+  {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 9.3,
+   "amount": 370776422.0,
+   "main_net": 36887683.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801660",
+   "name": "通信",
+   "burst": 9.0,
+   "amount": 461066429.0,
+   "main_net": -15031426.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801045",
+   "name": "医药",
+   "burst": 6.5,
+   "amount": 123849845.0,
+   "main_net": -2270721.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801199",
+   "name": "汽车零部件",
+   "burst": 6.5,
+   "amount": 111184113.0,
+   "main_net": 9628480.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801676",
+   "name": "地产链",
+   "burst": 5.0,
+   "amount": 255935092.0,
+   "main_net": 53413358.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801005",
+   "name": "新能源汽车",
+   "burst": 4.5,
+   "amount": 37229241.0,
+   "main_net": -3549534.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801235",
+   "name": "化工",
+   "burst": 4.5,
+   "amount": 133278454.0,
+   "main_net": -732849.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801159",
+   "name": "机器人概念",
+   "burst": 4.0,
+   "amount": 120673381.0,
+   "main_net": 18208378.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801057",
+   "name": "石油石化",
+   "burst": 0.0,
+   "amount": 103167112.0,
+   "main_net": 2530417.0,
+   "src": "强度",
+   "strength": 10.0
+  },
+  {
+   "code": "801234",
+   "name": "航运",
+   "burst": 0.0,
+   "amount": 126123350.0,
+   "main_net": 4997222.0,
+   "src": "强度",
+   "strength": 9.0
+  }
+ ],
+ "strike": [
+  {
+   "code": "601811",
+   "name": "新华文轩",
+   "height": 4,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 封单 1.44亿；逆市连板(火种观察) 4板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "000910",
+   "name": "大亚圣象",
+   "height": 4,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[总龙头] 主线[地产链] 5只涨停, 封单 0.71亿；逆市连板(火种观察) 4板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "000560",
+   "name": "我爱我家",
+   "height": 3,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(地产链)] 成交 12.1亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "600743",
+   "name": "华远控股",
+   "height": 3,
+   "status": "观察",
+   "reason": "龙头谱系[补涨/卡位(地产链)] 龙头被关时的板块内补涨位",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002119",
+   "name": "康强电子",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(芯片)] 成交 14.8亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  }
+ ],
+ "strike_watch": true,
+ "bidrank": [
+  {
+   "code": "000910",
+   "name": "大亚圣象",
+   "height": 4,
+   "bid_pct": 10.03,
+   "turnover": 3.92
+  },
+  {
+   "code": "001234",
+   "name": "泰慕士",
+   "height": 3,
+   "bid_pct": 10.01,
+   "turnover": 3.46
+  },
+  {
+   "code": "002238",
+   "name": "天威视讯",
+   "height": 2,
+   "bid_pct": 8.36,
+   "turnover": 3.04
+  },
+  {
+   "code": "601811",
+   "name": "新华文轩",
+   "height": 4,
+   "bid_pct": 10.0,
+   "turnover": 2.906291735630696
+  },
+  {
+   "code": "002614",
+   "name": "奥佳华",
+   "height": 3,
+   "bid_pct": -0.92,
+   "turnover": 2.09
+  }
+ ],
+ "regime": {
+  "regime": "过渡",
+  "relay": 0.19047619047619047,
+  "max_board": 4,
+  "top1_days": 3,
+  "detail": [
+   "昨日再板率19%",
+   "最高4板",
+   "TOP1连续3日"
+  ]
+ },
+ "cycle": {
+  "stage": "退潮",
+  "confidence": 7,
+  "gate": "closed",
+  "mainlines": [
+   "地产链",
+   "芯片",
+   "PCB",
+   "通信",
+   "机器人概念",
+   "仪器仪表"
+  ],
+  "leaders": [
+   {
+    "code": "601811",
+    "name": "新华文轩",
+    "pid": 4,
+    "role": "空间锚(最高连板)"
+   },
+   {
+    "code": "000910",
+    "name": "大亚圣象",
+    "pid": 4,
+    "role": "总龙头"
+   },
+   {
+    "code": "000560",
+    "name": "我爱我家",
+    "pid": 3,
+    "role": "中军(地产链)"
+   },
+   {
+    "code": "600743",
+    "name": "华远控股",
+    "pid": 3,
+    "role": "补涨/卡位(地产链)"
+   },
+   {
+    "code": "002119",
+    "name": "康强电子",
+    "pid": 1,
+    "role": "中军(芯片)"
+   }
+  ]
+ },
+ "empty_reason": "",
+ "llm": {
+  "date": "2026-09-22",
+  "regime": null,
+  "why": null,
+  "position_today": "",
+  "picks": [],
+  "avoid": "",
+  "model": "deepseek-flash",
+  "prompt_ver": "v2",
+  "latency_s": 3.1,
+  "degraded": true,
+  "generated_at": "2026-09-22T01:28:57"
+ },
+ "stats": {
+  "pool": 400,
+  "boards": 10,
+  "genes": 0
+ },
+ "candidates": [],
+ "watch": []
+}
