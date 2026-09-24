@@ -114,7 +114,10 @@ jobs:
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          git add -f stockboard-app/public/data/latest/auction.json
+          # 回测真相源双保险: payload 归档进 git(数据库行可能被多班竞争覆盖, 09-23 实测丢失)
+          mkdir -p jiarenmens/data/llm_archive
+          cp jiarenmens/data/llm_1000_payload.json "jiarenmens/data/llm_archive/$(TZ=Asia/Shanghai date +%F).json" 2>/dev/null || true
+          git add -f stockboard-app/public/data/latest/auction.json jiarenmens/data/llm_archive/
           if git diff --staged --quiet; then
             echo "auction.json 无变化, 跳过提交"
           else

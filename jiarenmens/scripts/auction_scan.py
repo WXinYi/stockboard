@@ -795,7 +795,9 @@ def scan(date_str: str, dry_run: bool = False) -> int:
             with sqlite3.connect(f"file:{Path(__file__).resolve().parent.parent / 'data' / 'auction.db'}?mode=ro", uri=True) as _c:
                 _r = _c.execute(
                     "SELECT date, regime, why, position, picks, avoid, model, prompt_ver, latency_s, degraded, created_at"
-                    " FROM llm_review WHERE date<=? ORDER BY date DESC, prompt_ver DESC, created_at DESC LIMIT 1", (date_str,)).fetchone()
+                    " FROM llm_review WHERE date<=?"
+                    " ORDER BY (CASE WHEN IFNULL(degraded,0)=1 THEN 1 ELSE 0 END) ASC,"
+                    " date DESC, prompt_ver DESC, created_at DESC LIMIT 1", (date_str,)).fetchone()
             if _r:
                 import json as _json
                 llm_payload = {"date": _r[0], "regime": _r[1], "why": _r[2], "position_today": _r[3] or "",
