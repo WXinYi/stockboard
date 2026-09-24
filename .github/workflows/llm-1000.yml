@@ -16,15 +16,15 @@ concurrency:
 
 jobs:
   llm:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -119,11 +119,13 @@ jobs:
             echo "auction.json 无变化, 跳过提交"
           else
             git commit -m "🤖 大模型盘中选股 10:00 $(date +%Y-%m-%d) [skip ci]"
+            # -X theirs=rebase 冲突时以本班为准; 失败先 abort 清残留中间态再重试(09-23 crawl #836 同款竞态预防)
             for i in 1 2 3; do
-              if git pull --rebase && git push; then
+              if git pull --rebase -X theirs && git push; then
                 echo "✅ 推送成功"
                 exit 0
               fi
+              git rebase --abort 2>/dev/null || true
               echo "⚠️ 推送失败, 重试 $i/3..."
               sleep 5
             done
@@ -133,14 +135,14 @@ jobs:
       # 拿到 LLM 结论直接发版: 同 auction.yml 的 dist 壳缓存机制
       - name: 恢复 dist 壳
         id: dist
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: stockboard-app/dist
           key: dist-shell-${{ hashFiles('stockboard-app/src/**', 'stockboard-app/index.html', 'stockboard-app/vite.config.js', 'stockboard-app/package-lock.json') }}
 
       - name: Setup Node
         if: steps.dist.outputs.cache-hit != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'npm'
@@ -155,13 +157,13 @@ jobs:
         run: rsync -a --delete stockboard-app/public/data/ stockboard-app/dist/data/
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: stockboard-app/dist
 
   deploy:
     needs: llm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
@@ -172,15 +174,15 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   alert-on-failure:
     name: 失败告警
     if: failure()
     needs: [llm, deploy]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 钉钉失败告警
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}

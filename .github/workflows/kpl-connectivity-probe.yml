@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: 直连 apphis(8s 超时)
         id: direct
@@ -52,9 +52,9 @@ jobs:
     name: 失败告警
     if: failure()
     needs: [probe]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 钉钉失败告警
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}

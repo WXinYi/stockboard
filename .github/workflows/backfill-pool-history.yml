@@ -35,15 +35,15 @@ permissions:
 
 jobs:
   backfill:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # His 域名对 Actions 出口 IP 风控, 走 SCF 中转(同 auction-label.yml)
       KPL_HIS_PROXY: https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -158,9 +158,9 @@ jobs:
     name: 失败告警
     if: failure()
     needs: [backfill]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 钉钉失败告警
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}

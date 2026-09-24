@@ -125,6 +125,21 @@ WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建�
 - **教训**：①"公开仓可匿名读"是给本机用的，CI 里一律带 token——runner 出口 IP 共享，匿名额度随时被别的 workflow 吃光；②**静默失败比失败更贵**：这个 bug 从 09-01 迁移起就存在，只是首次撞上限流，代价是一天数据晚到 20 分钟。
 - **同时做了**：首班从 09:30 提前到 09:26（cron-job.org jobId 8167465，见 2.1），并在页面页脚显式标注"数据日期 + 采集时刻"，让快照时点一眼可辨。
 
+**⑤ 并发班次抢推数据 commit → rebase 冲突 3 连败、该班部署跳过（09-23 14:30 run #836，已修复）**
+
+- **现象**：#836（14:30 dispatch 班）失败在「提交数据」，钉钉失败告警触发、该班 deploy 跳过；此前 14:10~14:46 连续 5 个 crawl run 被并发取消。21 分钟后 #839（14:51）成功，数据/部署自愈无缺口（EOD 班全量重采覆盖了丢失的盘中快照）。
+- **根因**：用户 14:14 推代码触发 push 班 #834，把定时班 #835 挤到 14:30 才跑到提交步骤；#835 在 14:30:29 抢先推出数据 commit 后 11 秒被已启动的 #836 并发取消。#836 的 checkout 基点（启动时刻锁定）不含该 commit，自班提交后 `git pull --rebase` 重放到它身上——同批 JSON 全文件改写必冲突；重试时 rebase 中间态未清理，第 2/3 次连 pull 都进不去，3 连败。
+- **修复**（crawl/auction/llm-1000 三个 workflow 同批）：① `git pull --rebase` → `git pull --rebase -X theirs`——rebase 语义中 theirs=被重放的本班提交，冲突一律以**本班（最新采集）**为准；空仓沙箱 6 场景 27 断言验证：文本 modify/modify、add/add、删改、rename/rename、二进制冲突全部自动以本班解决，且上游代码 commit 原样保留。② 每次重试前 `git rebase --abort` 兜底清残留中间态，防"后两轮重试连 pull 都进不去"。
+- **残余风险**：①push 非数据文件的上游提交不会被 -X 影响（冲突路径 ⊆ 本班提交路径）；②`jiarenmens/data/hot_rank.db`（二进制，auction 班提交）若与 crawl 班撞车，实测同样本班赢，无双输形态。
+- **教训**：①并发 group 只保证"同时只有一个 run"，不保证 run 之间 commit/push 的先后——**凡是"长任务后 push"的 workflow 都隐式假设自己是最新基点**，盘中推代码会挤压班次时序把它打破；②重试循环里失败后的现场清理与重试本身同样重要，否则重试是空转。
+
+### 同批基建升级（09-23，与事故⑤同批提交）
+
+- **push 竞态加固**：见事故⑤。
+- **actions 升版清 Node20 弃用告警**（此前每班 run 都带 warning）：checkout v4→v5、setup-python v5→v6、setup-node v4→v5、cache 三兄弟 v4→v5、upload-pages-artifact v3→v5（v4 起不再打包 dotfile，dist 无依赖 dotfile 已核实）、deploy-pages v4→v5、wrangler-action v3→v4。均为 node24 原生运行时，`with:` 输入无变化（release notes 逐一核对；setup-node v5 的自动包管理器缓存需 `packageManager` 字段，本项目无此字段不触发）。
+- **runner 钉版**：25 处 `runs-on: ubuntu-latest` → `ubuntu-24.04`。GitHub 官方通告 ubuntu-latest 将于 2026-10-19 起迁往 Ubuntu 26，钉版保住现状，待有空在 26 镜像冒烟后再放开。
+- **未动**：`node-version: '20'`（构建工具链，Node 20 已 EOL 但 vite 8 构建正常，属后续独立事项，避免同批引入构建链变量）。
+
 ### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
 
 1. **同一 commit 删库导致 checkout 无 db** → init 工作流改为"优先热层恢复，否则从 git 历史最后一个含 db 提交检出"（`git rev-list | cat-file -e` 探测）。

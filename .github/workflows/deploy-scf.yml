@@ -11,10 +11,10 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
 
@@ -36,9 +36,9 @@ jobs:
     name: 失败告警
     if: failure()
     needs: [deploy]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 钉钉失败告警
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}

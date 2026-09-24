@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   label:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -25,10 +25,10 @@ jobs:
       KPL_HIS_PROXY: https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -77,9 +77,9 @@ jobs:
     name: 失败告警
     if: failure()
     needs: [label]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 钉钉失败告警
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}

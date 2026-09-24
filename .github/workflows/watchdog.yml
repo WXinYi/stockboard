@@ -28,12 +28,12 @@ permissions:
 
 jobs:
   watchdog:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: github-pages
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -41,7 +41,7 @@ jobs:
         run: pip install requests
 
       - name: 恢复盯盘状态(当日已推集合/失败计数)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: jiarenmens/data/.watchdog_state.json
           key: watchdog-state-notexist-${{ github.run_id }}
@@ -66,7 +66,7 @@ jobs:
       # 因此状态文件只在成功路径存在, hashFiles 空串时跳过保存。
       - name: 保存盯盘状态
         if: always() && hashFiles('jiarenmens/data/.watchdog_state.json') != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: jiarenmens/data/.watchdog_state.json
           key: watchdog-state-${{ github.run_id }}-${{ github.run_attempt }}
@@ -96,7 +96,7 @@ jobs:
       # 轻量部署: dist 壳按代码指纹缓存命中(数据班不重编), 只拼接数据 + 部署
       - name: 恢复 dist 壳
         if: steps.gate.outputs.changed == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: stockboard-app/dist
           key: dist-shell-${{ hashFiles('stockboard-app/src/**', 'stockboard-app/index.html', 'stockboard-app/vite.config.js', 'stockboard-app/package-lock.json') }}
@@ -107,22 +107,22 @@ jobs:
 
       - name: Upload Pages artifact
         if: steps.gate.outputs.changed == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: stockboard-app/dist
 
       - name: Deploy to GitHub Pages
         if: steps.gate.outputs.changed == 'true'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # 失败告警(与其它 workflow 同款): 推送失败/部署失败不再无声
   alert-on-failure:
     name: 失败告警
     if: failure()
     needs: [watchdog]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 钉钉失败告警
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
