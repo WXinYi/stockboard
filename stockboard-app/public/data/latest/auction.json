@@ -1,21 +1,21 @@
 {
- "date": "2026-09-24",
+ "date": "2026-09-25",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 26% < 40% (参考)"
+   "红盘占比 21% < 40% (参考)"
   ],
   "data": {
-   "strong": 25,
-   "lbgd": 4,
+   "strong": 42,
+   "lbgd": 5,
    "capacity_ratio": null,
-   "red_ratio": 0.26199575371549894,
+   "red_ratio": 0.2062672811059908,
    "bid_count": [
     128,
     126,
     50,
-    32,
+    36,
     1
    ],
    "bid_total": "132亿",
@@ -28,7 +28,7 @@
    "name": "芯片",
    "burst": 9.3,
    "amount": 370776422.0,
-   "main_net": 36887683.0,
+   "main_net": 47178648.0,
    "src": "爆量L2",
    "strength": 0.0
   },
@@ -37,7 +37,7 @@
    "name": "通信",
    "burst": 9.0,
    "amount": 461066429.0,
-   "main_net": -15031426.0,
+   "main_net": -11525020.0,
    "src": "爆量L2",
    "strength": 0.0
   },
@@ -46,7 +46,7 @@
    "name": "医药",
    "burst": 6.5,
    "amount": 123849845.0,
-   "main_net": -2270721.0,
+   "main_net": 8335567.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -55,7 +55,7 @@
    "name": "汽车零部件",
    "burst": 6.5,
    "amount": 111184113.0,
-   "main_net": 9628480.0,
+   "main_net": -5958360.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -64,7 +64,7 @@
    "name": "地产链",
    "burst": 5.0,
    "amount": 255935092.0,
-   "main_net": 53413358.0,
+   "main_net": 41038582.0,
    "src": "爆量L2",
    "strength": 0.0
   },
@@ -73,7 +73,7 @@
    "name": "新能源汽车",
    "burst": 4.5,
    "amount": 37229241.0,
-   "main_net": -3549534.0,
+   "main_net": -3405355.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -91,167 +91,245 @@
    "name": "机器人概念",
    "burst": 4.0,
    "amount": 120673381.0,
-   "main_net": 18208378.0,
+   "main_net": 19680099.0,
    "src": "爆量L2",
    "strength": 0.0
   },
   {
-   "code": "801057",
-   "name": "石油石化",
+   "code": "801788",
+   "name": "仪器仪表",
    "burst": 0.0,
-   "amount": 103167112.0,
-   "main_net": 2530417.0,
+   "amount": 18698441057.0,
+   "main_net": 693129678.0,
    "src": "强度",
-   "strength": 10.0
+   "strength": 2085.0
   },
   {
-   "code": "801234",
-   "name": "航运",
+   "code": "801123",
+   "name": "服装家纺",
    "burst": 0.0,
-   "amount": 126123350.0,
-   "main_net": 4997222.0,
+   "amount": 14658642261.0,
+   "main_net": 433460560.0,
    "src": "强度",
-   "strength": 9.0
+   "strength": 1524.0
+  },
+  {
+   "code": "801117",
+   "name": "港口",
+   "burst": 0.0,
+   "amount": 2382869326.0,
+   "main_net": 27277014.0,
+   "src": "强度",
+   "strength": 553.0
+  },
+  {
+   "code": "801896",
+   "name": "成人用品",
+   "burst": 0.0,
+   "amount": 1420655351.0,
+   "main_net": 9409507.0,
+   "src": "强度",
+   "strength": 46.0
+  },
+  {
+   "code": "801027",
+   "name": "银行",
+   "burst": 0.0,
+   "amount": 24399464930.0,
+   "main_net": 217975642.0,
+   "src": "强度",
+   "strength": 29.0
+  },
+  {
+   "code": "801319",
+   "name": "福建",
+   "burst": 0.0,
+   "amount": 50650611470.0,
+   "main_net": 412152278.0,
+   "src": "强度",
+   "strength": 12.0
+  },
+  {
+   "code": "801374",
+   "name": "造船",
+   "burst": 0.0,
+   "amount": 10516034453.0,
+   "main_net": 11449224.0,
+   "src": "强度",
+   "strength": -17.0
+  },
+  {
+   "code": "801636",
+   "name": "露营经济",
+   "burst": 0.0,
+   "amount": 4194556588.0,
+   "main_net": 5967716.0,
+   "src": "强度",
+   "strength": -19.0
+  },
+  {
+   "code": "801321",
+   "name": "广电网",
+   "burst": 0.0,
+   "amount": 5133298252.0,
+   "main_net": 138279402.0,
+   "src": "强度",
+   "strength": -21.0
+  },
+  {
+   "code": "801735",
+   "name": "中船系",
+   "burst": 0.0,
+   "amount": 5748895277.0,
+   "main_net": 1342158.0,
+   "src": "强度",
+   "strength": -52.0
   }
  ],
  "strike": [
   {
-   "code": "601811",
-   "name": "新华文轩",
-   "height": 4,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 封单 1.44亿；逆市连板(火种观察) 4板",
+   "code": "600843",
+   "name": "上工申贝",
+   "height": 2,
+   "status": "可做(补涨)",
+   "reason": "龙头谱系[补涨/卡位(机器人概念)] 龙头被关时的板块内补涨位；主线梯队 2板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "000910",
-   "name": "大亚圣象",
-   "height": 4,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[地产链] 5只涨停, 封单 0.71亿；逆市连板(火种观察) 4板",
+   "code": "600802",
+   "name": "福建水泥",
+   "height": 2,
+   "status": "可做",
+   "reason": "龙头谱系[板块龙头(基础建设)] 主线[基础建设] 5只涨停, 封单 0.76亿；主线梯队 2板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "000560",
-   "name": "我爱我家",
-   "height": 3,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(地产链)] 成交 12.1亿 容量核心",
+   "code": "603949",
+   "name": "雪龙集团",
+   "height": 2,
+   "status": "可做",
+   "reason": "主线梯队 2板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "600743",
-   "name": "华远控股",
-   "height": 3,
-   "status": "观察",
-   "reason": "龙头谱系[补涨/卡位(地产链)] 龙头被关时的板块内补涨位",
-   "tag": null,
-   "bid_pct": null
+   "code": "600371",
+   "name": "万向德农",
+   "height": 0,
+   "status": "可做(弱转强)",
+   "reason": "弱转强: 昨日断板分歧, 今竞价 +4.6%, 分时确认才上",
+   "tag": "断板",
+   "bid_pct": 4.63
   },
   {
-   "code": "002119",
-   "name": "康强电子",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(芯片)] 成交 14.8亿 容量核心",
-   "tag": null,
-   "bid_pct": null
+   "code": "301150",
+   "name": "中一科技",
+   "height": 0,
+   "status": "可做(弱转强)",
+   "reason": "弱转强: 昨日断板分歧, 今竞价 +3.5%, 分时确认才上",
+   "tag": "断板",
+   "bid_pct": 3.48
   }
  ],
- "strike_watch": true,
+ "strike_watch": false,
  "bidrank": [
-  {
-   "code": "000910",
-   "name": "大亚圣象",
-   "height": 4,
-   "bid_pct": 10.03,
-   "turnover": 3.92
-  },
   {
    "code": "001234",
    "name": "泰慕士",
-   "height": 3,
+   "height": 4,
    "bid_pct": 10.01,
    "turnover": 3.46
   },
   {
+   "code": "603949",
+   "name": "雪龙集团",
+   "height": 2,
+   "bid_pct": 10.03,
+   "turnover": 3.08
+  },
+  {
    "code": "002238",
    "name": "天威视讯",
-   "height": 2,
+   "height": 3,
    "bid_pct": 8.36,
    "turnover": 3.04
   },
   {
    "code": "601811",
    "name": "新华文轩",
-   "height": 4,
+   "height": 5,
    "bid_pct": 10.0,
    "turnover": 2.906291735630696
   },
   {
    "code": "002614",
    "name": "奥佳华",
-   "height": 3,
+   "height": 4,
    "bid_pct": -0.92,
    "turnover": 2.09
   }
  ],
  "regime": {
-  "regime": "过渡",
-  "relay": 0.19047619047619047,
-  "max_board": 4,
+  "regime": "主线",
+  "relay": 0.2549019607843137,
+  "max_board": 5,
   "top1_days": 3,
   "detail": [
-   "昨日再板率19%",
-   "最高4板",
+   "昨日再板率25%",
+   "最高5板",
    "TOP1连续3日"
   ]
  },
  "cycle": {
-  "stage": "退潮",
+  "stage": "发酵",
   "confidence": 7,
-  "gate": "closed",
+  "gate": "open",
   "mainlines": [
-   "地产链",
-   "芯片",
-   "PCB",
-   "通信",
    "机器人概念",
-   "仪器仪表"
+   "基础建设",
+   "AI应用",
+   "农业",
+   "文化传媒",
+   "服装家纺"
   ],
   "leaders": [
    {
     "code": "601811",
     "name": "新华文轩",
-    "pid": 4,
+    "pid": 5,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "000910",
-    "name": "大亚圣象",
+    "code": "002614",
+    "name": "奥佳华",
     "pid": 4,
     "role": "总龙头"
    },
    {
-    "code": "000560",
-    "name": "我爱我家",
-    "pid": 3,
-    "role": "中军(地产链)"
-   },
-   {
-    "code": "600743",
-    "name": "华远控股",
-    "pid": 3,
-    "role": "补涨/卡位(地产链)"
-   },
-   {
-    "code": "002119",
-    "name": "康强电子",
+    "code": "002164",
+    "name": "宁波东力",
     "pid": 1,
-    "role": "中军(芯片)"
+    "role": "中军(机器人概念)"
+   },
+   {
+    "code": "600843",
+    "name": "上工申贝",
+    "pid": 2,
+    "role": "补涨/卡位(机器人概念)"
+   },
+   {
+    "code": "600802",
+    "name": "福建水泥",
+    "pid": 2,
+    "role": "板块龙头(基础建设)"
+   },
+   {
+    "code": "600815",
+    "name": "厦工股份",
+    "pid": 1,
+    "role": "中军(基础建设)"
    }
   ]
  },
@@ -267,12 +345,11 @@
   "prompt_ver": "v3",
   "latency_s": 48.9,
   "degraded": false,
-  "generated_at": "2026-09-24T02:01:38",
-  "slot": "1000"
+  "generated_at": "2026-09-24T02:01:38"
  },
  "stats": {
-  "pool": 400,
-  "boards": 10,
+  "pool": 397,
+  "boards": 18,
   "genes": 0
  },
  "candidates": [],
