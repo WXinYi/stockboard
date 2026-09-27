@@ -35,8 +35,36 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
+      # 交易日守卫: 非交易日整班跳过(与 crawl.yml 同款解析, 单一数据源 tradingCalendar.js)。
+      # 2026-09-27 补: 09-25(中秋)无守卫, 7 天窗口含假日且 KPL His 假日静默回放上一交易日
+      # 数据 → limit_pool 写入 09-25 幽灵行 52 条; 防复发=此处+trading_days 日历过滤。
+      - name: 交易日守卫
+        id: dayguard
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          try:
+              now = datetime.now(ZoneInfo("Asia/Shanghai"))
+              js = Path("stockboard-app/src/utils/tradingCalendar.js").read_text(encoding="utf-8")
+              hol = {}
+              for m in re.finditer(r"const\s+HOLIDAYS_(\d{4})\s*=\s*new Set\(\[([^\]]*)\]", js):
+                  hol[int(m.group(1))] = set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", m.group(2)))
+              trading = now.weekday() < 5 and now.strftime("%Y-%m-%d") not in hol.get(now.year, ())
+              verdict = "交易日, 正常执行" if trading else "非交易日, 跳过数据步骤"
+              print(f"📅 交易日历年份: {sorted(hol) or '无'} | 北京 {now:%Y-%m-%d %H:%M} → {verdict}")
+          except Exception as e:
+              print(f"⚠️ 交易日历/时钟解析失败({e}), 按交易日放行(保持原行为)")
+              trading = True
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"trading={'true' if trading else 'false'}\n")
+          PY
+
       # auction.db 恢复(Release 迁移): 写库前必恢复; Release 内部自带日快照回退, 失败即终止
       - name: 下载 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -52,11 +80,12 @@ jobs:
       # (09-07/08 漏补事故)。改 7 天滚动窗口(幂等 INSERT OR REPLACE 自愈) + --strict(末尾日
       # 0 条且窗口内其它日有数据 → 失败可见); 去掉 continue-on-error 让断档暴露。
       - name: 涨停池全字段落库(7 天滚动自愈, 周期引擎数据源)
-        if: success()
+        if: success() && steps.dayguard.outputs.trading != 'false'
         run: cd jiarenmens && python scripts/backfill_emotion.py --pool $(TZ=Asia/Shanghai date -d '7 days ago' +%F) $(TZ=Asia/Shanghai date +%F) --strict
 
       # auction.db 上传闸门(Release 迁移): sha 变更才传; 失败即失败不吞
       - name: 上传 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

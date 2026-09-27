@@ -158,12 +158,34 @@ def backfill_breadth(spider: KPLSpider, strict: bool = False,
     return n
 
 
+def _calendar_holidays() -> set:
+    """解析前端 tradingCalendar.js → 全部年份节假日集合(单一数据源,
+    与 crawl.yml 交易日守卫/watchdog.parse_holidays 同款正则)。解析失败返回空集(退回周末近似)。"""
+    js = (ROOT.parent / "stockboard-app" / "src" / "utils" / "tradingCalendar.js").read_text(encoding="utf-8")
+    import re
+    out = set()
+    for m in re.finditer(r"const\s+HOLIDAYS_(\d{4})\s*=\s*new Set\(\[([^\]]*)\]", js):
+        out |= set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", m.group(2)))
+    return out
+
+
 def trading_days(start: str, end: str):
+    # 2026-09-27 修复: 原来只滤周末, 法定节假日(如中秋 09-25)被当交易日回补 —— KPL His 对假日
+    # 静默回放上一交易日数据(09-25 实测 limit_pool 写入 52 条=09-24 回放), 国庆后首个交易日的
+    # 7 天窗口更会一次性污染整个黄金周。接入交易日历后按日跳过。
+    try:
+        hol = _calendar_holidays()
+    except Exception as e:
+        print(f"  ⚠️ 交易日历解析失败({e}), 仅按周末过滤(保持原行为)")
+        hol = set()
     days = []
     d = date.fromisoformat(start)
     while d <= date.fromisoformat(end):
         if d.weekday() < 5:
-            days.append(d.isoformat())
+            if d.isoformat() in hol:
+                print(f"  ⏭ {d.isoformat()} 法定节假日休市, 跳过(防假日回放幽灵行)")
+            else:
+                days.append(d.isoformat())
         d += timedelta(days=1)
     return days
 

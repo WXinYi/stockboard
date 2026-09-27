@@ -31,8 +31,36 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
+      # 交易日守卫: 非交易日只保留部署(与 crawl.yml 同款解析, 单一数据源 tradingCalendar.js)。
+      # 2026-09-27 补: 09-25(中秋)无守卫, KPL His 假日静默回放上一交易日数据, 竞价扫描把
+      # 09-25 幽灵行写进 auction.db 并提交假日 auction.json(防复发=此处+回补脚本日历过滤)。
+      - name: 交易日守卫
+        id: dayguard
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          try:
+              now = datetime.now(ZoneInfo("Asia/Shanghai"))
+              js = Path("stockboard-app/src/utils/tradingCalendar.js").read_text(encoding="utf-8")
+              hol = {}
+              for m in re.finditer(r"const\s+HOLIDAYS_(\d{4})\s*=\s*new Set\(\[([^\]]*)\]", js):
+                  hol[int(m.group(1))] = set(re.findall(r"'(\d{4}-\d{2}-\d{2})'", m.group(2)))
+              trading = now.weekday() < 5 and now.strftime("%Y-%m-%d") not in hol.get(now.year, ())
+              verdict = "交易日, 正常执行" if trading else "非交易日, 跳过数据步骤(只保留部署)"
+              print(f"📅 交易日历年份: {sorted(hol) or '无'} | 北京 {now:%Y-%m-%d %H:%M} → {verdict}")
+          except Exception as e:
+              print(f"⚠️ 交易日历/时钟解析失败({e}), 按交易日放行(保持原行为)")
+              trading = True
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"trading={'true' if trading else 'false'}\n")
+          PY
+
       # auction.db 恢复(Release 迁移): 扫描写库前必恢复; Release 内部自带日快照回退, 失败即终止
       - name: 下载 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -47,6 +75,7 @@ jobs:
       # 竞价跟单快报(09:26, 先于扫描推): 关注选手竞价阶段成交 + 持仓快照
       # continue-on-error: 推送故障不得阻断竞价扫描/落库(主链路优先); 失败用末尾标志检查判红
       - name: 竞价跟单快报
+        if: steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
@@ -54,6 +83,7 @@ jobs:
         run: cd jiarenmens && python scripts/watched_flash.py
 
       - name: 出击选股 + 昨日连板换手Top5 + 钉钉推送(09:29 前)
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
@@ -64,6 +94,7 @@ jobs:
 
       # auction.db 上传闸门(Release 迁移): sha 变更才传; 竞价档案易逝, 失败即失败不吞
       - name: 上传 auction.db 热层
+        if: steps.dayguard.outputs.trading != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -76,6 +107,7 @@ jobs:
           fi
 
       - name: 提交 auction.json + hot_rank.db(前端 raw 即时读取 + 回测积累)
+        if: steps.dayguard.outputs.trading != 'false'
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
