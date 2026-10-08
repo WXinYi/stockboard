@@ -255,7 +255,7 @@ jobs:
           if [ "$NOW" = "$(cat /tmp/auction_sha_start)" ]; then
             echo "auction.db 无变更, 跳过上传"
           else
-            python3 scripts/release_db.py --what auction --upload-latest
+            python3 scripts/release_db.py --what auction --upload-latest --baseline-sha-file /tmp/auction_sha_start
           fi
 
       # dist 壳按代码指纹缓存：数据班(代码未变)恢复缓存后仅 rsync 拼接最新数据，

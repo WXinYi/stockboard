@@ -328,11 +328,50 @@ def _stale_auction_assets(names: list[str], today: date, daily_keep: int, weekly
     return stale
 
 
-def cmd_upload_what(what: str):
+def _upload_baseline_ok(what: str, baseline_sha_file: str = None) -> bool:
+    """auction 热层上传前的乐观并发检查(2026-10-08)。
+
+    多班共写 auction.db 的覆盖竞争(09-24 llm 行被覆盖、10-08 bid_pool/llm_review 再次被覆盖):
+    每班"下载→改→上传", sha 门只防"自己没改", 不防"下载后远端已被别人更新"——旧基线
+    上传会把别人的写入整段抹掉。此守卫在上传前重拉一次远端热层, 与本班下载时的
+    基线 sha(工作流传入 /tmp/auction_sha_start)对比:
+      - 一致   → 远端没人动过, 本班可安全上传(True)
+      - 不一致 → 远端已有他人写入, 本班基线过期 → 跳过上传(False, 让新写入存活)
+      - 拉取失败 → 无法确认 → 跳过(False, 宁可少传一行 breadth, 不可覆盖竞价/llm 数据)
+      - 基线文件缺失 → 老流程无此文件, 保持原行为放行(True, 向后兼容)
+    """
+    if not baseline_sha_file:
+        return True
+    p = Path(baseline_sha_file)
+    if not p.exists():
+        print(f"[upload-guard] ⚠️ 基线文件缺失({baseline_sha_file}), 无法核对 → 按原行为上传")
+        return True
+    baseline = p.read_text().strip()
+    if not baseline:
+        print("[upload-guard] ⚠️ 基线文件为空, 无法核对 → 按原行为上传")
+        return True
+    t = TARGETS[what]
+    with tempfile.TemporaryDirectory() as td:
+        probe = Path(td) / "probe.db"
+        rc = _download_asset_to_db(t["tag"], t["asset"], probe, retries=2)
+        if rc != 0:
+            print("[upload-guard] ⚠️ 远端热层核验拉取失败 → 跳过本次上传(宁可少传, 不可覆盖)")
+            return False
+        remote_sha = hashlib.sha256(probe.read_bytes()).hexdigest()
+    if remote_sha == baseline:
+        print("[upload-guard] ✅ 远端基线一致, 允许上传")
+        return True
+    print("[upload-guard] ⛔ 远端热层已被其他班次更新(基线不一致) → 跳过本次上传, 防覆盖他人写入")
+    return False
+
+
+def cmd_upload_what(what: str, baseline_sha_file: str = None):
     """--what 分发: crawl 走原三层 sync 语义; auction 全量快照直传 + 日/周快照滚动留存。"""
     t = TARGETS[what]
     if what == "crawl":
         cmd_upload_latest()
+        return
+    if not _upload_baseline_ok(what, baseline_sha_file):
         return
     tmp_db = snapshot_db(t["db"])
     try:
@@ -636,6 +675,9 @@ def main():
     ap.add_argument("--what", choices=sorted(TARGETS), default="crawl",
                     help="目标库: crawl_data.db(crawl, 默认) / auction.db(auction)")
     ap.add_argument("--upload-latest", action="store_true")
+    ap.add_argument("--baseline-sha-file", default=None, metavar="FILE",
+                    help="auction 上传前乐观并发检查: 与本班下载时的基线 sha 对比, "
+                         "远端已被他人更新则跳过上传(防热层覆盖, 基线文件缺失时保持原行为)")
     ap.add_argument("--archive-weeks", action="store_true")
     ap.add_argument("--archive-months", action="store_true")
     ap.add_argument("--sync", action="store_true")
@@ -662,7 +704,7 @@ def main():
         tmp.unlink()
         return
     if args.upload_latest:
-        cmd_upload_what(args.what)
+        cmd_upload_what(args.what, args.baseline_sha_file)
     if args.archive_weeks:
         cmd_archive_weeks()
     if args.archive_months:

@@ -94,7 +94,7 @@ jobs:
           if [ "$NOW" = "$(cat /tmp/auction_sha_start)" ]; then
             echo "auction.db 无变更, 跳过上传"
           else
-            python3 scripts/release_db.py --what auction --upload-latest
+            python3 scripts/release_db.py --what auction --upload-latest --baseline-sha-file /tmp/auction_sha_start
           fi
 
       # auction.db 不再进 git(Release auction-state, 上方上传步骤已落库), 无需提交步骤

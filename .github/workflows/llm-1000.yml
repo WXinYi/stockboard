@@ -106,7 +106,7 @@ jobs:
           if [ "$NOW" = "$(cat /tmp/auction_sha_start)" ]; then
             echo "auction.db 无变更, 跳过上传"
           else
-            python3 scripts/release_db.py --what auction --upload-latest
+            python3 scripts/release_db.py --what auction --upload-latest --baseline-sha-file /tmp/auction_sha_start
           fi
 
       - name: 提交 auction.json
