@@ -111,9 +111,32 @@ jobs:
         with:
           path: stockboard-app/dist
 
+      # 09-23 实测: 采集班的 Pages 部署收尾时, 盯盘部署会撞互斥("in progress
+      # deployment" 400)—— 推送已送达, 但页面叠加丢一轮。首搭重试: 失败等 60s
+      # 重发一次, 两次都失败才判红(保留告警链)。
       - name: Deploy to GitHub Pages
+        id: deployment
         if: steps.gate.outputs.changed == 'true'
+        continue-on-error: true
         uses: actions/deploy-pages@v5
+
+      - name: 部署重试等待
+        if: steps.gate.outputs.changed == 'true' && steps.deployment.outcome == 'failure'
+        run: |
+          echo "⏳ 首次 Pages 部署失败(疑似并发互斥), 60s 后重试"
+          sleep 60
+      - name: Deploy to GitHub Pages (重试)
+        id: redeploy
+        if: steps.gate.outputs.changed == 'true' && steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+
+      - name: 部署结果检查
+        if: always() && steps.gate.outputs.changed == 'true'
+        run: |
+          if [ "${{ steps.deployment.outcome }}" != "success" ] && [ "${{ steps.redeploy.outcome }}" != "success" ]; then
+            echo "❌ 两次 Pages 部署均失败(叠加更新未上线, 下一盯盘班自愈)"; exit 1
+          fi
+          echo "✅ 盯盘页面部署成功(含重试)"
 
   # 失败告警(与其它 workflow 同款): 推送失败/部署失败不再无声
   alert-on-failure:
