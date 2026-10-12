@@ -1,197 +1,224 @@
 {
- "date": "2026-10-09",
+ "date": "2026-10-12",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 34% < 40% (参考)"
+   "红盘占比 37% < 40% (参考)"
   ],
   "data": {
-   "strong": 37,
-   "lbgd": 9,
+   "strong": 42,
+   "lbgd": 10,
    "capacity_ratio": null,
-   "red_ratio": 0.34353146853146854,
+   "red_ratio": 0.36519289120069354,
    "bid_count": [
-    104,
-    116,
+    165,
+    140,
     50,
-    6,
-    2
+    29,
+    1
    ],
-   "bid_total": "59亿",
-   "bid_total_prev": "142亿"
+   "bid_total": "150亿",
+   "bid_total_prev": "120亿"
   }
  },
  "boards": [
   {
-   "code": "801660",
-   "name": "通信",
-   "burst": 8.0,
-   "amount": 394663001.0,
-   "main_net": 32877992.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801001",
-   "name": "芯片",
-   "burst": 6.6,
-   "amount": 386027240.0,
-   "main_net": 9011063.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "code": "801045",
+   "name": "医药",
+   "burst": 14.8,
+   "amount": 605702774.0,
+   "main_net": 34386194.0,
+   "src": "爆量+强度",
+   "strength": 52.0
   },
   {
    "code": "801004",
    "name": "锂电池",
-   "burst": 5.5,
-   "amount": 478238048.0,
-   "main_net": 60205313.0,
+   "burst": 13.3,
+   "amount": 716769607.0,
+   "main_net": 125513008.0,
    "src": "爆量L2",
    "strength": 0.0
   },
   {
-   "code": "801062",
-   "name": "军工",
-   "burst": 4.8,
-   "amount": 130173510.0,
-   "main_net": 5692900.0,
+   "code": "801031",
+   "name": "文化传媒",
+   "burst": 11.8,
+   "amount": 537110832.0,
+   "main_net": 5923614.0,
+   "src": "爆量+强度",
+   "strength": 1511.0
+  },
+  {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 11.0,
+   "amount": 257421648.0,
+   "main_net": 32815164.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801165",
-   "name": "氢能源",
-   "burst": 4.6,
-   "amount": 196271532.0,
-   "main_net": -38446605.0,
+   "code": "803023",
+   "name": "AI应用",
+   "burst": 8.3,
+   "amount": 290412432.0,
+   "main_net": 40332366.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801073",
+   "name": "网络安全",
+   "burst": 7.0,
+   "amount": 182941679.0,
+   "main_net": 27963963.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801093",
-   "name": "天然气",
-   "burst": 4.3,
-   "amount": 171927369.0,
-   "main_net": -31027179.0,
+   "code": "801088",
+   "name": "有色金属",
+   "burst": 7.0,
+   "amount": 200564590.0,
+   "main_net": 12052846.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801235",
-   "name": "化工",
-   "burst": 4.0,
-   "amount": 193838901.0,
-   "main_net": -27207179.0,
+   "code": "801220",
+   "name": "食品饮料",
+   "burst": 7.0,
+   "amount": 299616022.0,
+   "main_net": 51188436.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801573",
-   "name": "三季报增长",
-   "burst": 0.0,
-   "amount": 467038016.0,
-   "main_net": 386585.0,
-   "src": "强度",
-   "strength": 46.0
+   "code": "801016",
+   "name": "稀土永磁",
+   "burst": 6.8,
+   "amount": 135478934.0,
+   "main_net": 36848609.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801048",
-   "name": "黄金",
-   "burst": 0.0,
-   "amount": 193291799.0,
-   "main_net": 1801065.0,
-   "src": "强度",
-   "strength": 20.0
+   "code": "801723",
+   "name": "创新药",
+   "burst": 6.5,
+   "amount": 184639504.0,
+   "main_net": 16462967.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801443",
-   "name": "转基因",
+   "code": "801391",
+   "name": "美容护理",
    "burst": 0.0,
-   "amount": 26639022.0,
-   "main_net": 741676.0,
+   "amount": 346698081.0,
+   "main_net": 7454243.0,
    "src": "强度",
-   "strength": 20.0
+   "strength": 506.0
   },
   {
-   "code": "801767",
-   "name": "重庆市",
+   "code": "801950",
+   "name": "中欧概念",
    "burst": 0.0,
-   "amount": 93793192.0,
-   "main_net": 1037729.0,
+   "amount": 215273248.0,
+   "main_net": 265794.0,
    "src": "强度",
-   "strength": 14.0
+   "strength": 16.0
   },
   {
-   "code": "801035",
-   "name": "酿酒",
+   "code": "801012",
+   "name": "钢铁",
    "burst": 0.0,
-   "amount": 169741298.0,
-   "main_net": 3444565.0,
+   "amount": 133156897.0,
+   "main_net": 17791312.0,
    "src": "强度",
-   "strength": 11.0
+   "strength": 12.0
   },
   {
-   "code": "801579",
-   "name": "垃圾发电",
+   "code": "801193",
+   "name": "知识产权",
    "burst": 0.0,
-   "amount": 22783540.0,
-   "main_net": 272696.0,
+   "amount": 434813832.0,
+   "main_net": 608004.0,
    "src": "强度",
    "strength": 8.0
   },
   {
-   "code": "801234",
-   "name": "航运",
+   "code": "801742",
+   "name": "内蒙古自治区",
    "burst": 0.0,
-   "amount": 232910853.0,
-   "main_net": 14514738.0,
+   "amount": 151097491.0,
+   "main_net": 7021095.0,
    "src": "强度",
-   "strength": 6.0
+   "strength": 8.0
   },
   {
-   "code": "801049",
-   "name": "租售同权",
+   "code": "801209",
+   "name": "振兴东北",
    "burst": 0.0,
-   "amount": 120009093.0,
-   "main_net": 2235415.0,
+   "amount": 25265656.0,
+   "main_net": 100786.0,
    "src": "强度",
-   "strength": 4.0
+   "strength": 5.0
   },
   {
-   "code": "801471",
-   "name": "免税",
+   "code": "801637",
+   "name": "文创产品",
    "burst": 0.0,
-   "amount": 111659735.0,
-   "main_net": 1955088.0,
+   "amount": 627090319.0,
+   "main_net": 24190646.0,
    "src": "强度",
-   "strength": 4.0
+   "strength": 5.0
+  },
+  {
+   "code": "801301",
+   "name": "体育产业",
+   "burst": 0.0,
+   "amount": 454361932.0,
+   "main_net": 7889168.0,
+   "src": "强度",
+   "strength": 2.0
+  },
+  {
+   "code": "801321",
+   "name": "广电网",
+   "burst": 0.0,
+   "amount": 154496438.0,
+   "main_net": 3606430.0,
+   "src": "强度",
+   "strength": 2.0
+  },
+  {
+   "code": "801862",
+   "name": "高股息精选",
+   "burst": 0.0,
+   "amount": 509943220.0,
+   "main_net": 1382225.0,
+   "src": "强度",
+   "strength": 1.0
   }
  ],
  "strike": [
   {
-   "code": "002058",
-   "name": "紫竹高科",
-   "height": 3,
-   "status": "可做(矩阵谨慎)",
-   "reason": "龙头谱系[总龙头] 主线[固态电池] 5只涨停, 封单 1.42亿；主线高位(秒板接力对象)",
+   "code": "600825",
+   "name": "新华传媒",
+   "height": 9,
+   "status": "可做(接力)",
+   "reason": "龙头谱系[空间锚(最高连板)] 9连板 | 封单 14.21亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "600241",
-   "name": "时代万恒",
-   "height": 4,
-   "status": "可做(矩阵谨慎)",
-   "reason": "龙头谱系[板块龙头(锂电池)] 主线[锂电池] 4只涨停, 封单 1.26亿；主线高位(秒板接力对象)",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002866",
-   "name": "传艺科技",
-   "height": 3,
-   "status": "可做(矩阵谨慎)",
+   "code": "002242",
+   "name": "九阳股份",
+   "height": 5,
+   "status": "可做(谨慎接力)",
    "reason": "主线高位(秒板接力对象)",
    "tag": null,
    "bid_pct": null
@@ -200,48 +227,48 @@
  "strike_watch": false,
  "bidrank": [
   {
+   "code": "001336",
+   "name": "楚环科技",
+   "height": 2,
+   "bid_pct": 4.14,
+   "turnover": 6.87
+  },
+  {
    "code": "002242",
    "name": "九阳股份",
-   "height": 4,
-   "bid_pct": 4.0,
-   "turnover": 3.8
+   "height": 5,
+   "bid_pct": 9.98,
+   "turnover": 5.9
   },
   {
-   "code": "605303",
-   "name": "园林股份",
-   "height": 3,
-   "bid_pct": 9.99,
-   "turnover": 3.54
+   "code": "600241",
+   "name": "时代万恒",
+   "height": 5,
+   "bid_pct": 6.12,
+   "turnover": 4.8
   },
   {
-   "code": "002058",
-   "name": "紫竹高科",
-   "height": 3,
-   "bid_pct": 9.99,
-   "turnover": 2.91
-  },
-  {
-   "code": "603928",
-   "name": "兴业股份",
+   "code": "600812",
+   "name": "华北制药",
    "height": 2,
-   "bid_pct": 4.87,
-   "turnover": 2.14
+   "bid_pct": 9.95,
+   "turnover": 4.56
   },
   {
    "code": "600825",
    "name": "新华传媒",
    "height": 5,
-   "bid_pct": 10.01,
-   "turnover": 1.99
+   "bid_pct": 9.98,
+   "turnover": 3.23
   }
  ],
  "regime": {
-  "regime": "过渡",
-  "relay": 0.19230769230769232,
+  "regime": "主线",
+  "relay": 0.27906976744186046,
   "max_board": 5,
   "top1_days": 1,
   "detail": [
-   "昨日再板率19%",
+   "昨日再板率28%",
    "最高5板",
    "TOP1连续1日"
   ]
@@ -251,37 +278,31 @@
   "confidence": 7,
   "gate": "open",
   "mainlines": [
-   "固态电池",
-   "锂电池",
-   "并购重组",
-   "电源",
-   "服装家纺",
-   "石油石化"
+   "AI应用",
+   "AI视频",
+   "零售",
+   "农业",
+   "AI安全",
+   "医药"
   ],
   "leaders": [
    {
     "code": "600825",
     "name": "新华传媒",
-    "pid": 8,
+    "pid": 9,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "002058",
-    "name": "紫竹高科",
-    "pid": 3,
-    "role": "总龙头"
+    "code": "300413",
+    "name": "芒果超媒",
+    "pid": 1,
+    "role": "中军(AI应用)"
    },
    {
-    "code": "603906",
-    "name": "龙蟠科技",
-    "pid": 2,
-    "role": "中军(固态电池)"
-   },
-   {
-    "code": "600241",
-    "name": "时代万恒",
-    "pid": 4,
-    "role": "板块龙头(锂电池)"
+    "code": "300364",
+    "name": "中文在线",
+    "pid": 1,
+    "role": "中军(AI视频)"
    }
   ]
  },
@@ -297,12 +318,11 @@
   "prompt_ver": "v3",
   "latency_s": 9.4,
   "degraded": false,
-  "generated_at": "2026-10-09T02:01:09",
-  "slot": "1000"
+  "generated_at": "2026-10-09T02:01:09"
  },
  "stats": {
-  "pool": 371,
-  "boards": 16,
+  "pool": 414,
+  "boards": 20,
   "genes": 0
  },
  "candidates": [],
