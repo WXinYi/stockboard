@@ -1,144 +1,164 @@
 {
- "date": "2026-10-14",
+ "date": "2026-10-15",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 27% < 40% (参考)"
+   "情绪值7 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
+   "连板高度0 < 2 (参考: 赚钱效应弱)",
+   "红盘占比 2% < 40% (参考)"
   ],
   "data": {
-   "strong": 30,
-   "lbgd": 4,
+   "strong": 7,
+   "lbgd": 0,
    "capacity_ratio": null,
-   "red_ratio": 0.2678686413393432,
+   "red_ratio": 0.018294914013904134,
    "bid_count": [
-    121,
-    115,
+    124,
+    179,
     50,
-    30,
-    1
+    2,
+    7
    ],
-   "bid_total": "49亿",
-   "bid_total_prev": "165亿"
+   "bid_total": "207亿",
+   "bid_total_prev": "117亿"
   }
  },
  "boards": [
   {
-   "code": "801042",
-   "name": "分散染料",
+   "code": "801660",
+   "name": "通信",
+   "burst": 7.6,
+   "amount": 273001461.0,
+   "main_net": 74733427.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801027",
+   "name": "银行",
+   "burst": 7.5,
+   "amount": 200977251.0,
+   "main_net": -31835953.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801045",
+   "name": "医药",
+   "burst": 7.0,
+   "amount": 324327186.0,
+   "main_net": 236674.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801081",
+   "name": "证券",
+   "burst": 7.0,
+   "amount": 117603539.0,
+   "main_net": -20069106.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801199",
+   "name": "汽车零部件",
+   "burst": 6.8,
+   "amount": 161665838.0,
+   "main_net": 19287389.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801120",
+   "name": "电力",
+   "burst": 6.0,
+   "amount": 65695052.0,
+   "main_net": 1080545.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801004",
+   "name": "锂电池",
+   "burst": 5.8,
+   "amount": 369184651.0,
+   "main_net": 50211315.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801216",
+   "name": "PCB",
+   "burst": 5.3,
+   "amount": 422996283.0,
+   "main_net": 96122068.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801093",
+   "name": "天然气",
    "burst": 5.0,
-   "amount": 173714927.0,
-   "main_net": -37592686.0,
-   "src": "爆量L2",
+   "amount": 64957352.0,
+   "main_net": -2319637.0,
+   "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801235",
    "name": "化工",
-   "burst": 4.5,
-   "amount": 119325145.0,
-   "main_net": 6431007.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801065",
-   "name": "注册制次新股",
-   "burst": 4.0,
-   "amount": 38369002.0,
-   "main_net": -2928491.0,
+   "burst": 5.0,
+   "amount": 79944798.0,
+   "main_net": -8386000.0,
    "src": "爆量L1",
    "strength": 0.0
-  },
-  {
-   "code": "801112",
-   "name": "互联网金融",
-   "burst": 4.0,
-   "amount": 48855774.0,
-   "main_net": 14889055.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801209",
-   "name": "振兴东北",
-   "burst": 0.0,
-   "amount": 199511286.0,
-   "main_net": 4221987.0,
-   "src": "强度",
-   "strength": 70.0
-  },
-  {
-   "code": "801137",
-   "name": "醋酸",
-   "burst": 0.0,
-   "amount": 4850262.0,
-   "main_net": 560880.0,
-   "src": "强度",
-   "strength": 46.0
-  },
-  {
-   "code": "801850",
-   "name": "食品安全",
-   "burst": 0.0,
-   "amount": 105994845.0,
-   "main_net": 170586.0,
-   "src": "强度",
-   "strength": 2.0
-  },
-  {
-   "code": "801082",
-   "name": "ST摘帽",
-   "burst": 0.0,
-   "amount": 82902179.0,
-   "main_net": 103427.0,
-   "src": "强度",
-   "strength": -12.0
   }
  ],
  "strike": [
   {
+   "code": "002696",
+   "name": "百洋股份",
+   "height": 4,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 封单 1.66亿；逆市连板(火种观察) 4板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
    "code": "002343",
    "name": "慈文传媒",
-   "height": 3,
+   "height": 4,
    "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 3连板 | AI应用主线空间龙, 封单 2.52亿；逆市连板(火种观察) 3板",
+   "reason": "龙头谱系[总龙头] 主线[AI视频] 3只涨停, 封单 2.23亿；逆市连板(火种观察) 4板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "002639",
-   "name": "雪人集团",
+   "code": "603533",
+   "name": "掌阅科技",
    "height": 1,
    "status": "观察(容量)",
-   "reason": "龙头谱系[中军(冰雪产业)] 成交 13.0亿 容量核心",
+   "reason": "龙头谱系[中军(AI视频)] 成交 19.3亿 容量核心",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "002579",
-   "name": "中京电子",
+   "code": "603598",
+   "name": "引力传媒",
    "height": 1,
    "status": "观察(容量)",
-   "reason": "龙头谱系[中军(PCB)] 成交 12.6亿 容量核心",
+   "reason": "龙头谱系[中军(AI应用)] 成交 11.5亿 容量核心",
    "tag": null,
    "bid_pct": null
   },
   {
    "code": "603096",
    "name": "新经典",
-   "height": 3,
+   "height": 4,
    "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 3板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "605577",
-   "name": "龙版传媒",
-   "height": 3,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 3板",
+   "reason": "逆市连板(火种观察) 4板",
    "tag": null,
    "bid_pct": null
   }
@@ -148,47 +168,47 @@
   {
    "code": "002343",
    "name": "慈文传媒",
-   "height": 3,
-   "bid_pct": 9.65,
-   "turnover": 7.47
+   "height": 4,
+   "bid_pct": 10.0,
+   "turnover": 8.04
+  },
+  {
+   "code": "000530",
+   "name": "冰山冷热",
+   "height": 2,
+   "bid_pct": 9.84,
+   "turnover": 7.97
+  },
+  {
+   "code": "001318",
+   "name": "阳光乳业",
+   "height": 2,
+   "bid_pct": 8.49,
+   "turnover": 5.05
   },
   {
    "code": "603096",
    "name": "新经典",
-   "height": 3,
-   "bid_pct": 4.91,
-   "turnover": 7.176205216690387
+   "height": 4,
+   "bid_pct": -5.24,
+   "turnover": 3.5169408115401937
   },
   {
-   "code": "001231",
-   "name": "农心科技",
-   "height": 2,
-   "bid_pct": -7.06,
-   "turnover": 3.95
-  },
-  {
-   "code": "603968",
-   "name": "醋化股份",
-   "height": 2,
-   "bid_pct": 4.94,
-   "turnover": 2.76
-  },
-  {
-   "code": "605136",
-   "name": "丽人丽妆",
-   "height": 3,
-   "bid_pct": 9.98,
-   "turnover": 2.23
+   "code": "002696",
+   "name": "百洋股份",
+   "height": 4,
+   "bid_pct": 9.85,
+   "turnover": 3.13
   }
  ],
  "regime": {
-  "regime": "电风扇",
-  "relay": 0.21739130434782608,
-  "max_board": 3,
+  "regime": "过渡",
+  "relay": 0.19402985074626866,
+  "max_board": 4,
   "top1_days": 1,
   "detail": [
-   "昨日再板率22%",
-   "最高3板",
+   "昨日再板率19%",
+   "最高4板",
    "TOP1连续1日"
   ]
  },
@@ -197,31 +217,35 @@
   "confidence": 7,
   "gate": "closed",
   "mainlines": [
-   "冰雪产业",
-   "PCB",
-   "通信",
+   "AI视频",
    "AI应用",
-   "分散染料",
-   "股权转让"
+   "版权",
+   "游戏"
   ],
   "leaders": [
    {
-    "code": "002343",
-    "name": "慈文传媒",
-    "pid": 3,
+    "code": "002696",
+    "name": "百洋股份",
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "002639",
-    "name": "雪人集团",
-    "pid": 1,
-    "role": "中军(冰雪产业)"
+    "code": "002343",
+    "name": "慈文传媒",
+    "pid": 4,
+    "role": "总龙头"
    },
    {
-    "code": "002579",
-    "name": "中京电子",
+    "code": "603533",
+    "name": "掌阅科技",
     "pid": 1,
-    "role": "中军(PCB)"
+    "role": "中军(AI视频)"
+   },
+   {
+    "code": "603598",
+    "name": "引力传媒",
+    "pid": 1,
+    "role": "中军(AI应用)"
    }
   ]
  },
@@ -237,12 +261,11 @@
   "prompt_ver": "v3",
   "latency_s": 10.0,
   "degraded": false,
-  "generated_at": "2026-10-14T02:01:10",
-  "slot": "1000"
+  "generated_at": "2026-10-14T02:01:10"
  },
  "stats": {
-  "pool": 220,
-  "boards": 8,
+  "pool": 523,
+  "boards": 10,
   "genes": 0
  },
  "candidates": [],
