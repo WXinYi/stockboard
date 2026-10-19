@@ -274,7 +274,7 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 | 实时涨停池/格局 | 开盘啦 + 东财实时 | `scripts/cycle_push.py` | 只推钉钉，不落数据库 |
 | 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | **已停用**（2026-08-29 后未再运行，代码保留） |
 
-**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（10 人，硬编码 zh_id+name）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。改名单只改这一处（盘中即时提醒 watchdog.yml 与钉钉推送自动跟随）；⚠️ 前端排行页置顶名单是另一份硬编码（`stockboard-app/src/composables/useData.js` 的 `WATCHED_IDS`，2026-09-22 起为唯一前端定义点，RankingsTab 从其注入取用）——**改 main.py 名单必须同步它**，否则新关注选手不置顶（9/22 大道可寻缺失即此因）。
+**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（硬编码 zh_id+name，当前 11 人）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。**改名单只改这一处**：钉钉推送（watchdog/快报/日报）与前端置顶/⭐ 全部自动跟随——export_json 把名单写入 `core.json` 的 `watchedPlayerIds`，前端 `useData.js` 从该字段派生（2026-10-19 起，废除旧的前端硬编码副本；旧副本两处维护曾在 9/22 漏大道可寻、10/15 漏月儿兰）。前端仅在 core.json 尚无该字段的旧缓存下回退到冻结的 `FALLBACK_WATCHED`。
 
 ### 2.3 采集过程（main.py）
 

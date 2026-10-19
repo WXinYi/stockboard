@@ -3,9 +3,10 @@ import {
   fetchCore, fetchCopy, fetchStocks, fetchNameMap, fetchPlayersIndex,
 } from '../data/loader.js'
 
-// 置顶 = 关注选手(唯一数据源: jiarenmens/main.py WATCHED_PLAYERS; 2026-09-22 对齐:
-// 移除 9/5 淘汰的 900401128/900422074/900443192/900315547, 补 900438148/900407488/900237280/900461598)
-export const WATCHED_IDS = new Set(['900456476', '900450475', '900351276', '900240956', '900438148', '900376763', '900439290', '900407488', '900237280', '900461598'])
+// 置顶 = 关注选手。唯一数据源: jiarenmens/main.py WATCHED_PLAYERS → export_json 写入
+// core.json watchedPlayerIds, 前端随数据自动同步(2026-10-19 起, 结束两处手工对齐——
+// 10-15 加月儿兰就漏过一次)。FALLBACK 仅供旧缓存 core.json 尚无该字段时回退, 冻结不维护。
+const FALLBACK_WATCHED = new Set(['900456476', '900450475', '900351276', '900240956', '900438148', '900376763', '900439290', '900407488', '900237280', '900461598', '900293400'])
 
 // 分片 ref 表 + 加载器表（ensureSlices 用）
 const SLICE_REF = {
@@ -89,6 +90,10 @@ export function useData() {
   const crawlTime = computed(() => slices.core.value?.crawl_time || '')
   const qualityPlayerCount = computed(() => slices.core.value?.qualityPlayerCount || 0)
   const tradedPlayerIds = computed(() => new Set(slices.core.value?.tradedPlayerIds || []))
+  const watchedIds = computed(() => {
+    const ids = slices.core.value?.watchedPlayerIds
+    return ids?.length ? new Set(ids) : FALLBACK_WATCHED
+  })
 
   // ══ 来自 copy.json ══
   const copyTradeSignals = computed(() => slices.copy.value?.copyTradeSignals || { bs: [], ch: [], sw: [], hq: [] })
@@ -118,8 +123,8 @@ export function useData() {
   const sortedPlayers = computed(() => {
     const list = [...allPlayers.value]
     list.sort((a, b) => (b[sortKey.value] || 0) - (a[sortKey.value] || 0))
-    const pinned = list.filter(p => WATCHED_IDS.has(p.zh_id))
-    const rest = list.filter(p => !WATCHED_IDS.has(p.zh_id))
+    const pinned = list.filter(p => watchedIds.value.has(p.zh_id))
+    const rest = list.filter(p => !watchedIds.value.has(p.zh_id))
       .filter(p => !qualityOnly.value || isQuality(p))
     const rankMap = {}
     list.forEach((p, i) => { rankMap[p.zh_id] = i + 1 })
@@ -201,7 +206,7 @@ export function useData() {
     playerStyles, fullRankPlayers, copyTradeSignals,
     qualityPlayerCount, tradedPlayerIds, tradeAlerts, suspectedClears, playerNameMap,
     playerLookup, sliceErrors, sliceLoaded,
-    watchedIds: WATCHED_IDS,
+    watchedIds,
     ensureSlices, loadData, clearSlices,
   }
 }

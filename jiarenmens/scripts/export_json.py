@@ -679,6 +679,9 @@ def export(db_path, crawl_date, out_dir):
     sys.path.insert(0, str(ROOT))
     from main import WATCHED_PLAYERS  # noqa: E402
     watched_ids = {wid for wid, _ in WATCHED_PLAYERS}
+    # 关注名单随 core.json 下发(2026-10-19): main.py WATCHED_PLAYERS 是唯一真源,
+    # 前端置顶/⭐ 改读此字段自动同步, 废除前端硬编码副本(10-15 加月儿兰就漏过对齐)。
+    summary_slices["core"]["watchedPlayerIds"] = [wid for wid, _ in WATCHED_PLAYERS]
     active_ids = ({p.get("zh_id") for p in positions_raw}
                   | {t.get("zh_id") for t in trades_raw}
                   | set(traded_player_ids)

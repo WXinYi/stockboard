@@ -26,12 +26,12 @@ const { sorted: sortedList, toggle: tog, indicator: ind, sortKey, sortDir } = us
 // 应用筛选
 const displayList = computed(() => {
   let list = [...sortedList.value]
-  let filtered = list.filter(p => !WATCHED.has(p.zh_id))
+  let filtered = list.filter(p => !WATCHED.value.has(p.zh_id))
   if (qualityOn.value) filtered = filtered.filter(isQuality)
   if (todayOnly.value && hasTodayTrades.value) filtered = filtered.filter(p => tradedPlayerIds.value.has(p.zh_id))
   if (minRanks.value > 0) filtered = filtered.filter(p => (p.ranks || []).length >= minRanks.value)
   // 置顶选手独立（渲染时放在最前）
-  const pinned = list.filter(p => WATCHED.has(p.zh_id))
+  const pinned = list.filter(p => WATCHED.value.has(p.zh_id))
   return { pinned, rest: filtered }
 })
 
