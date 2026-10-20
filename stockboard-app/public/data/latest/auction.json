@@ -1,192 +1,209 @@
 {
- "date": "2026-10-19",
+ "date": "2026-10-20",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值22 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 15% < 40% (参考)"
+   "红盘占比 29% < 40% (参考)"
   ],
   "data": {
-   "strong": 22,
-   "lbgd": 3,
+   "strong": 26,
+   "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.1504950495049505,
+   "red_ratio": 0.2906091370558376,
    "bid_count": [
-    130,
-    130,
+    111,
+    115,
     50,
-    31,
-    2
+    24,
+    1
    ],
-   "bid_total": "134亿",
-   "bid_total_prev": "138亿"
+   "bid_total": "118亿",
+   "bid_total_prev": "134亿"
   }
  },
  "boards": [
   {
-   "code": "801062",
-   "name": "军工",
-   "burst": 13.0,
-   "amount": 347463793.0,
-   "main_net": 7482537.0,
+   "code": "801159",
+   "name": "机器人概念",
+   "burst": 12.5,
+   "amount": 192198392.0,
+   "main_net": 7275604.0,
    "src": "爆量L2",
    "strength": 0.0
   },
   {
    "code": "801199",
    "name": "汽车零部件",
-   "burst": 8.0,
-   "amount": 181513533.0,
-   "main_net": -3634217.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801829",
-   "name": "低空经济",
-   "burst": 7.0,
-   "amount": 420704982.0,
-   "main_net": -206311292.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801003",
-   "name": "5G",
-   "burst": 4.1,
-   "amount": 429447272.0,
-   "main_net": 98353333.0,
+   "burst": 6.0,
+   "amount": 248943062.0,
+   "main_net": 14379554.0,
    "src": "爆量L1",
    "strength": 0.0
+  },
+  {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 5.3,
+   "amount": 649879805.0,
+   "main_net": 4134197.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801004",
+   "name": "锂电池",
+   "burst": 4.1,
+   "amount": 266267228.0,
+   "main_net": 24204673.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801896",
+   "name": "成人用品",
+   "burst": 0.0,
+   "amount": 15433948.0,
+   "main_net": 811648.0,
+   "src": "强度",
+   "strength": 11.0
+  },
+  {
+   "code": "801399",
+   "name": "智慧城市",
+   "burst": 0.0,
+   "amount": 732697715.0,
+   "main_net": 318253.0,
+   "src": "强度",
+   "strength": -16.0
   }
  ],
  "strike": [
   {
-   "code": "605058",
-   "name": "澳弘电子",
-   "height": 0,
-   "status": "可做(弱转强)",
-   "reason": "弱转强: 昨日断板分歧, 今竞价 +2.8%, 分时确认才上",
-   "tag": "断板",
-   "bid_pct": 2.75
-  },
-  {
-   "code": "002510",
-   "name": "天汽模",
-   "height": 0,
-   "status": "可做(弱转强)",
-   "reason": "弱转强: 昨日烂板分歧, 今竞价 +4.0%, 分时确认才上",
-   "tag": "烂板",
-   "bid_pct": 4.03
-  },
-  {
-   "code": "000099",
-   "name": "中信海直",
-   "height": 0,
-   "status": "可做(弱转强)",
-   "reason": "弱转强: 昨日烂板分歧, 今竞价 +3.0%, 分时确认才上",
-   "tag": "烂板",
-   "bid_pct": 2.98
-  },
-  {
-   "code": "002683",
-   "name": "广东宏大",
-   "height": 0,
-   "status": "可做(弱转强)",
-   "reason": "弱转强: 昨日烂板分歧, 今竞价 +3.3%, 分时确认才上",
-   "tag": "烂板",
-   "bid_pct": 3.26
-  },
-  {
-   "code": "600721",
-   "name": "百花医药",
-   "height": 0,
-   "status": "可做(弱转强)",
-   "reason": "弱转强: 昨日断板分歧, 今竞价 +1.9%, 分时确认才上",
-   "tag": "断板",
-   "bid_pct": 1.91
-  }
- ],
- "strike_watch": false,
- "bidrank": [
-  {
-   "code": "600825",
-   "name": "新华传媒",
-   "height": 5,
-   "bid_pct": -1.06,
-   "turnover": 6.066879245533105
-  },
-  {
    "code": "003029",
    "name": "吉大正元",
+   "height": 3,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[空间锚(最高连板)] 3连板 | AI应用主线空间龙, 封单 2.01亿；逆市连板(火种观察) 3板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "603278",
+   "name": "大业股份",
    "height": 2,
-   "bid_pct": 10.0,
-   "turnover": 2.68
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[总龙头] 主线[机器人概念] 8只涨停, 封单 0.62亿",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "603626",
+   "name": "科森科技",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(机器人概念)] 成交 8.2亿 容量核心",
+   "tag": null,
+   "bid_pct": null
   },
   {
    "code": "002889",
    "name": "东方嘉盛",
-   "height": 2,
-   "bid_pct": 5.87,
-   "turnover": 2.6
+   "height": 3,
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 3板",
+   "tag": null,
+   "bid_pct": null
   },
   {
-   "code": "000530",
-   "name": "冰山冷热",
-   "height": 4,
-   "bid_pct": -8.01,
-   "turnover": 2.32
+   "code": "002724",
+   "name": "海洋王",
+   "height": 2,
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 2板",
+   "tag": null,
+   "bid_pct": null
+  }
+ ],
+ "strike_watch": true,
+ "bidrank": [
+  {
+   "code": "002724",
+   "name": "海洋王",
+   "height": 2,
+   "bid_pct": 4.28,
+   "turnover": 3.52
   },
   {
-   "code": "603999",
-   "name": "读者传媒",
+   "code": "600148",
+   "name": "长春一东",
    "height": 2,
-   "bid_pct": -6.8,
-   "turnover": 1.8078862939112719
+   "bid_pct": 6.09,
+   "turnover": 3.21
+  },
+  {
+   "code": "003029",
+   "name": "吉大正元",
+   "height": 3,
+   "bid_pct": 10.0,
+   "turnover": 3.07
+  },
+  {
+   "code": "600860",
+   "name": "京城股份",
+   "height": 2,
+   "bid_pct": 7.24,
+   "turnover": 2.975564109671479
+  },
+  {
+   "code": "002889",
+   "name": "东方嘉盛",
+   "height": 3,
+   "bid_pct": -2.48,
+   "turnover": 2.67
   }
  ],
  "regime": {
-  "regime": "过渡",
-  "relay": 0.16666666666666666,
-  "max_board": 5,
+  "regime": "电风扇",
+  "relay": 0.18032786885245902,
+  "max_board": 3,
   "top1_days": 1,
   "detail": [
-   "昨日再板率17%",
-   "最高5板",
+   "昨日再板率18%",
+   "最高3板",
    "TOP1连续1日"
   ]
  },
  "cycle": {
-  "stage": "分歧",
+  "stage": "退潮",
   "confidence": 7,
-  "gate": "half",
+  "gate": "closed",
   "mainlines": [
-   "低空经济",
-   "军工",
+   "机器人概念",
+   "AI应用",
+   "通信",
    "飞行汽车",
-   "特斯拉概念",
-   "并购重组",
-   "机器人概念"
+   "低空经济",
+   "算力"
   ],
   "leaders": [
    {
-    "code": "600825",
-    "name": "新华传媒",
-    "pid": 5,
+    "code": "003029",
+    "name": "吉大正元",
+    "pid": 3,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "000887",
-    "name": "中鼎股份",
-    "pid": 1,
-    "role": "中军(低空经济)"
+    "code": "603278",
+    "name": "大业股份",
+    "pid": 2,
+    "role": "总龙头"
    },
    {
-    "code": "601606",
-    "name": "长城军工",
+    "code": "603626",
+    "name": "科森科技",
     "pid": 1,
-    "role": "中军(军工)"
+    "role": "中军(机器人概念)"
    }
   ]
  },
@@ -202,12 +219,11 @@
   "prompt_ver": "v3",
   "latency_s": 7.3,
   "degraded": false,
-  "generated_at": "2026-10-19T02:01:02",
-  "slot": "1000"
+  "generated_at": "2026-10-19T02:01:02"
  },
  "stats": {
-  "pool": 238,
-  "boards": 4,
+  "pool": 295,
+  "boards": 6,
   "genes": 0
  },
  "candidates": [],
