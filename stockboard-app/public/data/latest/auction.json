@@ -1,209 +1,341 @@
 {
- "date": "2026-10-20",
+ "date": "2026-10-21",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 29% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 26,
+   "strong": 44,
    "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.2906091370558376,
+   "red_ratio": 0.7073436478535629,
    "bid_count": [
-    111,
-    115,
+    129,
+    123,
     50,
-    24,
+    36,
     1
    ],
-   "bid_total": "118亿",
-   "bid_total_prev": "134亿"
+   "bid_total": "131亿",
+   "bid_total_prev": "118亿"
   }
  },
  "boards": [
   {
    "code": "801159",
    "name": "机器人概念",
-   "burst": 12.5,
-   "amount": 192198392.0,
-   "main_net": 7275604.0,
-   "src": "爆量L2",
-   "strength": 0.0
-  },
-  {
-   "code": "801199",
-   "name": "汽车零部件",
-   "burst": 6.0,
-   "amount": 248943062.0,
-   "main_net": 14379554.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "burst": 16.0,
+   "amount": 513796688.0,
+   "main_net": 11017838.0,
+   "src": "爆量+强度",
+   "strength": 1531.0
   },
   {
    "code": "801001",
    "name": "芯片",
-   "burst": 5.3,
-   "amount": 649879805.0,
-   "main_net": 4134197.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "burst": 12.3,
+   "amount": 1715336205.0,
+   "main_net": 307712497.0,
+   "src": "爆量+强度",
+   "strength": 59.0
   },
   {
    "code": "801004",
    "name": "锂电池",
-   "burst": 4.1,
-   "amount": 266267228.0,
-   "main_net": 24204673.0,
+   "burst": 9.5,
+   "amount": 176150077.0,
+   "main_net": -18328383.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801896",
-   "name": "成人用品",
-   "burst": 0.0,
-   "amount": 15433948.0,
-   "main_net": 811648.0,
-   "src": "强度",
-   "strength": 11.0
+   "code": "801328",
+   "name": "消费电子",
+   "burst": 7.0,
+   "amount": 216908823.0,
+   "main_net": 8482458.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801399",
-   "name": "智慧城市",
+   "code": "801660",
+   "name": "通信",
+   "burst": 6.3,
+   "amount": 974718869.0,
+   "main_net": 142094348.0,
+   "src": "爆量+强度",
+   "strength": 60.0
+  },
+  {
+   "code": "801003",
+   "name": "5G",
+   "burst": 5.5,
+   "amount": 349679343.0,
+   "main_net": 60050071.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801351",
+   "name": "科创板",
+   "burst": 5.5,
+   "amount": 326805968.0,
+   "main_net": 35461206.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801723",
+   "name": "创新药",
+   "burst": 4.8,
+   "amount": 271596475.0,
+   "main_net": 35757449.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801807",
+   "name": "算力",
+   "burst": 4.5,
+   "amount": 244339691.0,
+   "main_net": 29433559.0,
+   "src": "爆量+强度",
+   "strength": 451.0
+  },
+  {
+   "code": "801071",
+   "name": "保险",
+   "burst": 4.3,
+   "amount": 69763238.0,
+   "main_net": 20770125.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801878",
+   "name": "端侧AI",
    "burst": 0.0,
-   "amount": 732697715.0,
-   "main_net": 318253.0,
+   "amount": 1679015440.0,
+   "main_net": 20171852.0,
    "src": "强度",
-   "strength": -16.0
+   "strength": 562.0
+  },
+  {
+   "code": "803023",
+   "name": "AI应用",
+   "burst": 0.0,
+   "amount": 2276502784.0,
+   "main_net": 49458489.0,
+   "src": "强度",
+   "strength": 540.0
+  },
+  {
+   "code": "801584",
+   "name": "数字经济",
+   "burst": 0.0,
+   "amount": 3783582625.0,
+   "main_net": 75999459.0,
+   "src": "强度",
+   "strength": 535.0
+  },
+  {
+   "code": "803029",
+   "name": "物理AI",
+   "burst": 0.0,
+   "amount": 695086719.0,
+   "main_net": 3923176.0,
+   "src": "强度",
+   "strength": 533.0
+  },
+  {
+   "code": "801062",
+   "name": "军工",
+   "burst": 0.0,
+   "amount": 2334821170.0,
+   "main_net": 14804069.0,
+   "src": "强度",
+   "strength": 530.0
+  },
+  {
+   "code": "801694",
+   "name": "非金属材料",
+   "burst": 0.0,
+   "amount": 183133021.0,
+   "main_net": 6539149.0,
+   "src": "强度",
+   "strength": 73.0
+  },
+  {
+   "code": "801788",
+   "name": "仪器仪表",
+   "burst": 0.0,
+   "amount": 85123333.0,
+   "main_net": 1597265.0,
+   "src": "强度",
+   "strength": 67.0
+  },
+  {
+   "code": "801067",
+   "name": "面板",
+   "burst": 0.0,
+   "amount": 923755341.0,
+   "main_net": 11805571.0,
+   "src": "强度",
+   "strength": 60.0
+  },
+  {
+   "code": "801445",
+   "name": "元器件",
+   "burst": 0.0,
+   "amount": 418255623.0,
+   "main_net": 18545163.0,
+   "src": "强度",
+   "strength": 55.0
+  },
+  {
+   "code": "801190",
+   "name": "卫星导航",
+   "burst": 0.0,
+   "amount": 943202206.0,
+   "main_net": 2554714.0,
+   "src": "强度",
+   "strength": 54.0
   }
  ],
  "strike": [
   {
    "code": "003029",
    "name": "吉大正元",
-   "height": 3,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 3连板 | AI应用主线空间龙, 封单 2.01亿；逆市连板(火种观察) 3板",
+   "height": 4,
+   "status": "可做(低吸)",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | AI应用主线空间龙, 封单 1.12亿",
    "tag": null,
    "bid_pct": null
   },
   {
    "code": "603278",
    "name": "大业股份",
-   "height": 2,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[机器人概念] 8只涨停, 封单 0.62亿",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "603626",
-   "name": "科森科技",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(机器人概念)] 成交 8.2亿 容量核心",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002889",
-   "name": "东方嘉盛",
    "height": 3,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 3板",
+   "status": "可做(低吸)",
+   "reason": "龙头谱系[总龙头] 主线[机器人概念] 19只涨停, 封单 2.28亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "002724",
-   "name": "海洋王",
+   "code": "002181",
+   "name": "粤传媒",
    "height": 2,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 2板",
+   "status": "可做(首板套利)",
+   "reason": "1进2: 昨日首板, 今竞价 +4.6%；首板试错: 主线首板, 今竞价 +4.6%",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002242",
+   "name": "九阳股份",
+   "height": 2,
+   "status": "可做(首板套利)",
+   "reason": "1进2: 昨日首板, 今竞价 +1.9%；首板试错: 主线首板, 今竞价 +1.9%",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "001239",
+   "name": "永达股份",
+   "height": 2,
+   "status": "可做(首板套利)",
+   "reason": "1进2: 昨日首板, 今竞价 +5.2%",
    "tag": null,
    "bid_pct": null
   }
  ],
- "strike_watch": true,
+ "strike_watch": false,
  "bidrank": [
   {
-   "code": "002724",
-   "name": "海洋王",
-   "height": 2,
-   "bid_pct": 4.28,
-   "turnover": 3.52
-  },
-  {
-   "code": "600148",
-   "name": "长春一东",
-   "height": 2,
-   "bid_pct": 6.09,
-   "turnover": 3.21
+   "code": "600178",
+   "name": "东安动力",
+   "height": 3,
+   "bid_pct": 9.99,
+   "turnover": 6.02
   },
   {
    "code": "003029",
    "name": "吉大正元",
+   "height": 4,
+   "bid_pct": 8.12,
+   "turnover": 3.8
+  },
+  {
+   "code": "600148",
+   "name": "长春一东",
    "height": 3,
-   "bid_pct": 10.0,
-   "turnover": 3.07
+   "bid_pct": -3.3,
+   "turnover": 2.24
   },
   {
    "code": "600860",
    "name": "京城股份",
-   "height": 2,
-   "bid_pct": 7.24,
-   "turnover": 2.975564109671479
+   "height": 3,
+   "bid_pct": -5.96,
+   "turnover": 2.055583909820631
   },
   {
-   "code": "002889",
-   "name": "东方嘉盛",
-   "height": 3,
-   "bid_pct": -2.48,
-   "turnover": 2.67
+   "code": "001323",
+   "name": "慕思股份",
+   "height": 2,
+   "bid_pct": 9.99,
+   "turnover": 1.72
   }
  ],
  "regime": {
-  "regime": "电风扇",
-  "relay": 0.18032786885245902,
-  "max_board": 3,
-  "top1_days": 1,
+  "regime": "过渡",
+  "relay": 0.30434782608695654,
+  "max_board": 4,
+  "top1_days": 2,
   "detail": [
-   "昨日再板率18%",
-   "最高3板",
-   "TOP1连续1日"
+   "昨日再板率30%",
+   "最高4板",
+   "TOP1连续2日"
   ]
  },
  "cycle": {
-  "stage": "退潮",
+  "stage": "启动",
   "confidence": 7,
-  "gate": "closed",
+  "gate": "off",
   "mainlines": [
    "机器人概念",
    "AI应用",
-   "通信",
-   "飞行汽车",
-   "低空经济",
-   "算力"
+   "端侧AI",
+   "物理AI",
+   "人工智能",
+   "家电"
   ],
   "leaders": [
    {
     "code": "003029",
     "name": "吉大正元",
-    "pid": 3,
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
     "code": "603278",
     "name": "大业股份",
-    "pid": 2,
+    "pid": 3,
     "role": "总龙头"
    },
    {
-    "code": "603626",
-    "name": "科森科技",
+    "code": "300115",
+    "name": "长盈精密",
     "pid": 1,
     "role": "中军(机器人概念)"
+   },
+   {
+    "code": "002164",
+    "name": "宁波东力",
+    "pid": 2,
+    "role": "补涨/卡位(机器人概念)"
    }
   ]
  },
@@ -244,12 +376,11 @@
   "prompt_ver": "v3",
   "latency_s": 21.8,
   "degraded": false,
-  "generated_at": "2026-10-20T02:01:16",
-  "slot": "1000"
+  "generated_at": "2026-10-20T02:01:17"
  },
  "stats": {
-  "pool": 295,
-  "boards": 6,
+  "pool": 566,
+  "boards": 20,
   "genes": 0
  },
  "candidates": [],
