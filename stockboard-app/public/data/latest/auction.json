@@ -1,127 +1,225 @@
 {
- "date": "2026-10-30",
+ "date": "2026-11-02",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值17 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 8% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 17,
+   "strong": 41,
    "lbgd": 3,
    "capacity_ratio": null,
-   "red_ratio": 0.07794392523364486,
+   "red_ratio": 0.6972514982434387,
    "bid_count": [
-    126,
-    180,
+    157,
+    151,
     50,
-    22,
+    46,
     8
    ],
-   "bid_total": "194亿",
-   "bid_total_prev": "160亿"
+   "bid_total": "88亿",
+   "bid_total_prev": "194亿"
   }
  },
  "boards": [
   {
-   "code": "801045",
-   "name": "医药",
-   "burst": 8.5,
-   "amount": 255649377.0,
-   "main_net": 28082044.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801004",
-   "name": "锂电池",
-   "burst": 6.0,
-   "amount": 146895150.0,
-   "main_net": 16048611.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801005",
-   "name": "新能源汽车",
-   "burst": 5.5,
-   "amount": 63942705.0,
-   "main_net": 2885461.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801062",
-   "name": "军工",
-   "burst": 5.5,
-   "amount": 218330387.0,
-   "main_net": -41289850.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801519",
-   "name": "汽车类",
-   "burst": 5.5,
-   "amount": 65775368.0,
-   "main_net": 4796386.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "code": "801081",
+   "name": "证券",
+   "burst": 7.5,
+   "amount": 355870555.0,
+   "main_net": 66941704.0,
+   "src": "爆量+强度",
+   "strength": 1120.0
   },
   {
    "code": "801001",
    "name": "芯片",
-   "burst": 4.3,
-   "amount": 136150394.0,
-   "main_net": 33049644.0,
+   "burst": 6.5,
+   "amount": 1760389294.0,
+   "main_net": 154663564.0,
    "src": "爆量L1",
    "strength": 0.0
+  },
+  {
+   "code": "801045",
+   "name": "医药",
+   "burst": 6.0,
+   "amount": 351913154.0,
+   "main_net": 70581917.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801161",
+   "name": "白酒",
+   "burst": 6.0,
+   "amount": 490540432.0,
+   "main_net": 50071141.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801351",
+   "name": "科创板",
+   "burst": 5.5,
+   "amount": 346059374.0,
+   "main_net": 40701258.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801235",
+   "name": "化工",
+   "burst": 5.0,
+   "amount": 135715785.0,
+   "main_net": 2772392.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801035",
+   "name": "酿酒",
+   "burst": 4.0,
+   "amount": 430497568.0,
+   "main_net": 35828630.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801573",
+   "name": "三季报增长",
+   "burst": 0.0,
+   "amount": 10036879648.0,
+   "main_net": 4107609.0,
+   "src": "强度",
+   "strength": 1559.0
+  },
+  {
+   "code": "801016",
+   "name": "稀土永磁",
+   "burst": 0.0,
+   "amount": 241680397.0,
+   "main_net": 24553550.0,
+   "src": "强度",
+   "strength": 589.0
+  },
+  {
+   "code": "801196",
+   "name": "LED",
+   "burst": 0.0,
+   "amount": 80085871.0,
+   "main_net": 13989150.0,
+   "src": "强度",
+   "strength": 583.0
+  },
+  {
+   "code": "801250",
+   "name": "并购重组",
+   "burst": 0.0,
+   "amount": 3197766455.0,
+   "main_net": 7479786.0,
+   "src": "强度",
+   "strength": 547.0
+  },
+  {
+   "code": "801529",
+   "name": "激光",
+   "burst": 0.0,
+   "amount": 107223195.0,
+   "main_net": 62208.0,
+   "src": "强度",
+   "strength": 118.0
+  },
+  {
+   "code": "801807",
+   "name": "算力",
+   "burst": 0.0,
+   "amount": 4479179119.0,
+   "main_net": 34807727.0,
+   "src": "强度",
+   "strength": 115.0
+  },
+  {
+   "code": "801788",
+   "name": "仪器仪表",
+   "burst": 0.0,
+   "amount": 72127191.0,
+   "main_net": 1145013.0,
+   "src": "强度",
+   "strength": 91.0
+  },
+  {
+   "code": "801071",
+   "name": "保险",
+   "burst": 0.0,
+   "amount": 220439476.0,
+   "main_net": 19611945.0,
+   "src": "强度",
+   "strength": 81.0
+  },
+  {
+   "code": "801210",
+   "name": "操作系统",
+   "burst": 0.0,
+   "amount": 222697020.0,
+   "main_net": 2389550.0,
+   "src": "强度",
+   "strength": 81.0
+  },
+  {
+   "code": "801580",
+   "name": "发电机",
+   "burst": 0.0,
+   "amount": 56109007.0,
+   "main_net": 5917284.0,
+   "src": "强度",
+   "strength": 78.0
   }
  ],
  "strike": [
   {
    "code": "001219",
    "name": "青岛食品",
-   "height": 4,
+   "height": 5,
    "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 三季报增长主线空间龙, 封单 1.65亿；逆市连板(火种观察) 4板",
+   "reason": "龙头谱系[空间锚(最高连板)] 5连板 | 食品饮料主线空间龙, 封单 0.57亿；逆市连板(火种观察) 5板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "605338",
+   "name": "巴比食品",
+   "height": 2,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[总龙头] 主线[业绩增长] 9只涨停, 封单 0.04亿",
    "tag": null,
    "bid_pct": null
   },
   {
    "code": "603131",
    "name": "上海沪工",
+   "height": 3,
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 3板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002172",
+   "name": "澳洋健康",
+   "height": 3,
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 3板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "600261",
+   "name": "阳光照明",
    "height": 2,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[商业航天] 9只涨停, 封单 1.34亿",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "600118",
-   "name": "中国卫星",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(商业航天)] 成交 31.1亿 容量核心",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002708",
-   "name": "光洋股份",
-   "height": 4,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[板块龙头(机器人概念)] 主线[机器人概念] 5只涨停, 封单 0.09亿；逆市连板(火种观察) 4板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002943",
-   "name": "宇晶股份",
-   "height": 2,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(机器人概念)] 成交 9.0亿 容量核心",
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 2板",
    "tag": null,
    "bid_pct": null
   }
@@ -129,49 +227,49 @@
  "strike_watch": true,
  "bidrank": [
   {
+   "code": "002086",
+   "name": "东方海洋",
+   "height": 2,
+   "bid_pct": 9.89,
+   "turnover": 4.12
+  },
+  {
    "code": "001219",
    "name": "青岛食品",
-   "height": 4,
-   "bid_pct": 9.98,
-   "turnover": 10.0
+   "height": 5,
+   "bid_pct": 3.31,
+   "turnover": 3.72
   },
   {
-   "code": "601956",
-   "name": "东贝集团",
+   "code": "603131",
+   "name": "上海沪工",
    "height": 3,
-   "bid_pct": -10.0,
-   "turnover": 2.4466196445229875
+   "bid_pct": 8.26,
+   "turnover": 3.3351354713379835
   },
   {
-   "code": "600715",
-   "name": "文投控股",
-   "height": 3,
-   "bid_pct": -9.69,
-   "turnover": 2.2680860865892685
+   "code": "603703",
+   "name": "盛洋科技",
+   "height": 2,
+   "bid_pct": 5.94,
+   "turnover": 3.0778081745568877
   },
   {
    "code": "002172",
    "name": "澳洋健康",
-   "height": 2,
-   "bid_pct": 4.47,
-   "turnover": 2.06
-  },
-  {
-   "code": "002862",
-   "name": "实丰文化",
-   "height": 2,
-   "bid_pct": 2.3,
-   "turnover": 1.49
+   "height": 3,
+   "bid_pct": 5.08,
+   "turnover": 2.56
   }
  ],
  "regime": {
-  "regime": "电风扇",
-  "relay": 0.14084507042253522,
-  "max_board": 4,
+  "regime": "过渡",
+  "relay": 0.23076923076923078,
+  "max_board": 5,
   "top1_days": 1,
   "detail": [
-   "昨日再板率14%",
-   "最高4板",
+   "昨日再板率23%",
+   "最高5板",
    "TOP1连续1日"
   ]
  },
@@ -180,48 +278,25 @@
   "confidence": 7,
   "gate": "closed",
   "mainlines": [
-   "商业航天",
-   "机器人概念",
+   "业绩增长",
    "食品饮料",
-   "三季报增长",
-   "冰雪产业"
+   "机器人概念",
+   "通信",
+   "白酒",
+   "酿酒"
   ],
   "leaders": [
    {
     "code": "001219",
     "name": "青岛食品",
-    "pid": 4,
+    "pid": 5,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "603131",
-    "name": "上海沪工",
+    "code": "605338",
+    "name": "巴比食品",
     "pid": 2,
     "role": "总龙头"
-   },
-   {
-    "code": "600118",
-    "name": "中国卫星",
-    "pid": 1,
-    "role": "中军(商业航天)"
-   },
-   {
-    "code": "002708",
-    "name": "光洋股份",
-    "pid": 4,
-    "role": "板块龙头(机器人概念)"
-   },
-   {
-    "code": "002943",
-    "name": "宇晶股份",
-    "pid": 2,
-    "role": "中军(机器人概念)"
-   },
-   {
-    "code": "601956",
-    "name": "东贝集团",
-    "pid": 3,
-    "role": "补涨/卡位(机器人概念)"
    }
   ]
  },
@@ -262,12 +337,11 @@
   "prompt_ver": "v3",
   "latency_s": 26.4,
   "degraded": false,
-  "generated_at": "2026-10-30T02:01:19",
-  "slot": "1000"
+  "generated_at": "2026-10-30T02:01:19"
  },
  "stats": {
-  "pool": 319,
-  "boards": 6,
+  "pool": 512,
+  "boards": 17,
   "genes": 0
  },
  "candidates": [],
