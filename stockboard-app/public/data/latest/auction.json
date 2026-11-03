@@ -1,270 +1,171 @@
 {
- "date": "2026-11-02",
+ "date": "2026-11-03",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "环境正常"
+   "红盘占比 17% < 40% (参考)"
   ],
   "data": {
-   "strong": 41,
-   "lbgd": 3,
+   "strong": 29,
+   "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.6972514982434387,
+   "red_ratio": 0.17260940032414912,
    "bid_count": [
-    157,
-    151,
+    129,
+    163,
     50,
-    46,
-    8
+    38,
+    4
    ],
-   "bid_total": "88亿",
-   "bid_total_prev": "194亿"
+   "bid_total": "152亿",
+   "bid_total_prev": "165亿"
   }
  },
  "boards": [
   {
-   "code": "801081",
-   "name": "证券",
-   "burst": 7.5,
-   "amount": 355870555.0,
-   "main_net": 66941704.0,
+   "code": "801095",
+   "name": "游戏",
+   "burst": 6.0,
+   "amount": 218111159.0,
+   "main_net": 37248667.0,
    "src": "爆量+强度",
-   "strength": 1120.0
+   "strength": 1006.0
   },
   {
-   "code": "801001",
-   "name": "芯片",
-   "burst": 6.5,
-   "amount": 1760389294.0,
-   "main_net": 154663564.0,
+   "code": "801039",
+   "name": "机场航空",
+   "burst": 5.5,
+   "amount": 42091347.0,
+   "main_net": 442205.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801031",
+   "name": "文化传媒",
+   "burst": 5.0,
+   "amount": 165814731.0,
+   "main_net": -4440885.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801045",
    "name": "医药",
-   "burst": 6.0,
-   "amount": 351913154.0,
-   "main_net": 70581917.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801161",
-   "name": "白酒",
-   "burst": 6.0,
-   "amount": 490540432.0,
-   "main_net": 50071141.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801351",
-   "name": "科创板",
-   "burst": 5.5,
-   "amount": 346059374.0,
-   "main_net": 40701258.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801235",
-   "name": "化工",
    "burst": 5.0,
-   "amount": 135715785.0,
-   "main_net": 2772392.0,
+   "amount": 156571304.0,
+   "main_net": -14054999.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801035",
-   "name": "酿酒",
+   "code": "801085",
+   "name": "人工智能",
    "burst": 4.0,
-   "amount": 430497568.0,
-   "main_net": 35828630.0,
+   "amount": 128422172.0,
+   "main_net": -21657003.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801573",
-   "name": "三季报增长",
-   "burst": 0.0,
-   "amount": 10036879648.0,
-   "main_net": 4107609.0,
-   "src": "强度",
-   "strength": 1559.0
+   "code": "801112",
+   "name": "互联网金融",
+   "burst": 4.0,
+   "amount": 132325615.0,
+   "main_net": 23916964.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801016",
-   "name": "稀土永磁",
+   "code": "801973",
+   "name": "保健品",
    "burst": 0.0,
-   "amount": 241680397.0,
-   "main_net": 24553550.0,
+   "amount": 293555338.0,
+   "main_net": 2711455.0,
    "src": "强度",
-   "strength": 589.0
+   "strength": 501.0
   },
   {
-   "code": "801196",
-   "name": "LED",
+   "code": "801048",
+   "name": "黄金",
    "burst": 0.0,
-   "amount": 80085871.0,
-   "main_net": 13989150.0,
+   "amount": 561398058.0,
+   "main_net": 39085292.0,
    "src": "强度",
-   "strength": 583.0
+   "strength": 43.0
   },
   {
-   "code": "801250",
-   "name": "并购重组",
+   "code": "801027",
+   "name": "银行",
    "burst": 0.0,
-   "amount": 3197766455.0,
-   "main_net": 7479786.0,
+   "amount": 576558355.0,
+   "main_net": 107169503.0,
    "src": "强度",
-   "strength": 547.0
+   "strength": 0.0
   },
   {
-   "code": "801529",
-   "name": "激光",
+   "code": "801637",
+   "name": "文创产品",
    "burst": 0.0,
-   "amount": 107223195.0,
-   "main_net": 62208.0,
+   "amount": 677927982.0,
+   "main_net": 2202756.0,
    "src": "强度",
-   "strength": 118.0
-  },
-  {
-   "code": "801807",
-   "name": "算力",
-   "burst": 0.0,
-   "amount": 4479179119.0,
-   "main_net": 34807727.0,
-   "src": "强度",
-   "strength": 115.0
-  },
-  {
-   "code": "801788",
-   "name": "仪器仪表",
-   "burst": 0.0,
-   "amount": 72127191.0,
-   "main_net": 1145013.0,
-   "src": "强度",
-   "strength": 91.0
-  },
-  {
-   "code": "801071",
-   "name": "保险",
-   "burst": 0.0,
-   "amount": 220439476.0,
-   "main_net": 19611945.0,
-   "src": "强度",
-   "strength": 81.0
-  },
-  {
-   "code": "801210",
-   "name": "操作系统",
-   "burst": 0.0,
-   "amount": 222697020.0,
-   "main_net": 2389550.0,
-   "src": "强度",
-   "strength": 81.0
-  },
-  {
-   "code": "801580",
-   "name": "发电机",
-   "burst": 0.0,
-   "amount": 56109007.0,
-   "main_net": 5917284.0,
-   "src": "强度",
-   "strength": 78.0
+   "strength": -10.0
   }
  ],
  "strike": [
   {
    "code": "001219",
    "name": "青岛食品",
-   "height": 5,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 5连板 | 食品饮料主线空间龙, 封单 0.57亿；逆市连板(火种观察) 5板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "605338",
-   "name": "巴比食品",
-   "height": 2,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[业绩增长] 9只涨停, 封单 0.04亿",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "603131",
-   "name": "上海沪工",
-   "height": 3,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 3板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002172",
-   "name": "澳洋健康",
-   "height": 3,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 3板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "600261",
-   "name": "阳光照明",
-   "height": 2,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 2板",
+   "height": 6,
+   "status": "可做(接力)",
+   "reason": "龙头谱系[空间锚(最高连板)] 6连板 | 封单 0.72亿",
    "tag": null,
    "bid_pct": null
   }
  ],
- "strike_watch": true,
+ "strike_watch": false,
  "bidrank": [
   {
-   "code": "002086",
-   "name": "东方海洋",
+   "code": "600261",
+   "name": "阳光照明",
+   "height": 3,
+   "bid_pct": 10.0,
+   "turnover": 11.82
+  },
+  {
+   "code": "000417",
+   "name": "合百集团",
    "height": 2,
-   "bid_pct": 9.89,
-   "turnover": 4.12
+   "bid_pct": 10.05,
+   "turnover": 4.43
+  },
+  {
+   "code": "002275",
+   "name": "桂林三金",
+   "height": 3,
+   "bid_pct": 3.16,
+   "turnover": 3.96
   },
   {
    "code": "001219",
    "name": "青岛食品",
    "height": 5,
-   "bid_pct": 3.31,
-   "turnover": 3.72
-  },
-  {
-   "code": "603131",
-   "name": "上海沪工",
-   "height": 3,
-   "bid_pct": 8.26,
-   "turnover": 3.3351354713379835
-  },
-  {
-   "code": "603703",
-   "name": "盛洋科技",
-   "height": 2,
-   "bid_pct": 5.94,
-   "turnover": 3.0778081745568877
+   "bid_pct": 1.69,
+   "turnover": 2.89
   },
   {
    "code": "002172",
    "name": "澳洋健康",
-   "height": 3,
-   "bid_pct": 5.08,
-   "turnover": 2.56
+   "height": 4,
+   "bid_pct": 5.85,
+   "turnover": 2.23
   }
  ],
  "regime": {
   "regime": "过渡",
-  "relay": 0.23076923076923078,
+  "relay": 0.23404255319148937,
   "max_board": 5,
   "top1_days": 1,
   "detail": [
@@ -274,29 +175,35 @@
   ]
  },
  "cycle": {
-  "stage": "退潮",
+  "stage": "高潮",
   "confidence": 7,
-  "gate": "closed",
+  "gate": "open",
   "mainlines": [
-   "业绩增长",
-   "食品饮料",
+   "AI应用",
+   "AI视频",
+   "互动影游",
    "机器人概念",
-   "通信",
-   "白酒",
-   "酿酒"
+   "算力",
+   "金融概念"
   ],
   "leaders": [
    {
     "code": "001219",
     "name": "青岛食品",
-    "pid": 5,
+    "pid": 6,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "605338",
-    "name": "巴比食品",
-    "pid": 2,
-    "role": "总龙头"
+    "code": "300182",
+    "name": "捷成股份",
+    "pid": 1,
+    "role": "中军(AI应用)"
+   },
+   {
+    "code": "002558",
+    "name": "巨人网络",
+    "pid": 1,
+    "role": "中军(AI视频)"
    }
   ]
  },
@@ -337,12 +244,11 @@
   "prompt_ver": "v3",
   "latency_s": 22.6,
   "degraded": false,
-  "generated_at": "2026-11-02T02:01:16",
-  "slot": "1000"
+  "generated_at": "2026-11-02T02:01:17"
  },
  "stats": {
-  "pool": 512,
-  "boards": 17,
+  "pool": 280,
+  "boards": 10,
   "genes": 0
  },
  "candidates": [],
