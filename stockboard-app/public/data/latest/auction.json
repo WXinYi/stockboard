@@ -1,209 +1,269 @@
 {
- "date": "2026-11-03",
+ "date": "2026-11-04",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 17% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 29,
-   "lbgd": 4,
+   "strong": 35,
+   "lbgd": 3,
    "capacity_ratio": null,
-   "red_ratio": 0.17260940032414912,
+   "red_ratio": 0.5707391971923668,
    "bid_count": [
-    129,
-    163,
+    125,
+    113,
     50,
-    38,
-    4
+    32,
+    5
    ],
-   "bid_total": "152亿",
-   "bid_total_prev": "165亿"
+   "bid_total": "121亿",
+   "bid_total_prev": "152亿"
   }
  },
  "boards": [
   {
-   "code": "801095",
-   "name": "游戏",
-   "burst": 6.0,
-   "amount": 218111159.0,
-   "main_net": 37248667.0,
-   "src": "爆量+强度",
-   "strength": 1006.0
-  },
-  {
-   "code": "801039",
-   "name": "机场航空",
-   "burst": 5.5,
-   "amount": 42091347.0,
-   "main_net": 442205.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801031",
-   "name": "文化传媒",
-   "burst": 5.0,
-   "amount": 165814731.0,
-   "main_net": -4440885.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
    "code": "801045",
    "name": "医药",
-   "burst": 5.0,
-   "amount": 156571304.0,
-   "main_net": -14054999.0,
+   "burst": 4.5,
+   "amount": 275405300.0,
+   "main_net": 64625612.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801085",
-   "name": "人工智能",
-   "burst": 4.0,
-   "amount": 128422172.0,
-   "main_net": -21657003.0,
+   "code": "801178",
+   "name": "储能",
+   "burst": 4.5,
+   "amount": 318289067.0,
+   "main_net": -98866190.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801112",
-   "name": "互联网金融",
-   "burst": 4.0,
-   "amount": 132325615.0,
-   "main_net": 23916964.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "code": "803014",
+   "name": "海峡两岸",
+   "burst": 0.0,
+   "amount": 801907237.0,
+   "main_net": 44501871.0,
+   "src": "强度",
+   "strength": 1019.0
   },
   {
-   "code": "801973",
-   "name": "保健品",
+   "code": "801631",
+   "name": "次新股",
    "burst": 0.0,
-   "amount": 293555338.0,
-   "main_net": 2711455.0,
+   "amount": 491460186.0,
+   "main_net": 28509308.0,
    "src": "强度",
-   "strength": 501.0
+   "strength": 541.0
   },
   {
-   "code": "801048",
-   "name": "黄金",
+   "code": "801250",
+   "name": "并购重组",
    "burst": 0.0,
-   "amount": 561398058.0,
-   "main_net": 39085292.0,
+   "amount": 1911346276.0,
+   "main_net": 14526389.0,
    "src": "强度",
-   "strength": 43.0
+   "strength": 513.0
   },
   {
-   "code": "801027",
-   "name": "银行",
+   "code": "801053",
+   "name": "零售",
    "burst": 0.0,
-   "amount": 576558355.0,
-   "main_net": 107169503.0,
+   "amount": 545385548.0,
+   "main_net": 6453472.0,
    "src": "强度",
-   "strength": 0.0
+   "strength": 502.0
   },
   {
-   "code": "801637",
-   "name": "文创产品",
+   "code": "801088",
+   "name": "有色金属",
    "burst": 0.0,
-   "amount": 677927982.0,
-   "main_net": 2202756.0,
+   "amount": 907459757.0,
+   "main_net": 35542200.0,
    "src": "强度",
-   "strength": -10.0
+   "strength": 371.0
+  },
+  {
+   "code": "801433",
+   "name": "光学镜头",
+   "burst": 0.0,
+   "amount": 75591530.0,
+   "main_net": 123393.0,
+   "src": "强度",
+   "strength": 53.0
+  },
+  {
+   "code": "801377",
+   "name": "金刚石概念",
+   "burst": 0.0,
+   "amount": 46537633.0,
+   "main_net": 540277.0,
+   "src": "强度",
+   "strength": 47.0
+  },
+  {
+   "code": "801788",
+   "name": "仪器仪表",
+   "burst": 0.0,
+   "amount": 62718371.0,
+   "main_net": 283270.0,
+   "src": "强度",
+   "strength": 40.0
+  },
+  {
+   "code": "801359",
+   "name": "华为海思",
+   "burst": 0.0,
+   "amount": 96435571.0,
+   "main_net": 572959.0,
+   "src": "强度",
+   "strength": 35.0
+  },
+  {
+   "code": "801136",
+   "name": "安防",
+   "burst": 0.0,
+   "amount": 79302428.0,
+   "main_net": 159202.0,
+   "src": "强度",
+   "strength": 35.0
   }
  ],
  "strike": [
   {
-   "code": "001219",
-   "name": "青岛食品",
-   "height": 6,
-   "status": "可做(接力)",
-   "reason": "龙头谱系[空间锚(最高连板)] 6连板 | 封单 0.72亿",
+   "code": "002086",
+   "name": "东方海洋",
+   "height": 4,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 封单 2.16亿；逆市连板(火种观察) 4板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002058",
+   "name": "紫竹高科",
+   "height": 2,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[总龙头] 主线[固态电池] 6只涨停, 封单 0.73亿",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002580",
+   "name": "圣阳股份",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(固态电池)] 成交 7.2亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "001318",
+   "name": "阳光乳业",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(食品饮料)] 成交 7.9亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "600261",
+   "name": "阳光照明",
+   "height": 4,
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 4板",
    "tag": null,
    "bid_pct": null
   }
  ],
- "strike_watch": false,
+ "strike_watch": true,
  "bidrank": [
+  {
+   "code": "000995",
+   "name": "皇台酒业",
+   "height": 3,
+   "bid_pct": 7.52,
+   "turnover": 5.88
+  },
   {
    "code": "600261",
    "name": "阳光照明",
-   "height": 3,
-   "bid_pct": 10.0,
-   "turnover": 11.82
-  },
-  {
-   "code": "000417",
-   "name": "合百集团",
-   "height": 2,
-   "bid_pct": 10.05,
-   "turnover": 4.43
-  },
-  {
-   "code": "002275",
-   "name": "桂林三金",
-   "height": 3,
-   "bid_pct": 3.16,
-   "turnover": 3.96
-  },
-  {
-   "code": "001219",
-   "name": "青岛食品",
-   "height": 5,
-   "bid_pct": 1.69,
-   "turnover": 2.89
-  },
-  {
-   "code": "002172",
-   "name": "澳洋健康",
    "height": 4,
-   "bid_pct": 5.85,
-   "turnover": 2.23
+   "bid_pct": 0.0,
+   "turnover": 3.3230763524158116
+  },
+  {
+   "code": "601599",
+   "name": "浙文影业",
+   "height": 2,
+   "bid_pct": 4.45,
+   "turnover": 2.5647670654802024
+  },
+  {
+   "code": "605577",
+   "name": "龙版传媒",
+   "height": 2,
+   "bid_pct": 4.06,
+   "turnover": 2.345537448486803
+  },
+  {
+   "code": "002086",
+   "name": "东方海洋",
+   "height": 4,
+   "bid_pct": 4.68,
+   "turnover": 2.18
   }
  ],
  "regime": {
-  "regime": "过渡",
-  "relay": 0.23404255319148937,
-  "max_board": 5,
+  "regime": "电风扇",
+  "relay": 0.12,
+  "max_board": 4,
   "top1_days": 1,
   "detail": [
-   "昨日再板率23%",
-   "最高5板",
+   "昨日再板率12%",
+   "最高4板",
    "TOP1连续1日"
   ]
  },
  "cycle": {
-  "stage": "高潮",
+  "stage": "退潮",
   "confidence": 7,
-  "gate": "open",
+  "gate": "closed",
   "mainlines": [
-   "AI应用",
-   "AI视频",
-   "互动影游",
-   "机器人概念",
+   "固态电池",
+   "食品饮料",
+   "零售",
    "算力",
-   "金融概念"
+   "锂电池",
+   "并购重组"
   ],
   "leaders": [
    {
-    "code": "001219",
-    "name": "青岛食品",
-    "pid": 6,
+    "code": "002086",
+    "name": "东方海洋",
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "300182",
-    "name": "捷成股份",
-    "pid": 1,
-    "role": "中军(AI应用)"
+    "code": "002058",
+    "name": "紫竹高科",
+    "pid": 2,
+    "role": "总龙头"
    },
    {
-    "code": "002558",
-    "name": "巨人网络",
+    "code": "002580",
+    "name": "圣阳股份",
     "pid": 1,
-    "role": "中军(AI视频)"
+    "role": "中军(固态电池)"
+   },
+   {
+    "code": "001318",
+    "name": "阳光乳业",
+    "pid": 1,
+    "role": "中军(食品饮料)"
    }
   ]
  },
@@ -244,12 +304,11 @@
   "prompt_ver": "v3",
   "latency_s": 25.7,
   "degraded": false,
-  "generated_at": "2026-11-03T02:01:22",
-  "slot": "1000"
+  "generated_at": "2026-11-03T02:01:23"
  },
  "stats": {
-  "pool": 280,
-  "boards": 10,
+  "pool": 284,
+  "boards": 12,
   "genes": 0
  },
  "candidates": [],
