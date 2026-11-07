@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime
 from pathlib import Path
 
@@ -185,7 +186,46 @@ class TestBuildMessage(unittest.TestCase):
         self.assertNotIn("🆕", lines[i_b], "无新增的选手不标 🆕")
         self.assertTrue(any("🆕" in l and "买入" in l for l in lines[i_a:i_b]))
         self.assertTrue(any("💤 今日暂无操作" in l and "股得猫咛" in l for l in lines))
-        self.assertTrue(any("🔇 组合已隐藏" in l and "我嘚财富" in l for l in lines))
+        self.assertTrue(any("🔇 隐藏号今日暂无操作" in l and "我嘚财富" in l for l in lines))
+
+    def test_hidden_player_with_trades_renders(self):
+        """隐藏号调仓走流水通道(2026-11-07): 有当日操作时正常出卡带 🔇 角标,
+        不进"暂无操作"脚注; 无 positions 也不叠页。"""
+        t_h = {"stock_code": "600838", "stock_name": "上海九百", "direction": "买入",
+               "trades_count": 1, "position_ratio": "9成以上", "price": 12.06}
+        data = {"900438148": {"name": "我嘚财富", "hidden": True, "ok": True, "trades": [t_h]},
+                "900240956": {"name": "股得猫咛", "ok": True, "trades": [], "positions": []}}
+        new_mark = {"900438148": {id(t_h): False}}
+        msg = watchdog.build_message("2026-11-07", "10:00", data, new_mark, {})
+        lines = msg.splitlines()
+        i_h = next(i for i, l in enumerate(lines) if "我嘚财富" in l)
+        self.assertIn("🔇", lines[i_h], "隐藏号出卡带 🔇 角标")
+        self.assertIn("🆕", lines[i_h])
+        self.assertTrue(any("买入" in l and "上海九百" in l for l in lines[i_h:i_h+3]))
+        self.assertFalse(any("🔇 隐藏号今日暂无操作" in l for l in lines),
+                         "隐藏号有操作时不应出现在脚注")
+
+    def test_fetch_hidden_trades_aggregates(self):
+        """relocate 流水聚合: 同 (code,方向) 多笔→trades_count 累加, 价格取该方向最新一笔,
+        非当日行剔除; 产出与 detail tradeSummary 同形。"""
+        rows = [
+            {"bizDate": 20261107, "relocateTime": "2026-11-07 10:01:18", "stkCode": "000530",
+             "stkName": "冰山冷热", "bsMark": "B", "relocatePrice": "8.710", "positionRatio": "2成"},
+            {"bizDate": 20261107, "relocateTime": "2026-11-07 09:47:54", "stkCode": "000530",
+             "stkName": "冰山冷热", "bsMark": "B", "relocatePrice": "8.600", "positionRatio": "1成以下"},
+            {"bizDate": 20261107, "relocateTime": "2026-11-07 09:49:20", "stkCode": "000530",
+             "stkName": "冰山冷热", "bsMark": "S", "relocatePrice": "8.910", "positionRatio": "1成以下"},
+            {"bizDate": 20261106, "relocateTime": "2026-11-06 14:00:00", "stkCode": "000530",
+             "stkName": "冰山冷热", "bsMark": "B", "relocatePrice": "9.010", "positionRatio": "1成以下"},
+        ]
+        with unittest.mock.patch.object(watchdog, "_call_api", return_value={"pages": rows}):
+            out = watchdog.fetch_hidden_trades("u", "z", "20261107")
+        by = {(t["stock_code"], t["direction"]): t for t in out}
+        self.assertEqual(by[("000530", "买入")]["trades_count"], 2)
+        self.assertEqual(by[("000530", "买入")]["price"], 8.710)   # 首见=最新一笔
+        self.assertEqual(by[("000530", "买入")]["position_ratio"], "2成")  # 最新档位先占位
+        self.assertEqual(by[("000530", "卖出")]["trades_count"], 1)
+        self.assertEqual(len(out), 2, "昨日行不入当日聚合")
 
 
 class TestHolidayCalendar(unittest.TestCase):

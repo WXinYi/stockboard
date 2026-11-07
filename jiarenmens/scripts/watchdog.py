@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from main import WATCHED_PLAYERS  # noqa: E402
-from src.spiders.api_detail import crawl_player_all_data  # noqa: E402
+from src.spiders.api_detail import crawl_player_all_data, _call_api  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.utils import visibility  # noqa: E402
 from notify_daily import fetch_quotes  # noqa: E402 (复用腾讯→新浪行情链)
@@ -51,6 +51,16 @@ PLAYER_DIR = ROOT.parent / "stockboard-app" / "public" / "data" / "latest" / "pl
 TRADING_CAL_JS = ROOT.parent / "stockboard-app" / "src" / "utils" / "tradingCalendar.js"
 WINDOW_START, WINDOW_END = "0931", "1505"   # 09:31 起(竞价段由 09:26 快报覆盖, 避免开盘重复响铃); 15:05 收盘班前停
 MAX_FAILS = 3                                # 连续 N 班全员失败 → 降级自曝
+
+# 隐藏号 detail 被东财整体下架(净值/持仓/搜索全无), 但 relocate 流水照常实时产生(2026-10-28 实测)。
+# userId 为组合创建时固定值, 无法由 detail 反查(搜索接口对隐藏号也 0 命中) → 硬编码映射。
+# 新隐藏号接入: 用统一搜索在隐藏前反查 userId, 或查采集库 players.user_id。
+# (凡人炒股 900407488 / 慢慢做趋势 900237280 于 11-07 移出名单, userId 备查:
+#  9456276110343058 / 1007386073125420)
+HIDDEN_UIDS = {
+    "900438148": "4208037210932556",  # 我嘚财富(08-30 起隐藏)
+    "900439290": "6487375946169702",  # 我要再来一次(曾用名 兴奋之青果/再也不硬抗了, 10-15 起隐藏)
+}
 
 _HOLIDAY_CACHE: dict | None = None
 
@@ -202,11 +212,49 @@ def write_player_json(zh_id: str, detail: dict) -> None:
     tmp.replace(dst)
 
 
+def fetch_hidden_trades(uid: str, zh: str, date_key: str) -> list:
+    """隐藏号调仓: relocate 流水(新→旧, 第 1 页 20 条足够覆盖单日)聚合当日操作,
+    产出与 detail tradeSummary 同形的 trade dict(供 decide_pushes/build_message 复用)。
+    同 (code, 方向) 多笔 → trades_count 累加(↩️追加语义一致), 价格/仓位档取该方向最新一笔。"""
+    d = _call_api("CombinationRelocatePositionHandler", {
+        "userId": uid, "combinationId": zh, "pageNum": 1, "pageSize": 20,
+        "beginDate": "", "endDate": ""})
+    rows = (d or {}).get("pages") or []
+    agg = {}
+    for r in rows:
+        if str(r.get("bizDate", "")) != date_key:
+            continue
+        code = str(r.get("stkCode", ""))
+        dr = "买入" if r.get("bsMark") == "B" else "卖出"
+        a = agg.setdefault((code, dr), {
+            "stock_code": code, "stock_name": r.get("stkName", "?"),
+            "direction": dr, "trades_count": 0,
+            "position_ratio": "", "price": None,
+        })
+        a["trades_count"] += 1
+        if not a["position_ratio"]:
+            a["position_ratio"] = r.get("positionRatio") or ""   # 首见=最新档位
+        px = r.get("relocatePrice")
+        if px and a["price"] is None:
+            a["price"] = float(px)   # 首见=最新成交价(流水新→旧)
+    return sorted(agg.values(), key=lambda t: (t["direction"], t["stock_code"]))
+
+
 def fetch_all(players, date_str: str) -> dict:
     out = {}
+    date_key = date_str.replace("-", "")
     for zh, nm in players:
         if visibility.is_hidden(zh):
-            out[zh] = {"name": nm, "hidden": True}
+            # 隐藏号走 relocate 流水通道(2026-11-07): 调仓可见可推, 持仓/净值仍不可得
+            uid = HIDDEN_UIDS.get(zh)
+            trades = []
+            if uid:
+                try:
+                    trades = fetch_hidden_trades(uid, zh, date_key)
+                except Exception as e:
+                    out[zh] = {"name": nm, "hidden": True, "trades": [], "err": str(e)}
+                    continue
+            out[zh] = {"name": nm, "hidden": True, "trades": trades, "ok": True}
             continue
         try:
             detail, positions, trades = crawl_player_all_data(zh)
@@ -227,10 +275,11 @@ def build_message(date_str: str, hhmm: str, data: dict, new_mark: dict, quotes: 
     quiet, fails, hidden = [], [], []
     for zh, nm in WATCHED_PLAYERS:
         o = data.get(zh) or {}
-        if o.get("hidden"):
-            hidden.append(nm)
-        elif o.get("err") or not o.get("ok", True):
+        if o.get("err") or not o.get("ok", True):
             fails.append(nm)
+        elif o.get("hidden"):
+            if not (o.get("trades") or []):
+                hidden.append(nm)   # 隐藏号有操作时正常出卡(🔇 角标), 无操作才进脚注
         elif not (o.get("trades") or []):
             quiet.append(nm)
 
@@ -238,13 +287,15 @@ def build_message(date_str: str, hhmm: str, data: dict, new_mark: dict, quotes: 
     for zh, nm in WATCHED_PLAYERS:
         o = data.get(zh) or {}
         trades_today = o.get("trades") or []
-        if o.get("hidden") or o.get("err") or not o.get("ok", True) or not trades_today:
+        if o.get("err") or not o.get("ok", True) or not trades_today:
             continue
         marks = new_mark.get(zh, {})
         if zh != cur:
             if cur is not None:
                 lines.append("")   # 选手块之间必须空行: 钉钉渲染会把下个名字贴在上块尾部
             head = f"**[{nm}]({BASE_URL}/#/player/{zh})**"
+            if o.get("hidden"):
+                head += " 🔇"   # 隐藏号: 调仓来自流水通道, 页面无当日持仓/净值
             if any(id(t) in marks for t in trades_today):
                 head += " 🆕"
             lines.append(head)
@@ -274,7 +325,7 @@ def build_message(date_str: str, hhmm: str, data: dict, new_mark: dict, quotes: 
     if fails:
         lines += [f"⚠️ 拉取失败(下一班自动重试): {'、'.join(fails)}", ""]
     if hidden:
-        lines += [f"🔇 组合已隐藏(自动跳过, 恢复公开自动回归): {'、'.join(hidden)}", ""]
+        lines += [f"🔇 隐藏号今日暂无操作(有操作时走流水通道推送; 持仓/净值不可得): {'、'.join(hidden)}", ""]
     lines += ["— 盯盘 5 分钟一轮(明细只有日粒度, 时刻=首次发现); "
               "持仓浮盈见[选手页](https://wxinyi.github.io/stockboard/)"]
     return "\n".join(lines)
@@ -300,12 +351,11 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
     new_mark = {}     # zh -> {id(trade): is_add}, 供消息标记 🆕/↩️追加
     for zh, nm in WATCHED_PLAYERS:
         o = data.get(zh) or {}
-        if o.get("hidden"):
-            continue
-        pushed_player = st["pushed"].setdefault(zh, {})
         if o.get("err") or not o.get("ok", True):
             # 拉取失败: 不动已推集合(下次成功后按次数补推), 降级由 fails 计数负责
             continue
+        if o.get("hidden") and not o.get("trades"):
+            continue   # 隐藏号今日无操作, 无需进比对(有操作时走流水通道正常出卡)
         if first_of_day:
             base_cache.setdefault(zh, fetch_base_player(zh))
             base = base_cache.get(zh)
@@ -341,13 +391,15 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
     # 叠加更新: 只对"本轮有推送"的选手做(无操作不动页面文件), 按选手去重
     if not args.dry_run:
         for zh in dict.fromkeys(zh for zh, _nm, _t, _a in new_pushes):
+            o = data[zh]
+            if o.get("hidden"):
+                continue   # 隐藏号无持仓/净值, 只推送不叠加(页面停留隐藏前快照)
             base = base_cache.get(zh)
             if base is None:
                 base = fetch_base_player(zh)
                 base_cache[zh] = base
             if base is None:
                 continue
-            o = data[zh]
             write_player_json(zh, merge_player(base, o["positions"], o["trades"], date_str))
             changed.append(zh)
         changed_file.write_text("\n".join(changed), encoding="utf-8")
