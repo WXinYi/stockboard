@@ -1,9 +1,11 @@
-name: 大模型盘中选股 10:00
+name: 大模型盘中选股 10:03
 # 2026-09-22 拍板: LLM 选股从 09:25 竞价段移至 10:00 盘中 —— 竞价时点存在结构性盲区
 # (当日涨跌停/晋级/溢价均未产生, 实测"涨停105→103持平"式硬凑, 当日真实收盘 64 家),
 # 10:00 喂实时因子(实时涨跌停/晋级率/昨日涨停股实时溢价/梯队/指数)后定性基于已展开的
 # 当日结构。引擎 09:25 出击选股(auction.yml)不受影响; 09:25 班只回填最新 llm 存档。
 # cron-job.org 10:00(工作日) repository_dispatch: llm-1000。
+# 2026-11-07 拍板: 触发错峰至 10:03 —— 10:00 整与采集班"提交数据"撞 git push,
+#   连续三个交易日(11-04/05/06)天天 failure(失败告警+下班自愈, 但天天吵); 错峰 3 分钟根除。
 
 on:
   repository_dispatch:
@@ -66,7 +68,7 @@ jobs:
           fi
           sha256sum data/auction.db | awk '{print $1}' > /tmp/auction_sha_start
 
-      # v3 实时因子喂入 + DeepSeek 定性选股; picks 记录 10:00 信号时点价(entry_px, 回测金标准)
+      # v3 实时因子喂入 + DeepSeek 定性选股; picks 记录 10:03 信号时点价(entry_px, 回测金标准)
       - name: 大模型盘中选股(v3 实时因子)
         if: steps.dayguard.outputs.trading != 'false'
         env:
@@ -121,7 +123,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "auction.json 无变化, 跳过提交"
           else
-            git commit -m "🤖 大模型盘中选股 10:00 $(date +%Y-%m-%d) [skip ci]"
+            git commit -m "🤖 大模型盘中选股 10:03 $(date +%Y-%m-%d) [skip ci]"
             # -X theirs=rebase 冲突时以本班为准; 失败先 abort 清残留中间态再重试(09-23 crawl #836 同款竞态预防)
             for i in 1 2 3; do
               if git pull --rebase -X theirs && git push; then

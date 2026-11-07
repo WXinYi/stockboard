@@ -236,10 +236,10 @@ def build_universe_live(cur, d):
                    if len(x) >= 7 and str(x[6]) == d), None) if isinstance(rise, dict) else None
     yb = cur.execute("SELECT zt,dt,broke_rate,zhaban FROM market_breadth WHERE date=?", (p,)).fetchone()
 
-    st = [f"【数据边界】以下为 {d} 10:00 实时快照: 当日全天涨跌停/晋级率/涨停溢价收盘值尚未产生, "
+    st = [f"【数据边界】以下为 {d} 10:03 实时快照: 当日全天涨跌停/晋级率/涨停溢价收盘值尚未产生, "
           f"禁止推测全天数据; 判断只基于已发生的盘中事实。"]
     if rt_row:
-        st.append(f"一、今日实时({d} 10:00): 涨停{rt_row[0]}(昨{yb['zt']}) 跌停{rt_row[1]}(昨{yb['dt']}) "
+        st.append(f"一、今日实时({d} 10:03): 涨停{rt_row[0]}(昨{yb['zt']}) 跌停{rt_row[1]}(昨{yb['dt']}) "
                   f"炸板{rt_row[5]}只(昨{yb['zhaban']}只) 破板率{rt_row[4]:.0f}%(昨{yb['broke_rate']:.0f}%)")
     promoted = prev_codes & rt_codes
     if prev:
@@ -279,7 +279,7 @@ def build_universe_live(cur, d):
         sh, szv = ids.get("sh000001", {}), ids.get("sz399001", {})
         amt = sh.get("amount_yi", 0) + szv.get("amount_yi", 0)
         st.append(f"五、指数量能: 上证{sh.get('pct', 0):+.2f}% 深成指{szv.get('pct', 0):+.2f}% "
-                  f"两市成交额(截至10:00) {amt:.0f}亿（量能对比因子待 v3.1）")
+                  f"两市成交额(截至10:03) {amt:.0f}亿（量能对比因子待 v3.1）")
     st.append("六、候选宇宙 = 今日实时涨停 ∪ 昨日涨停(明细见上); picks 的 code 必须出自其中。")
     meta = {"codes": rt_codes | prev_codes, "promoted": len(promoted),
             "prev_count": len(prev), "rt_count": len(rt_codes)}
@@ -287,7 +287,7 @@ def build_universe_live(cur, d):
 
 
 def build_messages_live(cur, d, universe_text):
-    user = f"""【今日时点】{d} 10:00 盘中(开盘后30分钟) | 选手纪律: {FOCUS}
+    user = f"""【今日时点】{d} 10:03 盘中(开盘后33分钟) | 选手纪律: {FOCUS}
 【候选宇宙 · 实时盘面 + 昨日涨停池(附实时溢价)】
 {universe_text}
 
@@ -436,7 +436,7 @@ def run(date=None, dry_run=False, live=False):
                     q = snaps.get(_sym_of(k["code"]))
                     if q:
                         k["entry_px"] = q["price"]
-                        k["entry_time"] = "10:00"
+                        k["entry_time"] = "10:03"
                     kept.append(k)
                 picks = kept
             else:
