@@ -20,6 +20,7 @@ const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 // stocks.json 每行双口径: h/tp/ap=全体采集样本(随榜单漂移), qh/qtp/qap=仅优质选手。
 // 优质口径只显示 qh>0 的票 —— 小米集团这类无优质持仓的"幽灵共识"不再混入(09-23 小米案例)。
 // 兜底: 旧版 stocks.json 无 qh 字段(部署交错)时, 优质口径退回全体展示, 不出空白页。
+// 跟风倍数(2026-11-07): 仅优质口径显示 = 全体家数÷优质家数, 越高说明该共识越靠非优质样本堆量。
 const scope = ref('q')
 const hasQualityData = computed(() => (stats.value || []).some(r => (r.qh || 0) > 0))
 const viewStats = computed(() => {
@@ -28,7 +29,8 @@ const viewStats = computed(() => {
   return rows
     .filter(r => !useQ || (r.qh || 0) > 0)
     .map(r => useQ
-      ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h }
+      ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h,
+          ratio: (r.qh || 0) > 0 ? (r.h || 0) / r.qh : null }
       : r)
 })
 const scopeEffective = computed(() => (scope.value === 'q' && hasQualityData.value) ? 'q' : 'all')
@@ -103,13 +105,14 @@ const { copiedKey, copyStockCode } = useCopyCode()
       </span>
       <span class="badge">Top 20</span>
     </h2>
-    <p class="hint">优质 = 优质选手最近已知持仓(无优质持仓的票不显示; 全体含榜单漂移样本) · 点击表头可切换排序</p>
+    <p class="hint">优质 = 优质选手最近已知持仓(无优质持仓的票不显示; 全体含榜单漂移样本) · 跟风倍数 = 全体家数÷优质家数, 越高共识越靠跟风盘 · 点击表头可切换排序</p>
       <div>
         <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>
         <th style="cursor:pointer;" @click="tog('h')">持有人{{ ind('h') }}</th>
         <th style="cursor:pointer;" @click="tog('tp')">总仓位{{ ind('tp') }}</th>
         <th style="cursor:pointer;" @click="tog('ap')">平均盈亏{{ ind('ap') }}</th>
+        <th v-if="scopeEffective === 'q'" style="cursor:pointer;" @click="tog('ratio')">跟风倍数{{ ind('ratio') }}</th>
       </tr></thead>
         <tbody>
           <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.c">
@@ -129,6 +132,9 @@ const { copiedKey, copyStockCode } = useCopyCode()
               {{ s.tp.toFixed(0) }}%
             </td>
             <td v-html="pctHtml(s.ap/s.h)"></td>
+            <td v-if="scopeEffective === 'q'" :style="s.ratio >= 10 ? 'color:#c0392b;font-weight:600;' : ''">
+              {{ s.ratio != null ? s.ratio.toFixed(1) + '×' : '—' }}
+            </td>
           </tr>
         </tbody>
       </table>
