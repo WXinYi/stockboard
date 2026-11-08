@@ -16,25 +16,11 @@ const stockSearch = ref('')
 const lookedUpHolders = ref(null)
 const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 
-// ── 口径切换(2026-09-23): 全体(默认, 11-07 用户拍板) / 优质(一键可切) ──
-// stocks.json 每行双口径: h/tp/ap=全体采集样本(随榜单漂移), qh/qtp/qap=仅优质选手。
-// 优质口径只显示 qh>0 的票 —— 小米集团这类无优质持仓的"幽灵共识"不再混入(09-23 小米案例)。
-// 兜底: 旧版 stocks.json 无 qh 字段(部署交错)时, 优质口径退回全体展示, 不出空白页。
-// 跟风倍数(2026-11-07): 仅优质口径显示 = 全体家数÷优质家数, 越高说明该共识越靠非优质样本堆量。
-// 默认全体(2026-11-07 用户拍板): 全体=群众真实持仓分布; 优质口径是长线配置榜, 作对照看。
-const scope = ref('all')
-const hasQualityData = computed(() => (stats.value || []).some(r => (r.qh || 0) > 0))
-const viewStats = computed(() => {
-  const rows = stats.value || []
-  const useQ = scope.value === 'q' && hasQualityData.value
-  return rows
-    .filter(r => !useQ || (r.qh || 0) > 0)
-    .map(r => useQ
-      ? { ...r, h: r.qh || 0, tp: r.qtp || 0, ap: r.qap ?? null, allH: r.h,
-          ratio: (r.qh || 0) > 0 ? (r.h || 0) / r.qh : null }
-      : r)
-})
-const scopeEffective = computed(() => (scope.value === 'q' && hasQualityData.value) ? 'q' : 'all')
+// ── 共识口径: 仅全体(2026-11-08 用户拍板, 优质口径移除) ──
+// stocks.json 仍导出双口径(qh/qtp/qap 优质三列保留在数据里备用), 前端只消费全体四列。
+// 历史: 09-23 上线优质口径(当日下线"幽灵共识"); 11-07 修 qh 恒定导出事故; 11-08 拍板只留全体
+// —— 优质口径本质是长线配置榜, 与本页短线共识定位不符(回测: 高手持仓次日跟随为负)。
+const viewStats = computed(() => stats.value || [])
 
 // ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动 —— 详情返回后窗口滚动回到跳转前位置
 // (共识列表不再设内部滚动容器, 单滚动条; 之前的双滚动条与内部 scrollTop 丢失问题一并消除) ──
@@ -101,19 +87,15 @@ const { copiedKey, copyStockCode } = useCopyCode()
   <div class="card">
     <h2>
       重仓共识
-      <span class="scope-switch">
-        <button :class="{ on: scopeEffective === 'q' }" @click="scope = 'q'">★ 优质</button><button :class="{ on: scopeEffective === 'all' }" @click="scope = 'all'">全体</button>
-      </span>
       <span class="badge">Top 20</span>
     </h2>
-    <p class="hint">优质 = 优质选手最近已知持仓(无优质持仓的票不显示; 全体含榜单漂移样本) · 跟风倍数 = 全体家数÷优质家数, 越高共识越靠跟风盘 · 点击表头可切换排序</p>
+    <p class="hint">全体采集选手的持仓聚合(含榜单漂移样本) · 点击表头可切换排序</p>
       <div>
         <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>
         <th style="cursor:pointer;" @click="tog('h')">持有人{{ ind('h') }}</th>
         <th style="cursor:pointer;" @click="tog('tp')">总仓位{{ ind('tp') }}</th>
         <th style="cursor:pointer;" @click="tog('ap')">平均盈亏{{ ind('ap') }}</th>
-        <th v-if="scopeEffective === 'q'" style="cursor:pointer;" @click="tog('ratio')">跟风倍数{{ ind('ratio') }}</th>
       </tr></thead>
         <tbody>
           <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.c">
@@ -124,7 +106,6 @@ const { copiedKey, copyStockCode } = useCopyCode()
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               </button>
               <span v-if="copiedKey === s.c" class="copied-tip">✓ 已复制</span>
-              <div v-if="scope === 'q'" class="sub-all">全体 {{ s.allH }} 家</div>
             </td>
             <td style="color:#999;">{{ s.c }}</td>
             <td>{{ s.h }}人</td>
@@ -133,9 +114,6 @@ const { copiedKey, copyStockCode } = useCopyCode()
               {{ s.tp.toFixed(0) }}%
             </td>
             <td v-html="pctHtml(s.ap/s.h)"></td>
-            <td v-if="scopeEffective === 'q'" :style="s.ratio >= 10 ? 'color:#c0392b;font-weight:600;' : ''">
-              {{ s.ratio != null ? s.ratio.toFixed(1) + '×' : '—' }}
-            </td>
           </tr>
         </tbody>
       </table>
@@ -150,10 +128,4 @@ const { copiedKey, copyStockCode } = useCopyCode()
 .stock-copy { border: none; background: none; cursor: pointer; color: #aaa; padding: 0 3px; vertical-align: middle; }
 .stock-copy:hover { color: #2980b9; }
 .copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
-.scope-switch { display: inline-flex; margin: 0 6px; vertical-align: middle; }
-.scope-switch button { border: 1px solid #d5dbe3; background: #fff; color: #667; font-size: 11px; padding: 3px 10px; cursor: pointer; }
-.scope-switch button:first-child { border-radius: 8px 0 0 8px; }
-.scope-switch button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
-.scope-switch button.on { background: #2980b9; border-color: #2980b9; color: #fff; }
-.sub-all { font-size: 10px; color: #98a2ae; margin-top: 1px; }
 </style>
