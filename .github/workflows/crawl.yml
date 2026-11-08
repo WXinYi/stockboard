@@ -306,6 +306,34 @@ jobs:
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python3 scripts/notify_daily.py
 
+      # 重仓共识·日度飙升汇总(2026-11-08): 仅收盘专班推一条(基线=上一交易日 stocks.json,
+      # actions/cache 每日接力——CI 是浅克隆, git 历史不可用)。Δh≥8 且 h≥15, Top10。
+      # 盘中班不推: 班间采样漂移大(小米曾 8→120), 逐班推会刷屏且多为漂移假信号。
+      # 基线缺失(首日/缓存被逐出)→ 不推, 宁缺毋假。
+      - name: 恢复共识基线缓存
+        if: success() && steps.dayguard.outputs.trading != 'false' && github.event.action == 'crawl-eod'
+        uses: actions/cache/restore@v4
+        with:
+          path: jiarenmens/data/.consensus_baseline.json
+          key: consensus-baseline-${{ github.run_id }}
+          restore-keys: |
+            consensus-baseline-
+
+      - name: 共识飙升推送
+        if: success() && steps.dayguard.outputs.trading != 'false' && github.event.action == 'crawl-eod'
+        continue-on-error: true
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: cd jiarenmens && python3 scripts/consensus_surge_push.py --date "$(TZ=Asia/Shanghai date +%F)" --baseline data/.consensus_baseline.json
+
+      - name: 保存共识基线缓存
+        if: success() && steps.dayguard.outputs.trading != 'false' && github.event.action == 'crawl-eod'
+        uses: actions/cache/save@v4
+        with:
+          path: jiarenmens/data/.consensus_baseline.json
+          key: consensus-baseline-${{ github.run_id }}
+
       # 保留窗口外采集日删除+VACUUM, 封顶 crawl_data.db 体积(不清理则每天 +2~3MB 无限增长)
       - name: 清理过期采集数据
         if: steps.dayguard.outputs.trading != 'false'
