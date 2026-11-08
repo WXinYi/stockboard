@@ -322,7 +322,12 @@ latest/copy.json        — 抄作业信号 + 卖出预警 + 疑似清仓
 latest/stocks.json      — 重仓共识（双口径 09-23: h/tp/ap=全体采集样本, qh/qtp/qap=仅优质选手——
                             全样本随榜单漂移波动, 小米集团曾 175家→4家 一日登顶又消失。
                             前端优质口径附「跟风倍数」列 11-07: 全体家数÷优质家数,
-                            越高说明共识越靠非优质样本堆量; ≥10× 标红, 全体口径不显示该列）
+                            越高说明共识越靠非优质样本堆量; ≥10× 标红, 全体口径不显示该列。
+                            ⚠️ 11-07 事故修复: qh/qtp/qap 曾因推导式泄漏循环变量(裸 code 引用
+                            qrows 循环残留值)而**全行恒定**（线上 09-23→11-07 连续 qh=5/354/15.95,
+                            优质口径整体失效; stocks.json 历史存档的 qh 均不可用, 回测请用
+                            players_index 逐日存档 idx15/idx16 自行聚合）。已修 + _build_stock_stats
+                            抽纯函数 + 全行同值 ::warning:: 守卫 + 回归测试 test_export_json）
 latest/name_map.json    — 被引用选手 name→id
 latest/changes_summary.json — 持仓变动计数
 latest/players/<id>.json — 选手详情, 前端按需加载

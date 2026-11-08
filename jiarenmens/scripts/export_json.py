@@ -94,6 +94,24 @@ def is_quality(p):
 # 主导出函数
 # ═══════════════════════════════════════════════
 
+def _build_stock_stats(stock_stats_map, stock_stats_q):
+    """全体(h/tp/ap) + 优质(qh/qtp/qap) 逐票聚合 → 排序后的 stockStats。
+
+    回归注记(2026-11-07): qh/qtp/qap 必须取 s["code"] 自己的聚合 —— 曾写成裸变量
+    code(推导式内未定义, 泄漏 qrows 循环残留值)导致全行恒定, 优质口径整体失效数月。"""
+    return sorted(
+        [{"c": s["code"], "n": s["name"],
+          "h": s["holders"], "tp": round(s["total_position"], 1),
+          "ap": round(s["total_profit"] / s["count"], 2) if s["count"] else 0,
+          "qh": stock_stats_q[s["code"]]["holders"] if s["code"] in stock_stats_q else 0,
+          "qtp": round(stock_stats_q[s["code"]]["total_position"], 1) if s["code"] in stock_stats_q else 0,
+          "qap": round(stock_stats_q[s["code"]]["total_profit"] / stock_stats_q[s["code"]]["holders"], 2)
+                 if s["code"] in stock_stats_q and stock_stats_q[s["code"]]["holders"] else 0}
+         for s in stock_stats_map.values()],
+        key=lambda s: s["tp"], reverse=True
+    )
+
+
 def export(db_path, crawl_date, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -257,17 +275,13 @@ def export(db_path, crawl_date, out_dir):
         s["total_position"] += safe_float(p.get("position_ratio"))
         s["total_profit"] += safe_float(p.get("profit_ratio"))
         s["count"] += 1
-    stock_stats = sorted(
-        [{"c": s["code"], "n": s["name"],
-          "h": s["holders"], "tp": round(s["total_position"], 1),
-          "ap": round(s["total_profit"] / s["count"], 2) if s["count"] else 0,
-          "qh": stock_stats_q[code]["holders"] if code in stock_stats_q else 0,
-          "qtp": round(stock_stats_q[code]["total_position"], 1) if code in stock_stats_q else 0,
-          "qap": round(stock_stats_q[code]["total_profit"] / stock_stats_q[code]["holders"], 2)
-                 if code in stock_stats_q and stock_stats_q[code]["holders"] else 0}
-         for s in stock_stats_map.values()],
-        key=lambda s: s["tp"], reverse=True
-    )
+    stock_stats = _build_stock_stats(stock_stats_map, stock_stats_q)
+    # 诚实守卫(2026-11-07): qh 曾因推导式泄漏循环变量 code(引用 qrows 循环残留值)
+    # 而全行恒定(线上连续数月 qh=5/354/15.95 一字不差, 优质口径整体失效)。
+    # 优质聚合非空时各票 qh 必然有差异, 全行同值 = 结构性错误 → 可见告警。
+    if stock_stats_q and len({r["qh"] for r in stock_stats}) == 1:
+        print("::warning:: stocks.json 优质口径 qh 全行恒定(推导式变量泄漏?), "
+              f"qh={stock_stats[0]['qh']} stock_stats_q={len(stock_stats_q)}票 — 请查 export_json 聚合")
 
     # ── 4. 抄作业信号 → copyTradeSignals ────
     stock_signals = {}  # code -> signal entry
