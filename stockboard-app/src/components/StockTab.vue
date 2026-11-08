@@ -16,12 +16,13 @@ const stockSearch = ref('')
 const lookedUpHolders = ref(null)
 const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 
-// ── 口径切换(2026-09-23): 优质(默认, 优质选手最近已知持仓) / 全体(对照) ──
+// ── 口径切换(2026-09-23): 全体(默认, 11-07 用户拍板) / 优质(一键可切) ──
 // stocks.json 每行双口径: h/tp/ap=全体采集样本(随榜单漂移), qh/qtp/qap=仅优质选手。
 // 优质口径只显示 qh>0 的票 —— 小米集团这类无优质持仓的"幽灵共识"不再混入(09-23 小米案例)。
 // 兜底: 旧版 stocks.json 无 qh 字段(部署交错)时, 优质口径退回全体展示, 不出空白页。
 // 跟风倍数(2026-11-07): 仅优质口径显示 = 全体家数÷优质家数, 越高说明该共识越靠非优质样本堆量。
-const scope = ref('q')
+// 默认全体(2026-11-07 用户拍板): 全体=群众真实持仓分布; 优质口径是长线配置榜, 作对照看。
+const scope = ref('all')
 const hasQualityData = computed(() => (stats.value || []).some(r => (r.qh || 0) > 0))
 const viewStats = computed(() => {
   const rows = stats.value || []
