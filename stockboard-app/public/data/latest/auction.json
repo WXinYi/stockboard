@@ -1,64 +1,153 @@
 {
- "date": "2026-11-06",
+ "date": "2026-11-09",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值20 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 2% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 20,
-   "lbgd": 5,
+   "strong": 57,
+   "lbgd": 6,
    "capacity_ratio": null,
-   "red_ratio": 0.015345730276223145,
+   "red_ratio": 0.9183984747378455,
    "bid_count": [
-    175,
-    300,
+    186,
+    129,
     50,
-    49,
-    6
+    25,
+    1
    ],
-   "bid_total": "296亿",
-   "bid_total_prev": "243亿"
+   "bid_total": "136亿",
+   "bid_total_prev": "296亿"
   }
  },
  "boards": [
   {
-   "code": "801161",
-   "name": "白酒",
+   "code": "801199",
+   "name": "汽车零部件",
    "burst": 5.5,
-   "amount": 153123033.0,
-   "main_net": -6275770.0,
+   "amount": 351784611.0,
+   "main_net": 41831503.0,
+   "src": "爆量+强度",
+   "strength": 137.0
+  },
+  {
+   "code": "801062",
+   "name": "军工",
+   "burst": 4.3,
+   "amount": 359219181.0,
+   "main_net": 25544052.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801035",
-   "name": "酿酒",
-   "burst": 4.5,
-   "amount": 61059756.0,
-   "main_net": -231164.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801003",
-   "name": "5G",
+   "code": "801464",
+   "name": "农业",
    "burst": 4.0,
-   "amount": 115362660.0,
-   "main_net": 29316743.0,
+   "amount": 76277742.0,
+   "main_net": -6819464.0,
    "src": "爆量L1",
    "strength": 0.0
+  },
+  {
+   "code": "801807",
+   "name": "算力",
+   "burst": 0.0,
+   "amount": 3973319484.0,
+   "main_net": 42781552.0,
+   "src": "强度",
+   "strength": 1136.0
+  },
+  {
+   "code": "801070",
+   "name": "光伏",
+   "burst": 0.0,
+   "amount": 2810637179.0,
+   "main_net": 109562543.0,
+   "src": "强度",
+   "strength": 984.0
+  },
+  {
+   "code": "803023",
+   "name": "AI应用",
+   "burst": 0.0,
+   "amount": 2443271477.0,
+   "main_net": 125029702.0,
+   "src": "强度",
+   "strength": 883.0
+  },
+  {
+   "code": "801250",
+   "name": "并购重组",
+   "burst": 0.0,
+   "amount": 2396513810.0,
+   "main_net": 2281773.0,
+   "src": "强度",
+   "strength": 617.0
+  },
+  {
+   "code": "801114",
+   "name": "外贸",
+   "burst": 0.0,
+   "amount": 1943534129.0,
+   "main_net": 1650320.0,
+   "src": "强度",
+   "strength": 607.0
+  },
+  {
+   "code": "801270",
+   "name": "基础建设",
+   "burst": 0.0,
+   "amount": 950443548.0,
+   "main_net": 3957938.0,
+   "src": "强度",
+   "strength": 596.0
+  },
+  {
+   "code": "801031",
+   "name": "文化传媒",
+   "burst": 0.0,
+   "amount": 1399908496.0,
+   "main_net": 82929431.0,
+   "src": "强度",
+   "strength": 558.0
+  },
+  {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 0.0,
+   "amount": 4976746371.0,
+   "main_net": 7134303.0,
+   "src": "强度",
+   "strength": 552.0
+  },
+  {
+   "code": "801218",
+   "name": "华为概念",
+   "burst": 0.0,
+   "amount": 3732576387.0,
+   "main_net": 9526814.0,
+   "src": "强度",
+   "strength": 406.0
+  },
+  {
+   "code": "801896",
+   "name": "成人用品",
+   "burst": 0.0,
+   "amount": 78818402.0,
+   "main_net": 19931068.0,
+   "src": "强度",
+   "strength": 228.0
   }
  ],
  "strike": [
   {
-   "code": "000995",
-   "name": "皇台酒业",
-   "height": 2,
-   "status": "可做(首板套利)",
-   "reason": "1进2: 昨日首板, 今竞价 +2.2%",
+   "code": "601599",
+   "name": "浙文影业",
+   "height": 5,
+   "status": "可做",
+   "reason": "龙头谱系[空间锚(最高连板)] 5连板 | AI视频主线空间龙, 封单 1.69亿；主线梯队 5板",
    "tag": null,
    "bid_pct": null
   },
@@ -66,8 +155,8 @@
    "code": "002929",
    "name": "润建股份",
    "height": 2,
-   "status": "可做(首板套利)",
-   "reason": "1进2: 昨日首板, 今竞价 +4.1%；首板试错: 主线首板, 今竞价 +4.1%",
+   "status": "可做",
+   "reason": "龙头谱系[总龙头] 主线[绿色电力] 5只涨停, 封单 1.81亿；主线梯队 2板",
    "tag": null,
    "bid_pct": null
   },
@@ -75,26 +164,26 @@
    "code": "002086",
    "name": "东方海洋",
    "height": 2,
-   "status": "可做(首板套利)",
-   "reason": "1进2: 昨日首板, 今竞价 +1.7%",
+   "status": "可做",
+   "reason": "主线梯队 2板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "600261",
-   "name": "阳光照明",
-   "height": 2,
-   "status": "可做(首板套利)",
-   "reason": "1进2: 昨日首板, 今竞价 +5.1%",
+   "code": "301697",
+   "name": "贝特利",
+   "height": 3,
+   "status": "可做",
+   "reason": "主线梯队 3板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "001393",
-   "name": "维通利",
-   "height": 1,
-   "status": "可做(首板试错)",
-   "reason": "首板试错: 主线首板, 今竞价 +2.2%",
+   "code": "603381",
+   "name": "永臻股份",
+   "height": 4,
+   "status": "可做",
+   "reason": "主线梯队 4板",
    "tag": null,
    "bid_pct": null
   }
@@ -104,104 +193,80 @@
   {
    "code": "002578",
    "name": "闽发铝业",
-   "height": 4,
-   "bid_pct": 10.11,
-   "turnover": 8.11
+   "height": 5,
+   "bid_pct": 9.98,
+   "turnover": 5.01
   },
   {
    "code": "301697",
    "name": "贝特利",
-   "height": 2,
-   "bid_pct": 13.38,
-   "turnover": 4.32
+   "height": 3,
+   "bid_pct": -2.46,
+   "turnover": 2.63
   },
   {
    "code": "601599",
    "name": "浙文影业",
-   "height": 4,
-   "bid_pct": 9.96,
-   "turnover": 2.65
+   "height": 5,
+   "bid_pct": -3.74,
+   "turnover": 2.563456418547362
   },
   {
-   "code": "002529",
-   "name": "海源复材",
+   "code": "002086",
+   "name": "东方海洋",
    "height": 2,
-   "bid_pct": 9.97,
-   "turnover": 2.11
+   "bid_pct": 5.04,
+   "turnover": 2.32
   },
   {
    "code": "603381",
    "name": "永臻股份",
-   "height": 3,
-   "bid_pct": 10.03,
-   "turnover": 2.07
+   "height": 4,
+   "bid_pct": -5.45,
+   "turnover": 2.0962818152557516
   }
  ],
  "regime": {
-  "regime": "过渡",
-  "relay": 0.17796610169491525,
-  "max_board": 4,
+  "regime": "电风扇",
+  "relay": 0.13095238095238096,
+  "max_board": 5,
   "top1_days": 1,
   "detail": [
-   "昨日再板率18%",
-   "最高4板",
+   "昨日再板率13%",
+   "最高5板",
    "TOP1连续1日"
   ]
  },
  "cycle": {
-  "stage": "启动",
+  "stage": "发酵",
   "confidence": 7,
-  "gate": "off",
+  "gate": "open",
   "mainlines": [
+   "绿色电力",
    "AI应用",
-   "光伏",
-   "算力",
+   "农业",
    "AI视频",
-   "机器人概念",
-   "端侧AI"
+   "算力",
+   "光伏"
   ],
   "leaders": [
    {
-    "code": "002578",
-    "name": "闽发铝业",
-    "pid": 4,
+    "code": "601599",
+    "name": "浙文影业",
+    "pid": 5,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "601599",
-    "name": "浙文影业",
-    "pid": 4,
+    "code": "002929",
+    "name": "润建股份",
+    "pid": 2,
     "role": "总龙头"
    },
    {
-    "code": "002131",
-    "name": "利欧股份",
+    "code": "601595",
+    "name": "上海电影",
     "pid": 1,
     "role": "中军(AI应用)"
-   },
-   {
-    "code": "603598",
-    "name": "引力传媒",
-    "pid": 2,
-    "role": "补涨/卡位(AI应用)"
-   },
-   {
-    "code": "603381",
-    "name": "永臻股份",
-    "pid": 3,
-    "role": "板块龙头(光伏)"
-   },
-   {
-    "code": "002865",
-    "name": "钧达股份",
-    "pid": 1,
-    "role": "中军(光伏)"
-   },
-   {
-    "code": "301697",
-    "name": "贝特利",
-    "pid": 2,
-    "role": "补涨/卡位(光伏)"
    }
   ]
  },
@@ -217,12 +282,11 @@
   "prompt_ver": "v3",
   "latency_s": 2.2,
   "degraded": false,
-  "generated_at": "2026-11-06T02:01:04",
-  "slot": "1000"
+  "generated_at": "2026-11-06T02:01:04"
  },
  "stats": {
-  "pool": 248,
-  "boards": 3,
+  "pool": 520,
+  "boards": 13,
   "genes": 0
  },
  "candidates": [],
