@@ -442,8 +442,11 @@ def cmd_retain_weeks(weeks: int):
             delete_release(tag)
 
 
-def _download_asset_to_db(tag: str, asset: str, dest: Path, retries: int = 3) -> int:
-    """单个 gz 资产 → 解压覆盖 dest。失败返回 1(由调用方决定终止/降级), 网络错误重试。"""
+def _download_asset_to_db(tag: str, asset: str, dest: Path, retries: int = 5) -> int:
+    """单个 gz 资产 → 解压覆盖 dest。失败返回 1(由调用方决定终止/降级), 网络错误重试。
+
+    2026-11-09 加固: 3 次/120s 在 GitHub 资产 CDN 抖动日(周一早盘/午盘实测 Broken pipe
+    连续命中)扛不住 → 5 次/240s, 退避 3/6/9/12/15s; 耗尽仍降级, 链路语义不变。"""
     last_err = ""
     for i in range(retries):
         rel = get_release(tag, warn=True)
@@ -462,7 +465,7 @@ def _download_asset_to_db(tag: str, asset: str, dest: Path, retries: int = 3) ->
         try:
             req = urllib.request.Request(a["browser_download_url"],
                                          headers={"User-Agent": "stockboard-release-db"})
-            with urllib.request.urlopen(req, timeout=120) as r, open(gz, "wb") as f:
+            with urllib.request.urlopen(req, timeout=240) as r, open(gz, "wb") as f:
                 shutil.copyfileobj(r, f)
             dest.parent.mkdir(parents=True, exist_ok=True)
             with gzip.open(gz, "rb") as s, open(dest, "wb") as d:
