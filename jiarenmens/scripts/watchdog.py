@@ -60,6 +60,7 @@ MAX_FAILS = 3                                # 连续 N 班全员失败 → 降�
 HIDDEN_UIDS = {
     "900438148": "4208037210932556",  # 我嘚财富(08-30 起隐藏)
     "900439290": "6487375946169702",  # 我要再来一次(曾用名 兴奋之青果/再也不硬抗了, 10-15 起隐藏)
+    "900450475": "1407047413230182",  # 敢作敢当的武研琳(11-03 起隐藏, 11-09 巡检发现)
 }
 
 _HOLIDAY_CACHE: dict | None = None
@@ -356,6 +357,7 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
             continue
         if o.get("hidden") and not o.get("trades"):
             continue   # 隐藏号今日无操作, 无需进比对(有操作时走流水通道正常出卡)
+        pushed_player = st["pushed"].setdefault(zh, {})
         if first_of_day:
             base_cache.setdefault(zh, fetch_base_player(zh))
             base = base_cache.get(zh)
