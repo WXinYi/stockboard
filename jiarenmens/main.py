@@ -168,7 +168,12 @@ async def crawl_all_data_async(
         logger.warning(f"已知选手集合加载失败, 全员按已知处理: {e}")
         known_ids = set()
 
-    logger.info(f"检查点: 已完成 {len(completed_ids)} 个选手, 库内已知选手 {len(known_ids)} 个")
+    # 当日首班判定(确定性快照, 避免并发下 completed_ids 边采边变的竞态):
+    # 首班对老选手也做 full 初始化(刷新 info/收益/持仓校准), 后续班才降档 trades
+    first_class = not completed_ids
+
+    logger.info(f"检查点: 已完成 {len(completed_ids)} 个选手, 库内已知选手 {len(known_ids)} 个"
+                f"{', 当日首班' if first_class else ''}")
     logger.info(f"本次数据日期: {crawl_date}, 班次档位: {level}")
 
     # 批量数据缓冲区
@@ -214,14 +219,17 @@ async def crawl_all_data_async(
         def pick_level(zh_id: str) -> str:
             """班次基础档位 → 选手档位:
             收盘专班全员 full; 关注选手盘中走 flash(watchdog 要真实持仓);
-            新选手(库内无档案)走 full 初始化; 其余按班次档位(trades/hourly)。
-            确定性函数: 收集侧重算与发起时一致(known_ids 只在 full 成功分支追加)。"""
+            当日首班或新选手走 full 初始化; 其余老选手按班次档位(trades/hourly)。
+            确定性函数: 收集侧重算与发起时一致
+            (first_class 是快照; 收集时本人必尚未进 completed_ids)。"""
             if level == "full":
                 return "full"
             if zh_id in WATCHED_ZH_IDS:
                 return "flash"
+            if first_class and zh_id not in completed_ids:
+                return "full"      # 每天首班: 老选手也全量校准一轮(info/收益/持仓)
             if zh_id not in known_ids:
-                return "full"      # 新选手初始化: 全量持仓+info, 之后各班降档推算
+                return "full"      # 盘中新进选手: 初始化, 之后各班降档推算
             return level
 
         async def crawl_with_semaphore(player: Dict[str, Any]) -> Tuple[str, str, Any, List, List]:
@@ -257,8 +265,18 @@ async def crawl_all_data_async(
             result = await coro
             zh_id, name, detail, positions, trades = result
 
+            if detail and detail.pop("stub", False):
+                # flash 档轻量标记: 仅证明组合接口可达(hidden 探测依赖), 不作为档案入库
+                detail = None
+
             if detail:
-                # full 档: 完整档案 + 真实持仓(EOD 校准 / 新选手初始化)
+                # full/hourly 档
+                if not detail.get("name"):
+                    # hourly 档(或 full 档 info 接口偶发失败): 只含收益字段 →
+                    # 与库内旧档案合并, 防止 UPSERT 用默认值清空 name/followers 等
+                    old = storage.load_player(zh_id)
+                    if old:
+                        detail = {**old, **detail}
                 # 合并 player_list 中的 labels 和 ranks
                 extra = player_extra.get(zh_id, {})
                 detail["labels"] = extra.get("labels", [])

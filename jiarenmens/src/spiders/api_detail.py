@@ -55,11 +55,12 @@ NEW_USER_IDS = {
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # 秒
 
-# ── 分层采集档位(2026-11-10, 盘中班 4 调用/人 → 1-2 调用/人) ──
+# ── 分层采集档位(2026-11-10, 盘中班 4 调用/人 → 1-3 调用/人) ──
 # trades(1): 调仓1页          — 盘中常规班·老选手; 持仓由 main.py 用流水推算(position_delta), detail=None
 # hourly(2): 调仓1页+收益净值  — 整点班; detail 只含收益字段, name 等由 main.py 合并库内旧值
-# flash (2): 调仓1页+持仓     — 盘中班·关注选手(watchdog 要真实持仓); watched_flash 默认档
-# full  (6): info+收益+持仓+dimensions+调仓2页 — 收盘专班 EOD 校准; 亦用于盘中新选手初始化
+# flash (3): 调仓2页+持仓     — 盘中班·关注选手(watchdog 要真实持仓); watched_flash/watchdog 默认档;
+#            detail 为轻量 stub(hidden 探测依赖其非 None), main.py 剥离不入库
+# full  (6): info+收益+持仓+dimensions+调仓2页 — 收盘专班 EOD 校准; 亦用于当日首班/盘中新选手初始化
 CRAWL_LEVELS = ("trades", "hourly", "flash", "full")
 
 
@@ -305,11 +306,14 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
     if level == "trades":
         return (None, [], _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
 
-    # flash 档: 调仓 + 真实持仓(关注选手盘中班)
+    # flash 档: 调仓(2页, 覆盖高频选手当日操作) + 真实持仓(关注选手盘中班/watchdog)
+    # detail 返回轻量 stub: watchdog/watched_flash 以 `detail is not None` 判定组合
+    # 是否隐藏, 必须非 None 才不误判; main.py 侧剥离 stub, 不作为完整档案入库
     if level == "flash":
         pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
-        return (None, _parse_positions(zh_id, pos_raw),
-                _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
+        return ({"zh_id": zh_id, "user_id": uid, "stub": True},
+                _parse_positions(zh_id, pos_raw),
+                _fetch_trades_pages(tokens, uid, zh_id, max_pages=2))
 
     # hourly 档: 调仓 + 收益净值(整点班, 待 workflow 启用)
     if level == "hourly":
