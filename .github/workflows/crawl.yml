@@ -174,6 +174,8 @@ jobs:
         env:
           EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
           EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
+          # 收盘专班全量(dimensions+调仓2页); 盘中班非关注选手瘦身(4调用)防限速拖班
+          EM_FULL_CRAWL: ${{ github.event.action == 'crawl-eod' && '1' || '0' }}
         run: cd jiarenmens && python main.py --checkpoint-reset
 
       # 东财人气榜快照(每天最多两份: 09:25 auction 已存 am 则此处自动记 pm, 同(date,snap)去重)

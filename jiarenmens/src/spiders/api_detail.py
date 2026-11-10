@@ -230,13 +230,17 @@ def _fetch_trades_pages(tokens: Dict[str, str], uid: str, zh_id: str,
     return out
 
 
-def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
+def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
+                          full: bool = False) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
     """
     爬取单个选手的全部数据（同步版本, 2026-11-10 新协议）
 
     Args:
         zh_id: 选手组合ID
         user_id: 选手 userId(缺省走解析链: NEW_USER_IDS → 采集库)
+        full: 全量模式(收盘专班)——含 dimensions(回撤)+调仓2页;
+              瘦身模式(默认, 盘中班)省略 dimensions、调仓1页 → 每选手 4 调用 vs 6,
+              新协议每选手接口数是旧版 4-6 倍, 不瘦身班次会被限速拖到被下一班取消
 
     Returns:
         (detail_dict, positions_list, trades_list) — 形状与旧协议一致
@@ -256,7 +260,7 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None) -> Tuple[Op
     info = _call_api_new("CombinationInfoHandler", dict(base), tokens) or {}
     yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
     pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
-    dims = _call_api_new("combination_dimensions", {"zh": zh_int, "unit": "20d"}, tokens) or {}
+    dims = (_call_api_new("combination_dimensions", {"zh": zh_int, "unit": "20d"}, tokens) or {}) if full else {}
     if not info and not yld and not pos_raw:
         logger.error(f"{zh_id}: 全部接口无数据(组合可能已删除)")
         return (None, [], [])
@@ -303,23 +307,24 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None) -> Tuple[Op
         "rate_max_stk": "",
         "rate_max_stk_code": "",
     }
-    trades = _fetch_trades_pages(tokens, uid, zh_id)
+    trades = _fetch_trades_pages(tokens, uid, zh_id, max_pages=2 if full else 1)
     return (detail, positions, trades)
 
 
 async def crawl_player_all_data_async(
-    zh_id: str
+    zh_id: str, full: bool = False
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
     """
     爬取单个选手的全部数据（异步版本，在线程池中执行同步请求）
 
     Args:
         zh_id: 选手组合ID
+        full: 全量模式(收盘专班)
 
     Returns:
         (detail_dict, positions_list, trades_list)
     """
-    return await asyncio.to_thread(crawl_player_all_data, zh_id)
+    return await asyncio.to_thread(crawl_player_all_data, zh_id, None, full)
 
 
 # =============================================================================

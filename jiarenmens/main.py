@@ -104,6 +104,7 @@ def save_checkpoint(state: Dict[str, Any]):
 async def crawl_player_data_async(
     zh_id: str,
     name: str,
+    full: bool = False,
 ) -> Tuple[str, str, Optional[Dict], List, List]:
     """
     通过 API 获取单个选手的所有数据
@@ -111,11 +112,13 @@ async def crawl_player_data_async(
     Args:
         zh_id: 选手ID
         name: 选手名称
+        full: 全量模式(收盘专班)——非关注选手默认瘦身(4调用), 关注选手始终全量
 
     Returns:
         (zh_id, name, detail, positions, trades)
     """
-    detail, positions, trades = await crawl_player_all_data_async(zh_id)
+    want_full = full or zh_id in WATCHED_ZH_IDS
+    detail, positions, trades = await crawl_player_all_data_async(zh_id, want_full)
     return (zh_id, name, detail, positions, trades)
 
 
@@ -124,7 +127,8 @@ async def crawl_all_data_async(
     storage,
     max_workers: int = 20,
     skip_existing: bool = True,
-    checkpoint_interval: int = 50
+    checkpoint_interval: int = 50,
+    full: bool = False,
 ):
     """
     异步获取所有选手数据（纯 API，无需浏览器）
@@ -196,7 +200,7 @@ async def crawl_all_data_async(
                 if interrupted or (zh_id in completed_ids and zh_id not in WATCHED_ZH_IDS):
                     return (zh_id, name, None, [], [])
 
-                return await crawl_player_data_async(zh_id, name)
+                return await crawl_player_data_async(zh_id, name, full)
 
         # 构建 player_list 补充数据（labels, ranks）
         player_extra = {}
@@ -358,14 +362,19 @@ def main():
         logger.info(f"测试模式: 只处理前 {len(players)} 个选手")
 
     # Step 2: 异步获取数据
-    logger.info(f"\n[Step 2] 异步获取选手数据 (并发数={args.workers}, 跳过已存在={skip_existing})...")
+    # 全量模式: 收盘专班(crawl-eod)对所有选手拉 dimensions+调仓2页; 盘中班非关注选手瘦身(4调用)
+    full_crawl = os.environ.get("EM_FULL_CRAWL") == "1"
+    if full_crawl:
+        logger.info("收盘专班: 全量模式(dimensions+调仓2页)")
+    logger.info(f"\n[Step 2] 异步获取选手数据 (并发数={args.workers}, 跳过已存在={skip_existing}, 全量={full_crawl})...")
 
     try:
         success_count, skip_count, fail_count = asyncio.run(crawl_all_data_async(
             players,
             storage,
             max_workers=args.workers,
-            skip_existing=skip_existing
+            skip_existing=skip_existing,
+            full=full_crawl
         ))
     except KeyboardInterrupt:
         logger.info("采集被用户中断")
