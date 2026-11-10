@@ -223,6 +223,8 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 ### 2.1b 盯盘 watchdog（关注选手盘中即时提醒，2026-09-18 上线）
 
+**⚠️ 2026-11-10 EM 协议迁移**：EM 关闭旧 rtV2（emdcspzhapi.eastmoney.com，全部方法拒"APP版本较低"——版本号/时间戳/UA/99.99 全试无效，实为旧主机废弃）。新协议 = **spzhapi.dfcfs.cn/rtV2 + 登录态 token**（args 内 ctToken/utToken，来自用户抓包，**无需 sign**）+ 新字段三件套（randomCode/deviceId/新版 clientVersion "11.5.5_3.0.0.261105130728749"）。方法名映射：detail_97 死亡 → CombinationInfoHandler(信息) + combination_yield_detail_handler(收益率/净值) + CombinationHoldPositionPermitHandler(持仓,返回分板块列表需拍平) + CombinationRelocatePositionHandler(调仓,逐笔流水分页需按日期+票+方向聚合) + combination_dimensions(匿名公开)。userId 必填（代码 NEW_USER_IDS 映射 11 人 → 采集库回退）。token 来源：env EM_CT_TOKEN/EM_UT_TOKEN（CI secrets）> data/em_tokens.json（本地抓包, gitignored）。**token 失效 → 采集诚实失败并提示重新抓包**；周收益字段新协议缺失（players.weekly_return 暂置 0）。
+
 `watchdog.yml`（cron-job.org 每 5 分钟 → `repository_dispatch: watchdog`，独立并发组 `watchdog-main` 且不掐班）：交易时段拉关注选手组合接口（秒级/人），当日新操作 → **立即推钉钉** + **叠加更新该选手 `players/{zh}.json`** → 轻量部署 Pages（dist 壳缓存命中，1~3 分钟）。操作发生后页面 6~8 分钟可见、钉钉推送后 1~3 分钟可见。
 
 - **语义**：东财调仓明细只有日粒度（`tzrq` 无盘中时间戳），"即时" = 当日该笔**首次出现/成交次数增加**的时刻，推送写的是首次发现时刻。

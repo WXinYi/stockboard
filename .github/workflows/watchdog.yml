@@ -53,6 +53,8 @@ jobs:
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
+          EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
         run: |
           cd jiarenmens
           # watchdog-open = 开盘冲刺(09:30 触发): 50 秒/轮自循环至 09:35, 抢开盘黄金窗口

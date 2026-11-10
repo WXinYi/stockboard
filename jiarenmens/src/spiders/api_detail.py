@@ -1,13 +1,23 @@
 """
-通过平台 API (rtV2) 获取选手详情、持仓和调仓
+通过平台 API 获取选手详情、持仓和调仓
 
-替代 Playwright 方案，不再需要浏览器渲染。
-一次 API 调用即可获取详情 + 持仓 + 最近调仓。
+2026-11-10 协议迁移: EM 关闭旧 rtV2(emdcspzhapi.eastmoney.com, "APP版本较低"门禁)。
+新协议 = spzhapi.dfcfs.cn/rtV2 + 登录态 token(args 内 ctToken/utToken, 无需 sign)
++ 新字段三件套(randomCode/deviceId/新版 clientVersion)。
+token 来源: env EM_CT_TOKEN/EM_UT_TOKEN > data/em_tokens.json(gitignored, 抓包获取)。
+token 失效表现: code 9081/200 → 采集诚实失败, 重新抓包更新 token 即恢复。
 """
 import re
+import json
+import time
+import uuid
+import random
+import string
+import os
 import asyncio
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import date
+from pathlib import Path
 
 import requests
 
@@ -16,17 +26,114 @@ from src.utils.logger import setup_logger
 
 logger = setup_logger()
 
-# V2 API 配置
-API_V2_URL = "https://emdcspzhapi.eastmoney.com/rtV2"
+# ── 新协议配置(2026-11-10, spzhapi 主机 + 登录态 token) ──
+API_V2_URL = "https://spzhapi.dfcfs.cn/rtV2"          # 新主机(旧主机 emdcspzhapi 已废弃)
+TOKEN_FILE = Path(DATA_DIR) / "em_tokens.json"
+CLIENT_VERSION = "11.5.5_3.0.0.261105130728749"        # 新版 app 版本串(门禁校验点)
 API_V2_HEADERS = {
     "Content-Type": "application/json",
-    "Accept": "application/json",
-    "User-Agent": "app-iphone-client-iPhone15,2-FAC3049C-3BE9-4D4C-88E3-3B4FD518050A",
-    "Accept-Language": "zh-CN,zh-Hans;q=0.9",
+    "Accept": "application/json, text/plain, */*",
+    "User-Agent": "%E4%B8%9C%E6%96%B9%E8%B4%A2%E5%AF%8C/20261021100.1055 CFNetwork/3896.200.61 Darwin",
+}
+
+# 关注/已知选手 zh_id → userId(公开标识, rtV1 榜单/搜索接口均可见)。
+# relocate/持仓/收益接口必须带 userId; 缺失时回退采集库 players.user_id / 搜索接口反查。
+NEW_USER_IDS = {
+    "900456476": "2992386206580634",   # 狼之行一
+    "900450475": "1407047413230182",   # 敢作敢当的武研琳(11-03 起隐藏)
+    "900351276": "3208446625163740",   # 新生代柚子04
+    "900240956": "9887395831331906",   # 股得猫咛
+    "900438148": "4208037210932556",   # 我嘚财富(08-30 起隐藏)
+    "900376763": "4784346310692888",   # 东之福气娟子
+    "900439290": "6487375946169702",   # 我要再来一次(10-15 起隐藏)
+    "900461598": "3019386220935090",   # 大道可寻
+    "900293400": "6838395742604432",   # 月儿兰
+    "900458047": "3561335584325600",   # 点火的佩斯
+    "900455448": "4992097323709932",   # 捏盘冲升
 }
 
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # 秒
+
+
+def _load_tokens() -> Dict[str, str]:
+    """登录态 token: env EM_CT_TOKEN/EM_UT_TOKEN 优先, 其次 data/em_tokens.json。
+    返回 {ctToken, utToken, deviceId}; 缺失/不全 → {}(调用方诚实失败)。"""
+    ct = os.environ.get("EM_CT_TOKEN", "")
+    ut = os.environ.get("EM_UT_TOKEN", "")
+    dev = os.environ.get("EM_DEVICE_ID", "")
+    if ct and ut:
+        return {"ctToken": ct, "utToken": ut, "deviceId": dev or str(uuid.uuid4())}
+    try:
+        d = json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
+        if d.get("ctToken") and d.get("utToken"):
+            d.setdefault("deviceId", str(uuid.uuid4()))
+            return d
+    except Exception:
+        pass
+    return {}
+
+
+def _call_api_new(method: str, args: Dict[str, Any], tokens: Dict[str, str]) -> Optional[Dict]:
+    """新协议调用: spzhapi/rtV2 + token(args 内) + 新字段三件套。"""
+    payload = {
+        "args": args,
+        "method": method,
+        "client": "ios",
+        "randomCode": "".join(random.choices(string.ascii_letters + string.digits, k=32)),
+        "timestamp": int(time.time() * 1000),
+        "deviceId": tokens.get("deviceId", ""),
+        "clientType": "cfw",
+        "clientVersion": CLIENT_VERSION,
+    }
+    headers = dict(API_V2_HEADERS)
+    headers["Accept-Language"] = "zh-CN,zh-Hans;q=0.9"
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(API_V2_URL, json=payload, headers=headers, timeout=20)
+            data = resp.json()
+            if data.get("code") == 0:
+                return data.get("data", {})
+            msg = str(data.get("message", ""))
+            if "版本较低" in msg:
+                # 门禁类: 重试无意义, 直接失败并给出可行动提示
+                logger.error(f"EM 门禁拒绝({method}): {msg} — token 可能过期, 请重新抓包更新"
+                             f" EM_CT_TOKEN/EM_UT_TOKEN 或 data/em_tokens.json")
+                return None
+            logger.warning(f"API 返回错误: code={data.get('code')}, {msg}, method={method}")
+            return None
+        except requests.Timeout:
+            if attempt < MAX_RETRIES - 1:
+                logger.warning(f"API 超时 (尝试 {attempt+1}/{MAX_RETRIES})")
+                continue
+            logger.error(f"API 超时，method={method}")
+            return None
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                logger.warning(f"API 调用失败 (尝试 {attempt+1}/{MAX_RETRIES}): {e}")
+                time.sleep(RETRY_DELAY)
+                continue
+            logger.error(f"API 调用失败: {e}")
+            return None
+    return None
+
+
+def _call_api(method: str, args: Dict[str, str]) -> Optional[Dict]:
+    """兼容入口: 旧签名保留(export_json/watchdog 调 relocate 用), 内部走新协议。
+    relocate/持仓/收益等需要登录态的方法由此通道提供。"""
+    tokens = _load_tokens()
+    if not tokens:
+        logger.error("EM token 缺失(EM_CT_TOKEN/EM_UT_TOKEN 或 em_tokens.json) — 无法调用 EM 接口")
+        return None
+    return _call_api_new(method, dict(args), tokens)
+
+
+def _safe_int(value, default=0) -> int:
+    """安全转换整数, 处理 '44'/'--'/None 等特殊值"""
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return default
 
 
 def _opt_rate(v) -> Optional[float]:
@@ -42,81 +149,6 @@ def _opt_rate(v) -> Optional[float]:
     return f if f > 0 else None
 
 
-def _call_api(method: str, args: Dict[str, str]) -> Optional[Dict]:
-    """调用 rtV2 API（同步）"""
-    payload = {
-        "appKey": "eastmoney",
-        "method": method,
-        "client": "ios",
-        "clientVersion": "10.6",
-        "clientType": "cfw",
-        "args": args,
-        "timestamp": "1784714414710",  # 固定时间戳，APP 不校验
-    }
-
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.post(
-                API_V2_URL, json=payload, headers=API_V2_HEADERS, timeout=15
-            )
-            data = resp.json()
-            if data.get("code") == 0:
-                return data.get("data", {})
-            else:
-                logger.warning(
-                    f"API 返回错误: code={data.get('code')}, "
-                    f"message={data.get('message')}, method={method}"
-                )
-                return None
-        except requests.Timeout:
-            if attempt < MAX_RETRIES - 1:
-                logger.warning(f"API 超时 (尝试 {attempt+1}/{MAX_RETRIES})")
-                continue
-            logger.error(f"API 超时，method={method} args={args}")
-            return None
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                logger.warning(f"API 调用失败 (尝试 {attempt+1}/{MAX_RETRIES}): {e}")
-                asyncio.sleep(RETRY_DELAY) if False else None  # 同步版本
-                continue
-            logger.error(f"API 调用失败: {e}")
-            return None
-
-    return None
-
-
-def _parse_player_detail(api_data: Dict, zh_id: str) -> Dict[str, Any]:
-    """从 API 响应解析选手详情"""
-    d = api_data.get("detail", {})
-    if not d:
-        return {"zh_id": zh_id}
-
-    player = {
-        "zh_id": zh_id,
-        "name": d.get("zuheName", ""),
-        "user_id": d.get("userid", ""),
-        "followers": int(d.get("concernCnt", 0)),
-        "total_return": float(d.get("rate", 0)),
-        "daily_return": float(d.get("rateDay", 0)),
-        "weekly_return": float(d.get("rate5Day", 0)),
-        "monthly_return": float(d.get("rate20Day", 0)),
-        "yearly_return": float(d.get("rate250Day", 0)),
-        "net_value": float(d.get("JZ", 0)),
-        "max_drawdown": float(d.get("maxDrawDown", 0)),
-        "win_rate": _opt_rate(d.get("dealRate")),
-        "days": int(d.get("yxts", 0)),
-        "concept": d.get("comment", "")[:100] if d.get("comment") else "",
-        "intro": d.get("comment", ""),
-        # 附加字段
-        "manager_name": d.get("uidNick", ""),
-        "start_date": d.get("startDate", ""),
-        "portf_rat": float(d.get("portfRat", 0)),
-        "rate_max_stk": d.get("rateMaxStkName", ""),
-        "rate_max_stk_code": d.get("rateMaxStkCode", ""),
-    }
-    return player
-
-
 def _safe_float(value, default=0.0) -> float:
     """安全转换浮点数，处理 '+∞'、'--' 等特殊值"""
     if value is None:
@@ -130,104 +162,148 @@ def _safe_float(value, default=0.0) -> float:
         return default
 
 
-def _parse_positions(api_data: Dict, zh_id: str) -> List[Dict[str, Any]]:
-    """从 API 响应解析持仓数据"""
-    positions = []
-    for p in api_data.get("position", []):
-        try:
-            position = {
-                "zh_id": zh_id,
-                "stock_name": p.get("__name", ""),
-                "stock_code": p.get("__code", ""),
-                "stk_mkt_code": p.get("stkMktCode", ""),
-                "cost_price": _safe_float(p.get("cbj")),
-                "current_price": _safe_float(p.get("__zxjg")),
-                "profit_ratio": _safe_float(p.get("webYkRate")),
-                "position_ratio": _safe_float(p.get("holdPos")),
-                "position_rate_detail": p.get("positionRateDetail", ""),
-                "update_time": "",
-            }
-            positions.append(position)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"解析持仓项失败: {e}, data={p}")
-            continue
-    return positions
+def _resolve_user_id(zh_id: str) -> Optional[str]:
+    """userId 解析链: 代码映射 → 采集库 players.user_id → None。
+    (rtV1 榜单与搜索接口也可见 userId, 但 watchdog/CI 无库, 以代码映射为主)"""
+    if zh_id in NEW_USER_IDS:
+        return NEW_USER_IDS[zh_id]
+    try:
+        import sqlite3
+        db = Path(DATA_DIR) / "crawl_data.db"
+        if db.exists():
+            row = sqlite3.connect(f"file:{db}?mode=ro", uri=True).execute(
+                "SELECT user_id FROM players WHERE zh_id=?", (zh_id,)).fetchone()
+            if row and row[0]:
+                return row[0]
+    except Exception as e:
+        logger.warning(f"userId 库内解析失败({e})")
+    return None
 
 
-def _parse_trades(api_data: Dict, zh_id: str) -> List[Dict[str, Any]]:
-    """从 API 响应解析调仓记录"""
-    trades = []
-    for t in api_data.get("tradeSummary", []):
-        try:
-            # 买入方向
-            buy_trades = int(t.get("lshj_mr", 0) or 0)
-            buy_position = t.get("cwhj_mr", "")
-            _buy_price = t.get("cjjg_mr", "0")
-            buy_price = float(_buy_price) if _buy_price and _buy_price != "--" else 0.0
-
-            # 卖出方向
-            sell_trades = int(t.get("lshj_mc", 0) or 0)
-            sell_position = t.get("cwhj_mc", "")
-            _sell_price = t.get("cjjg_mc", "0")
-            sell_price = float(_sell_price) if _sell_price and _sell_price != "--" else 0.0
-
-            trade_date_raw = t.get("tzrq", "")
-            # 格式化日期: 20260717 → 2026-07-17
-            if len(trade_date_raw) == 8:
-                trade_date = f"{trade_date_raw[:4]}-{trade_date_raw[4:6]}-{trade_date_raw[6:8]}"
-            else:
-                trade_date = trade_date_raw
-
-            # 买入记录
-            if buy_trades > 0:
-                trades.append({
-                    "zh_id": zh_id,
-                    "stock_name": t.get("stkName", ""),
-                    "stock_code": t.get("stkMktCode", "").replace("SZ", "").replace("SH", ""),
-                    "trade_date": trade_date,
-                    "direction": "买入",
-                    "trades_count": buy_trades,
-                    "position_ratio": buy_position,
-                    "price": buy_price,
-                    "position_change": 0,
-                })
-            # 卖出记录
-            if sell_trades > 0:
-                trades.append({
-                    "zh_id": zh_id,
-                    "stock_name": t.get("stkName", ""),
-                    "stock_code": t.get("stkMktCode", "").replace("SZ", "").replace("SH", ""),
-                    "trade_date": trade_date,
-                    "direction": "卖出",
-                    "trades_count": sell_trades,
-                    "position_ratio": sell_position,
-                    "price": sell_price,
-                    "position_change": 0,
-                })
-        except (ValueError, TypeError) as e:
-            logger.warning(f"解析调仓记录失败: {e}, data={t}")
-            continue
-    return trades
+def _fetch_trades_pages(tokens: Dict[str, str], uid: str, zh_id: str,
+                        max_pages: int = 3) -> List[Dict[str, Any]]:
+    """调仓流水分页(新→旧), 聚合为旧 tradeSummary 形状的行:
+    每 (date, stock, 方向) 一行, trades_count=当日该方向笔数, 价格/仓位档取最新一笔。"""
+    agg = {}
+    pages = 0
+    for page in range(1, max_pages + 1):
+        d = _call_api_new("CombinationRelocatePositionHandler", {
+            "ctToken": tokens["ctToken"], "utToken": tokens["utToken"],
+            "userId": uid, "combinationId": int(zh_id),
+            "pageNum": page, "pageSize": 20, "beginDate": "", "endDate": "",
+        }, tokens)
+        rows = (d or {}).get("pages") or []
+        pages += 1
+        for r in rows:
+            code = str(r.get("stkCode", ""))
+            dr = "买入" if r.get("bsMark") == "B" else "卖出"
+            key = (str(r.get("bizDate", "")), code, dr)
+            a = agg.setdefault(key, {
+                "biz_date": key[0], "stock_code": code,
+                "stock_name": r.get("stkName", ""),
+                "direction": dr, "trades_count": 0,
+                "position_ratio": "", "price": 0.0,
+            })
+            a["trades_count"] += 1
+            if not a["position_ratio"]:
+                a["position_ratio"] = r.get("positionRatio") or ""
+            px = r.get("relocatePrice")
+            if px and not a["price"]:
+                a["price"] = _safe_float(px)   # 首见=最新(流水新→旧)
+        if len(rows) < 20:
+            break
+        time.sleep(0.2)
+    logger.debug(f"调仓分页: {pages} 页, 聚合 {len(agg)} 行")
+    out = []
+    for (bd, code, dr), a in sorted(agg.items(), key=lambda x: x[0][0], reverse=True):
+        out.append({
+            "zh_id": zh_id,
+            "stock_name": a["stock_name"],
+            "stock_code": code,
+            "trade_date": f"{bd[:4]}-{bd[4:6]}-{bd[6:8]}" if len(bd) == 8 else bd,
+            "direction": dr,
+            "trades_count": a["trades_count"],
+            "position_ratio": a["position_ratio"],
+            "price": a["price"],
+            "position_change": 0,
+        })
+    return out
 
 
-def crawl_player_all_data(zh_id: str) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
+def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
     """
-    爬取单个选手的全部数据（同步版本）
+    爬取单个选手的全部数据（同步版本, 2026-11-10 新协议）
 
     Args:
         zh_id: 选手组合ID
+        user_id: 选手 userId(缺省走解析链: NEW_USER_IDS → 采集库)
 
     Returns:
-        (detail_dict, positions_list, trades_list)
+        (detail_dict, positions_list, trades_list) — 形状与旧协议一致
     """
-    api_data = _call_api("combination_detail_97", {"zh": zh_id})
-    if not api_data:
+    tokens = _load_tokens()
+    if not tokens:
+        logger.error("EM token 缺失 — 请配置 EM_CT_TOKEN/EM_UT_TOKEN 或 em_tokens.json")
+        return (None, [], [])
+    uid = user_id or _resolve_user_id(zh_id)
+    if not uid:
+        logger.error(f"{zh_id}: 无法解析 userId, 跳过(rtV1 榜单或搜索接口可反查)")
+        return (None, [], [])
+    zh_int = int(zh_id)
+    base = {"ctToken": tokens["ctToken"], "utToken": tokens["utToken"],
+            "userId": uid, "combinationId": zh_int}
+
+    info = _call_api_new("CombinationInfoHandler", dict(base), tokens) or {}
+    yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
+    pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
+    dims = _call_api_new("combination_dimensions", {"zh": zh_int, "unit": "20d"}, tokens) or {}
+    if not info and not yld and not pos_raw:
+        logger.error(f"{zh_id}: 全部接口无数据(组合可能已删除)")
         return (None, [], [])
 
-    detail = _parse_player_detail(api_data, zh_id)
-    positions = _parse_positions(api_data, zh_id)
-    trades = _parse_trades(api_data, zh_id)
+    pct = lambda v: _safe_float(v) * 100 if v not in (None, "") else 0.0   # 0.4570 → 45.70
+    positions = []
+    if isinstance(pos_raw, list):
+        for blk in pos_raw:
+            for p in blk.get("data") or []:
+                positions.append({
+                    "zh_id": zh_id,
+                    "stock_name": p.get("__name", ""),
+                    "stock_code": p.get("__code", ""),
+                    "stk_mkt_code": p.get("stkMktCode", ""),
+                    "cost_price": _safe_float(p.get("cbj")),
+                    "current_price": _safe_float(p.get("__zxjg")),
+                    "profit_ratio": _safe_float(p.get("webYkRate")),
+                    "position_ratio": _safe_float(p.get("holdPos")),
+                    "position_rate_detail": p.get("positionRateDetail", ""),
+                    "update_time": "",
+                })
+    portf_rat = sum(x["position_rate_detail"] and _safe_float(x["position_rate_detail"]) or 0
+                    for x in positions) if positions else _safe_float(info.get("portfRat"))
 
+    detail = {
+        "zh_id": zh_id,
+        "name": info.get("zuheName", ""),
+        "user_id": uid,
+        "followers": _safe_int(info.get("concernCnt")),
+        "total_return": pct(yld.get("totalYieldRate")),
+        "daily_return": pct(yld.get("dayYieldRate")),
+        "weekly_return": 0.0,   # 新协议无周收益字段(诚实置 0; 原口径 5 日收益待发现数据源)
+        "monthly_return": pct(yld.get("monthYieldRate")),
+        "yearly_return": pct(yld.get("yearYieldRate")),
+        "net_value": _safe_float(yld.get("netWorth")),
+        "max_drawdown": _safe_float(dims.get("maxDrawdown")),
+        "win_rate": _opt_rate(dims.get("dayWinRate")),   # 口径变化: 原成交胜率已不可得, 此为当日胜率
+        "days": _safe_int(info.get("yxts")),
+        "concept": (info.get("comment") or "")[:100],
+        "intro": info.get("comment") or "",
+        "manager_name": info.get("uidNick", ""),
+        "start_date": info.get("startDate", ""),
+        "portf_rat": round(portf_rat, 2),
+        "rate_max_stk": "",
+        "rate_max_stk_code": "",
+    }
+    trades = _fetch_trades_pages(tokens, uid, zh_id)
     return (detail, positions, trades)
 
 
