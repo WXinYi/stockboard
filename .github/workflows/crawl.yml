@@ -308,6 +308,7 @@ jobs:
       # 钉钉通知放在「提交数据」之前：notify_daily.py 会写 last_notify_state.json，
       # 让状态文件跟随当次「提交数据」一起 commit 持久化，供下次对比"新增操作"
       - name: 钉钉通知
+        id: daily_notify
         if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
@@ -329,12 +330,22 @@ jobs:
             consensus-baseline-
 
       - name: 共识飙升推送
+        id: consensus_push
         if: success() && steps.dayguard.outputs.trading != 'false' && github.event.action == 'crawl-eod'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python3 scripts/consensus_surge_push.py --date "$(TZ=Asia/Shanghai date +%F)" --baseline data/.consensus_baseline.json
+
+      # 2026-11-11: 日报/共识推送原本 continue-on-error 且无任何可见信号,
+      # 钉钉挂了会"整班 success 但一条都没推"。失败不判红(不阻断落库), 但必须留注解。
+      - name: 推送失败可见化
+        if: always() && (steps.daily_notify.outcome == 'failure' || steps.consensus_push.outcome == 'failure')
+        # 用块标量: 单行 echo 里 ": " 与 ${{ }} 混用会被严格 YAML 解析器判为映射值
+        run: |
+          echo "::warning::本班钉钉推送失败(不阻断落库, 但需排查)"
+          echo "日报=${{ steps.daily_notify.outcome }} 共识=${{ steps.consensus_push.outcome }}"
 
       - name: 保存共识基线缓存
         if: success() && steps.dayguard.outputs.trading != 'false' && github.event.action == 'crawl-eod'

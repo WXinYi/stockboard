@@ -42,6 +42,7 @@ from src.spiders.api_detail import crawl_player_all_data, _call_api  # noqa: E40
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.utils import visibility  # noqa: E402
 from notify_daily import fetch_quotes  # noqa: E402 (复用腾讯→新浪行情链)
+from src.utils.trade_key import trade_keys  # noqa: E402 (与 export_json 同源增量键)
 
 BASE_URL = "https://WXinYi.github.io/stockboard"
 BJ = ZoneInfo("Asia/Shanghai")
@@ -195,10 +196,23 @@ def merge_player(base: dict, positions: list, trades_today: list, date_str: str)
           "cp": x.get("cost_price"), "np": x.get("current_price"),
           "pr": x.get("profit_ratio"), "rr": x.get("position_ratio")}
          for x in positions]
-    fresh = [{"td": date_str, "dr": x.get("direction", ""),
-              "sn": x.get("stock_name", ""), "sc": x.get("stock_code", ""),
-              "tc": x.get("trades_count"), "rr": x.get("position_ratio"),
-              "pr": x.get("price")} for x in trades_today]
+    # 叠加的今日行也带增量键: 与 export_json 同源(stable + legacy),
+    # 消除两个写入方对 players/{id}.json 的字段口径不一致。
+    zh_id = str(base.get("id") or "")
+    fresh = []
+    for x in trades_today:
+        row = {"td": date_str, "dr": x.get("direction", ""),
+               "sn": x.get("stock_name", ""), "sc": x.get("stock_code", ""),
+               "tc": x.get("trades_count"), "rr": x.get("position_ratio"),
+               "pr": x.get("price")}
+        new_key, legacy_key = trade_keys({
+            "trade_date": x.get("trade_date") or date_str,
+            "stock_code": row["sc"], "direction": row["dr"],
+            "price": row["pr"], "position_ratio": row["rr"],
+            "trades_count": row["tc"],
+        }, zh_id)
+        row["_k"], row["_k_legacy"] = new_key, legacy_key
+        fresh.append(row)
     old = [x for x in (base.get("t") or []) if x.get("td") != date_str]
     t = sorted(old + fresh, key=lambda x: x.get("td") or "", reverse=True)
     return {"id": base.get("id"), "name": base.get("name"),

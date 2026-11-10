@@ -140,19 +140,65 @@ def ensure_release(tag: str, title: str, body: str) -> dict:
     return rel
 
 
+def _download_asset_bytes(url: str) -> bytes:
+    """读回现有资产原始字节, 供上传失败时回滚(不可用 API metadata URL 代替)。"""
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "stockboard-release-db", "Accept": "application/octet-stream"})
+    tok = _opt_token()
+    if tok:
+        req.add_header("Authorization", f"Bearer {tok}")
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return r.read()
+
+
+def _post_asset(rel_id, name: str, data: bytes):
+    return _api("POST", f"{UPLOAD_BASE}/{rel_id}/assets?name={name}",
+                token=_token(), data=data, ctype="application/octet-stream")
+
+
 def upload_asset(tag: str, name: str, path: Path, body: str = ""):
+    """上传资产(2026-11-11 事务化): 先备份旧资产 → 删旧 → 传新 → 失败回滚。
+
+    事故背景(11-10 生产演练实测): 原实现先 DELETE 同名资产再 POST, 网络 SSL
+    中断时 POST 失败直接 sys.exit, 旧资产已删、新资产没传 → 热层 latest 缺失,
+    次日所有班要走降级链。GitHub Release 资产不可覆盖, 只能删后传, 因此用
+    "删前备份 + 失败回滚"补齐原子性; 备份读不回来就不删旧(宁可不更新, 不断链)。
+    """
     rel = ensure_release(tag, tag, body)
-    # 同名资产先删(Release 资产不可覆盖)
-    for a in rel.get("assets", []):
-        if a["name"] == name:
-            _api("DELETE", a["url"], token=_token())
-            print(f"[release] 已删除旧资产 {tag}/{name}")
+    old = next((a for a in rel.get("assets", []) if a["name"] == name), None)
+    backup = b""
+    if old:
+        url = old.get("browser_download_url")
+        if not url:
+            print(f"::error::旧资产 {tag}/{name} 无下载 URL, 放弃本班上传以保住现有热层",
+                  file=sys.stderr)
+            sys.exit(f"❌ 旧资产缺少下载 URL, 未删除旧资产: {tag}/{name}")
+        try:
+            backup = _download_asset_bytes(url)
+        except Exception as e:
+            print(f"::error::旧资产 {tag}/{name} 备份失败, 放弃本班上传以保住现有热层: {e}",
+                  file=sys.stderr)
+            sys.exit(f"❌ 旧资产备份失败, 未删除旧资产: {e}")
+        _api("DELETE", old["url"], token=_token())
+        print(f"[release] 已删除旧资产 {tag}/{name}(已备份 {len(backup) / 1e6:.1f}MB)")
+
     with open(path, "rb") as f:
-        st, resp = _api("POST", f"{UPLOAD_BASE}/{rel['id']}/assets?name={name}",
-                        token=_token(), data=f.read(), ctype="application/octet-stream")
+        new = f.read()
+    st, resp = _post_asset(rel["id"], name, new)
     if st != 201:
+        if backup:
+            try:
+                rst, rresp = _post_asset(rel["id"], name, backup)
+                if rst == 201:
+                    print(f"[release] ↩️ 上传失败, 已回滚旧资产 {tag}/{name}", file=sys.stderr)
+                else:
+                    print(f"::error::回滚上传也失败({rst} {rresp}), 热层 {name} 当前缺失!",
+                          file=sys.stderr)
+            except Exception as re:
+                print(f"::error::回滚上传异常, 热层 {name} 当前缺失: {re}", file=sys.stderr)
+        print(f"::error::上传 {tag}/{name} 失败: {st} {resp}", file=sys.stderr)
         sys.exit(f"❌ 上传 {tag}/{name} 失败: {st} {resp}")
-    print(f"[release] ✅ 上传 {tag}/{name} ({path.stat().st_size / 1e6:.1f}MB)")
+    print(f"[release] ✅ 上传 {tag}/{name} ({len(new) / 1e6:.1f}MB)")
 
 
 def delete_release(tag: str):

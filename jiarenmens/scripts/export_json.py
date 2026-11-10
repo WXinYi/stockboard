@@ -12,13 +12,15 @@
 用法:
     python scripts/export_json.py [--date 2026-07-24] [--out ../stockboard-app/public/data]
 """
-import sqlite3, json, os, argparse, hashlib, sys
+import sqlite3, json, os, argparse, sys
 from pathlib import Path
 from datetime import date, datetime, timezone, timedelta
 from collections import defaultdict
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "crawl_data.db"
+sys.path.insert(0, str(ROOT))
+from src.utils.trade_key import trade_keys  # noqa: E402  增量键(稳定键+迁移期旧键)
 
 
 # ═══════════════════════════════════════════════
@@ -147,6 +149,19 @@ def export(db_path, crawl_date, out_dir):
            ORDER BY t.crawl_date DESC, t.trade_date DESC"""
     ).fetchall()]
 
+    # trades 按 crawl_date 存每日流水快照, 同一笔交易会出现在多个采集日(实测
+    # 218844 行 / 145807 唯一键)。先按唯一交易去重一次, 供 buy_history /
+    # trades_by_pid / 推测持仓共用, 避免重复快照放大计数并做 O(选手×全历史) 扫描。
+    # all_trades 已按 crawl_date DESC 排序, 保留首个 = 最新快照版本。
+    all_trades_dedup = []
+    _seen_trade = set()
+    for t in all_trades:
+        key = (t["zh_id"], t.get("stock_code", ""), t.get("trade_date", ""), t.get("direction", ""))
+        if key in _seen_trade:
+            continue
+        _seen_trade.add(key)
+        all_trades_dedup.append(t)
+
     # 所有日期的持仓（用于变动追踪）
     all_positions = [dict(r) for r in conn.execute(
         "SELECT * FROM positions ORDER BY crawl_date"
@@ -198,8 +213,10 @@ def export(db_path, crawl_date, out_dir):
     for p in all_players_raw:
         pid = p["zh_id"]
         tp = pos_by_player.get(pid, 0) if pid in covered_ids else None
-        # 胜率源不可得(2026-09-15 实测: 东财 rtV2 对全部选手返回 dealRate=0, 库内 25556 行无一非零,
-        # 10 倍选手亦然; 旧 H5 页已失效无从补) → 0 视为"未知"而非真值 0%, 导出 None 让前端显示 '—'
+        # 2026-11-11 更正: 旧注释「胜率源不可得」针对的是旧 rtV2 dealRate(恒 0)。
+        # 新协议已能取到 dimensions.dayWinRate(近 20 日上涨天数占比), 库内当前
+        # 约 1890 人有值。这里仍把 0/NULL 统一导出 None 显示「—」, 属诚实缺省;
+        # 但真 0%(20 日全跌)与源缺失目前不可区分, 是已知限制, 本波未改逻辑。
         wr = safe_float(p.get("win_rate"))
         entry = {
             "id": pid,
@@ -411,7 +428,7 @@ def export(db_path, crawl_date, out_dir):
     # 疑似清仓
     # 先建立买入历史索引
     buy_history = {}
-    for t in all_trades:
+    for t in all_trades_dedup:
         if t.get("direction") != "买入":
             continue
         key = f"{t['zh_id']}_{t['stock_code']}"
@@ -561,8 +578,10 @@ def export(db_path, crawl_date, out_dir):
     for alert in trade_alerts:
         for name, _pid in alert.get("players", []):
             referenced_names.add(name)
-        for sc in suspected_clears:
-            referenced_names.add(sc["player_name"])
+    # 疑似清仓选手名与卖出预警无关: 原实现嵌在上层循环内, 当日无卖出预警时
+    # 整组名字漏进映射(且 O(A×S) 重复遍历), 前端点开清仓卡片会缺名字。
+    for sc in suspected_clears:
+        referenced_names.add(sc["player_name"])
     name_map = {p["name"]: p["id"] for p in players_flat
                 if p["name"] and p["name"] in referenced_names}
 
@@ -579,14 +598,13 @@ def export(db_path, crawl_date, out_dir):
             "rr": safe_float(p.get("position_ratio")),
         })
 
-    # 导出全部历史调仓（all_trades 含所有 crawl_date），按唯一交易去重
+    # 导出全部历史调仓(已按唯一交易去重), 生成稳定增量键 + 迁移期旧键。
+    # _k    : 只由 (zh_id, 交易日, 代码, 方向) 决定, 重采/换 id/价格修正都不变。
+    # _k_legacy: 旧算法(含 price/仓位档/笔数), 仅用于命中历史 last_notify_state,
+    #          防止上线第一班把历史操作全部判"新增"而重复推送。见 src/utils/trade_key.py。
     trades_by_pid = defaultdict(list)
-    seen = set()
-    for t in all_trades:
-        key = (t["zh_id"], t.get("stock_code",""), t.get("trade_date",""), t.get("direction",""))
-        if key in seen:
-            continue
-        seen.add(key)
+    for t in all_trades_dedup:
+        new_key, legacy_key = trade_keys(t)
         trades_by_pid[t["zh_id"]].append({
             "td": t.get("trade_date", ""),
             "dr": t.get("direction", ""),
@@ -596,13 +614,8 @@ def export(db_path, crawl_date, out_dir):
             "rr": t.get("position_ratio", ""),
             "pr": safe_float(t.get("price")),
             "_id": t["id"],  # 仅日内排序(db id=API原始顺序, 跨run会变, 勿用作增量键)
-            # 稳定增量键: 内容哈希, 重采/换id后不变, 供 notify_daily 判"新增调仓"。
-            # (db id 每次重采都重新分配, 曾致钉钉每班 run 全部误判新增→重复推送+全标🆕)
-            "_k": hashlib.md5("|".join([
-                t.get("trade_date", ""), t.get("stock_code", ""), t.get("direction", ""),
-                str(safe_float(t.get("price"))), t.get("position_ratio", "") or "",
-                str(safe_int(t.get("trades_count"), 1)),
-            ]).encode()).hexdigest()[:12],
+            "_k": new_key,
+            "_k_legacy": legacy_key,
         })
 
     # 调仓按日期倒序，同日内按 API 原始顺序（先买后卖，_id 升序）
@@ -613,21 +626,21 @@ def export(db_path, crawl_date, out_dir):
     # 推测持仓
     def compute_inferred_positions(zh_id, confirmed_codes):
         # 缩写键名: sn=stock_name, sc=stock_code, b=buys, s=sells, l=level, d=date
+        # 改用已去重的 trades_by_pid(按选手分组), 不再对每个选手全扫 all_trades;
+        # 同时消除重复快照把 bc/sc 与置信度放大的问题。
         stock_state = defaultdict(lambda: {"sn": "", "sc": "", "b": [], "s": []})
-        for t in all_trades:
-            if t.get("zh_id") != zh_id:
-                continue
-            code = t.get("stock_code", "")
+        for t in trades_by_pid.get(zh_id, []):
+            code = t.get("sc", "")
             if not code or code in confirmed_codes:
                 continue
             ss = stock_state[code]
-            ss["sn"] = t.get("stock_name", "")
+            ss["sn"] = t.get("sn", "")
             ss["sc"] = code
-            lv = t.get("position_ratio") or "?"
-            if t.get("direction") == "买入":
-                ss["b"].append({"l": lv, "d": t.get("trade_date", "")})
+            lv = t.get("rr") or "?"
+            if t.get("dr") == "买入":
+                ss["b"].append({"l": lv, "d": t.get("td", "")})
             else:
-                ss["s"].append({"l": lv, "d": t.get("trade_date", "")})
+                ss["s"].append({"l": lv, "d": t.get("td", "")})
 
         result = []
         for code, ss in stock_state.items():

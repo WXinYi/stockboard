@@ -62,8 +62,10 @@ def main() -> int:
     try:
         DingTalk().send_markdown(f"❌ {wf} 失败", text)
         print("失败告警已发送")
-    except Exception as e:  # 告警失败不再制造一次失败
-        print(f"::warning::失败告警发送失败(不改变本 job 结果): {e}", file=sys.stderr)
+    except Exception as e:  # 告警失败不再制造一次失败(钉钉挂时会让所有 run 变红)
+        # 2026-11-11: 从 ::warning:: 升级为 ::error:: —— 注解在 Actions 上可见且可检索,
+        # 但不判红本 job, 避免钉钉单点故障刷红全部 12 个 workflow。
+        print(f"::error::失败告警发送失败(不改变本 job 结果): {e}", file=sys.stderr)
     return 0
 
 

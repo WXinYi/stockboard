@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from playwright.async_api import async_playwright
-
+# playwright 是手动浏览器探测用的重依赖, 延迟到 main() 内导入:
+# unittest discover 会导入本模块, 顶层 import 会让 CI 最小依赖环境直接 ImportError。
 STEALTH_SCRIPT = """
 // Block dialog creation by intercepting appendChild/insertBefore
 (function() {
@@ -58,6 +58,7 @@ STEALTH_SCRIPT = """
 """
 
 async def main():
+    from playwright.async_api import async_playwright
     zh_id = sys.argv[1] if len(sys.argv) > 1 else "900113132"
 
     async with async_playwright() as p:

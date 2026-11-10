@@ -23,34 +23,40 @@ def main():
         return
 
     conn = sqlite3.connect(DB_PATH)
-    dates = [r[0] for r in conn.execute("SELECT DISTINCT crawl_date FROM trades ORDER BY crawl_date")]
-    if len(dates) <= KEEP_DATES:
-        print(f"[prune] 共 {len(dates)} 个采集日 <= 保留窗口 {KEEP_DATES}, 跳过")
-        return
+    try:
+        # 采集日集合取两表并集: 原实现只看 trades, 仅存在于 positions 的日期
+        # 永远进不了 drop → 老持仓行泄漏; 空串/NULL 日期也不该占用保留窗口。
+        dates = [r[0] for r in conn.execute(
+            "SELECT DISTINCT crawl_date FROM trades WHERE crawl_date IS NOT NULL AND crawl_date != '' "
+            "UNION SELECT DISTINCT crawl_date FROM positions WHERE crawl_date IS NOT NULL AND crawl_date != '' "
+            "ORDER BY crawl_date")]
+        if len(dates) <= KEEP_DATES:
+            print(f"[prune] 共 {len(dates)} 个采集日 <= 保留窗口 {KEEP_DATES}, 跳过")
+            return
 
-    drop = dates[:-KEEP_DATES]
-    before = DB_PATH.stat().st_size
-    n_trades = conn.execute(
-        f"SELECT COUNT(*) FROM trades WHERE crawl_date IN ({','.join('?' * len(drop))})", drop
-    ).fetchone()[0]
-    n_pos = conn.execute(
-        f"SELECT COUNT(*) FROM positions WHERE crawl_date IN ({','.join('?' * len(drop))})", drop
-    ).fetchone()[0]
+        drop = dates[:-KEEP_DATES]
+        before = DB_PATH.stat().st_size
+        marks = ','.join('?' * len(drop))
+        n_trades = conn.execute(
+            f"SELECT COUNT(*) FROM trades WHERE crawl_date IN ({marks})", drop).fetchone()[0]
+        n_pos = conn.execute(
+            f"SELECT COUNT(*) FROM positions WHERE crawl_date IN ({marks})", drop).fetchone()[0]
 
-    if args.apply:
-        for d in drop:
-            conn.execute("DELETE FROM trades WHERE crawl_date=?", (d,))
-            conn.execute("DELETE FROM positions WHERE crawl_date=?", (d,))
-        conn.commit()
-        conn.execute("VACUUM")   # 回收空闲页, 否则 DELETE 只标记 free-list 不缩文件
-        conn.commit()
-        after = DB_PATH.stat().st_size
-        print(f"[prune] 已删除 {len(drop)} 个采集日({drop[0]}~{drop[-1]}): trades {n_trades} 行 / positions {n_pos} 行, "
-              f"{before / 1e6:.1f}MB → {after / 1e6:.1f}MB")
-    else:
-        print(f"[prune][dry-run] 将删除 {len(drop)} 个采集日({drop[0]}~{drop[-1]}): "
-              f"trades {n_trades} 行 / positions {n_pos} 行 (加 --apply 执行)")
-    conn.close()
+        if args.apply:
+            for d in drop:
+                conn.execute("DELETE FROM trades WHERE crawl_date=?", (d,))
+                conn.execute("DELETE FROM positions WHERE crawl_date=?", (d,))
+            conn.commit()
+            conn.execute("VACUUM")   # 回收空闲页, 否则 DELETE 只标记 free-list 不缩文件
+            conn.commit()
+            after = DB_PATH.stat().st_size
+            print(f"[prune] 已删除 {len(drop)} 个采集日({drop[0]}~{drop[-1]}): trades {n_trades} 行 / positions {n_pos} 行, "
+                  f"{before / 1e6:.1f}MB → {after / 1e6:.1f}MB")
+        else:
+            print(f"[prune][dry-run] 将删除 {len(drop)} 个采集日({drop[0]}~{drop[-1]}): "
+                  f"trades {n_trades} 行 / positions {n_pos} 行 (加 --apply 执行)")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

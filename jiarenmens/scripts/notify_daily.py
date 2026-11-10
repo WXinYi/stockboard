@@ -5,8 +5,10 @@
   🧭 环境线(周期引擎) → 🔥 当日共识(≥2人同向) → 逐人卡片(每笔调仓一行, 行首买入/卖出,
   行尾「较成交」浮动幅度) → ➤ 跟单纪律
 
-增量机制：每笔调仓带稳定键 _k（export_json 内容哈希；勿用 db 自增 _id——每次重采都
-重新分配，曾致每班 run 全部误判新增→重复推送+全标🆕），推送后记入 last_notify_state.json。
+增量机制：每笔调仓带稳定键 _k（src/utils/trade_key.py: 只由 zh_id|交易日|代码|方向
+决定；勿用 db 自增 _id——每次重采都重新分配）。2026-11-11 换键后同时输出 _k_legacy,
+判定"新键或旧键任一命中 state 即已推过"，避免上线第一班把历史操作全量重推。
+推送后记入 last_notify_state.json。
 🆕 语义 = 与上一条推送的差异：当日首条消息为基线（整批不标，仅记入 state），之后每条
 消息只标相对上一条新增的单笔；同日无新增且已推送过则跳过（防 crawl 12 次触发重复轰炸）。
 
@@ -29,6 +31,7 @@ from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.notify.dingtalk import DingTalk  # noqa: E402
+from src.utils.trade_key import is_trade_seen, seen_write_key  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "stockboard-app" / "public" / "data" / "latest"
@@ -182,11 +185,12 @@ def _trade_line(t: dict, quotes: dict, seen_set: set, same_day: bool, new_counte
     _k = export_json 生成的内容哈希(稳定), 勿用 db _id(每次重采都变号)。
     键一律 str(): 旧 state 残留 int 键, int/str 混存会使 save_state 的 sorted() 抛 TypeError。
     """
-    raw = t.get("_k") or t.get("_id")
-    key = str(raw) if raw is not None else None
-    is_new = same_day and key is not None and key not in seen_set
+    key = seen_write_key(t)   # 新稳定键(缺 _k 时退回 _id)
+    # 迁移期: 历史 state 里存的是旧键(_k_legacy), 新键不在 seen 中也不能判新增,
+    # 否则上线第一班会把全部历史操作重推一遍。任一键命中即已推过。
+    is_new = same_day and key is not None and not is_trade_seen(t, seen_set)
     if key:
-        seen_set.add(key)
+        seen_set.add(key)     # 写入只用新键, 逐步淘汰旧键
         new_counter[0] += 1 if is_new else 0
     dr = t.get("dr") or ""
     label = "买入" if dr == "买入" else ("卖出" if dr == "卖出" else (dr or "操作"))
@@ -272,9 +276,9 @@ def build_follow_report(date_str: str, seen: dict, same_day: bool, wd_pushed: fr
         card = []
         for t in sorted(trades, key=lambda x: x.get("_id") or 0):
             if (wid, t.get("sc", ""), t.get("dr", "")) in wd_pushed:
-                k = t.get("_k") or t.get("_id")
+                k = seen_write_key(t)
                 if k is not None:
-                    updated[wid].add(str(k))
+                    updated[wid].add(k)
                 continue
             card.append(_trade_line(t, quotes, updated[wid], same_day, new_counter))
         if not card:

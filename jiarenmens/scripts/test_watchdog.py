@@ -257,5 +257,41 @@ class TestHolidayCalendar(unittest.TestCase):
         self.assertFalse(watchdog.is_trading_day(datetime(2027, 1, 2).date()))  # 周六
 
 
+class TestIncrementKeyMigration(unittest.TestCase):
+    """增量键换算法的上线第一班: 历史 seen 只有旧键, 不得把历史操作判新增。"""
+
+    def test_叠加文件今日行带同源增量键(self):
+        from src.utils.trade_key import trade_keys
+        base = {"id": "900461598", "name": "大道可寻", "p": [], "t": [], "i": []}
+        m = watchdog.merge_player(base, [], [_t("600371", "买入", 1, 13.13)], "2026-09-17")
+        row = m["t"][0]
+        self.assertIn("_k", row)
+        self.assertIn("_k_legacy", row)
+        exp_new, exp_old = trade_keys(_t("600371", "买入", 1, 13.13), "900461598")
+        self.assertEqual((row["_k"], row["_k_legacy"]), (exp_new, exp_old))
+
+    def test_历史seen只有旧键时日报不标新增(self):
+        from src.utils.trade_key import trade_keys
+        new_key, old_key = trade_keys(_t("600371", "买入", 1, 13.13), "900461598")
+        t = {"sc": "600371", "dr": "买入", "sn": "测试股", "pr": 13.13,
+             "_k": new_key, "_k_legacy": old_key}
+        seen, counter = {old_key}, [0]
+        line = notify_daily._trade_line(t, {}, seen, True, counter)
+        self.assertNotIn("🆕", line, "迁移失败会全量重推历史操作")
+        self.assertEqual(counter[0], 0)
+        self.assertIn(new_key, seen, "写入 seen 应迁移到新键")
+
+    def test_真正的新操作仍标新增(self):
+        from src.utils.trade_key import trade_keys
+        old_new, old_key = trade_keys(_t("600371", "买入", 1, 13.13), "900461598")
+        fresh_new, fresh_old = trade_keys(_t("000001", "买入", 1, 9.9), "900461598")
+        t = {"sc": "000001", "dr": "买入", "sn": "新票", "pr": 9.9,
+             "_k": fresh_new, "_k_legacy": fresh_old}
+        seen, counter = {old_key}, [0]
+        line = notify_daily._trade_line(t, {}, seen, True, counter)
+        self.assertIn("🆕", line)
+        self.assertEqual(counter[0], 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

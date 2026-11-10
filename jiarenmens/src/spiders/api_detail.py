@@ -155,10 +155,14 @@ def _safe_int(value, default=0) -> int:
 
 
 def _opt_rate(v) -> Optional[float]:
-    """源可能不提供的比值(如胜率): 缺/非数/0 → None(存 NULL), 不用 0 冒充真值。
+    """比值字段: 缺/非数/0 → None(存 NULL), 不用 0 冒充真值。
 
-    依据(2026-09-15 实测): 东财 rtV2 对全部选手返回 dealRate=0, 库内 25556 行无一非零,
-    10 倍收益选手亦然; 旧 H5 页已失效无从补 → 该字段判定为"源不可得"。
+    历史(2026-09-15): 旧 rtV2 的 dealRate 对全部选手恒返回 0、库内 25556 行
+    无一非零, 当时判定「成交胜率源不可得」。
+    现状(2026-11-10 新协议): 改取 combination_dimensions.dayWinRate(unit=20d,
+    近 20 个交易日中上涨天数占比), 实测可得, 值域 5~80 且为 5% 步长。
+    已知限制: 真为 0(20 日全跌)时仍会被写成 NULL、页面显示「—」, 与「源缺失」
+    不可区分; 本波不改逻辑以免改变页面展示口径, 留待单独评估。
     """
     try:
         f = float(v)
@@ -379,7 +383,10 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
         "yearly_return": _pct(yld.get("yearYieldRate")),
         "net_value": _safe_float(yld.get("netWorth")),
         "max_drawdown": _safe_float(dims.get("maxDrawdown")),
-        "win_rate": _opt_rate(dims.get("dayWinRate")),   # 口径变化: 原成交胜率已不可得, 此为当日胜率
+        # 口径: 近 20 日上涨天数占比(非"当日胜率", 也非旧协议的逐笔成交胜率)。
+        # 同一 dimensions 的 maxDrawdown 同为 20d 窗口口径, 却被 is_quality 当作
+        # 历史最大回撤使用 —— 已知口径偏差, 见 2026-11-11 复查报告。
+        "win_rate": _opt_rate(dims.get("dayWinRate")),
         "days": _safe_int(info.get("yxts")),
         "concept": (info.get("comment") or "")[:100],
         "intro": info.get("comment") or "",

@@ -1,0 +1,53 @@
+name: 代码门禁(单测 + 语法)
+
+# 独立护栏: 只在代码提交/PR 触发, 不挂在 75+ runs/日 的数据班上, 不拖慢采集。
+# 数据班提交走 [skip ci] 且只改 public/data、jiarenmens/data, 不匹配下方 paths。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jiarenmens/**/*.py'
+      - 'stockboard-app/src/**'
+      - '.github/workflows/test.yml'
+      - 'pyproject.toml'
+  pull_request:
+    paths:
+      - 'jiarenmens/**/*.py'
+      - 'stockboard-app/src/**'
+      - '.github/workflows/test.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'   # src/utils/visibility.py 用了 dict | None, 需 3.10+
+          cache: 'pip'
+
+      # 只装测试实际需要的最小依赖; playwright 是手动浏览器探测脚本用的重依赖,
+      # 已在 test_api_requests.py 中延迟导入, 门禁无需安装。
+      - name: 安装最小依赖
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: 语法检查
+        run: python -m compileall -q jiarenmens/src jiarenmens/scripts jiarenmens/main.py
+
+      - name: 单元测试
+        working-directory: jiarenmens
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+
+      - name: 失败摘要
+        if: failure()
+        # 块标量避免单行 echo 中 ": " 被严格 YAML 解析成映射值
+        run: |
+          echo "::error::单测或语法检查未通过, 请勿合入"
+          echo "本地复现: cd jiarenmens && python -m unittest discover -s scripts -p 'test_*.py'"

@@ -67,3 +67,20 @@ jobs:
           else
             python3 scripts/release_db.py --what auction --upload-latest --baseline-sha-file /tmp/auction_sha_start
           fi
+
+  # 2026-11-11 补齐: 本 workflow 原是 12 个里唯一没有失败告警 job 的,
+  # 手动维护失败只表现为 run 变红、无人收到推送。
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [purge]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

@@ -106,5 +106,72 @@ class TestAuctionAge(unittest.TestCase):
         self.assertIsNone(_last_date_of(p, "positions", "crawl_date"))
 
 
+class TestUploadRollback(unittest.TestCase):
+    """上传失败不得留下"旧资产已删、新资产没传"的热层断链(11-10 演练事故)。"""
+
+    def setUp(self):
+        import release_db
+        self.rd = release_db
+        self.tmp = Path(tempfile.mkstemp(suffix=".db.gz")[1])
+        self.tmp.write_bytes(b"NEWGZ")
+        self.rel = {"id": 1, "assets": [
+            {"name": "crawl-latest.db.gz", "url": "https://api/asset/1",
+             "browser_download_url": "https://cdn/asset/1"},
+        ]}
+
+    def tearDown(self):
+        self.tmp.unlink(missing_ok=True)
+
+    def _patched(self, post_results, backup=b"OLDGZ", backup_exc=None, api=None):
+        from unittest.mock import patch
+        posts = []
+
+        def post(rel_id, name, data):
+            posts.append(data)
+            return post_results[len(posts) - 1]
+
+        def dl(url):
+            if backup_exc:
+                raise backup_exc
+            return backup
+
+        api_patch = (patch.object(self.rd, "_api", side_effect=api) if api
+                     else patch.object(self.rd, "_api", return_value=(200, {})))
+        return (patch.object(self.rd, "ensure_release", return_value=self.rel),
+                patch.object(self.rd, "_download_asset_bytes", side_effect=dl),
+                patch.object(self.rd, "_post_asset", side_effect=post),
+                api_patch,
+                patch.object(self.rd, "_token", return_value="x"), posts)
+
+    def test_上传成功不触发回滚(self):
+        p1, p2, p3, p4, p5, posts = self._patched([(201, {})])
+        with p1, p2, p3, p4, p5:
+            self.rd.upload_asset("db-state", "crawl-latest.db.gz", self.tmp)
+        self.assertEqual(posts, [b"NEWGZ"])
+
+    def test_上传失败时回滚旧资产(self):
+        p1, p2, p3, p4, p5, posts = self._patched([(500, {"err": 1}), (201, {})])
+        with p1, p2, p3, p4, p5:
+            with self.assertRaises(SystemExit):
+                self.rd.upload_asset("db-state", "crawl-latest.db.gz", self.tmp)
+        self.assertEqual(posts, [b"NEWGZ", b"OLDGZ"], "失败后必须把旧资产传回去")
+
+    def test_旧资产备份失败时不删旧(self):
+        deletes = []
+
+        def api(method, url, **kw):
+            if method == "DELETE":
+                deletes.append(url)
+            return (200, {})
+
+        p1, p2, p3, p4, p5, posts = self._patched(
+            [(201, {})], backup_exc=OSError("SSL EOF"), api=api)
+        with p1, p2, p3, p4, p5:
+            with self.assertRaises(SystemExit):
+                self.rd.upload_asset("db-state", "crawl-latest.db.gz", self.tmp)
+        self.assertEqual(deletes, [], "备份读不回来就绝不能删旧资产")
+        self.assertEqual(posts, [], "也不应尝试上传新资产")
+
+
 if __name__ == "__main__":
     unittest.main()
