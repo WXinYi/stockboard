@@ -58,8 +58,9 @@ RETRY_DELAY = 1  # 秒
 # ── 分层采集档位(2026-11-10, 盘中班 4 调用/人 → 1-3 调用/人) ──
 # trades(1): 调仓1页          — 盘中常规班·老选手; 持仓由 main.py 用流水推算(position_delta), detail=None
 # hourly(2): 调仓1页+收益净值  — 整点班; detail 只含收益字段, name 等由 main.py 合并库内旧值
-# flash (3): 调仓2页+持仓     — 盘中班·关注选手(watchdog 要真实持仓); watched_flash/watchdog 默认档;
-#            detail 为轻量 stub(hidden 探测依赖其非 None), main.py 剥离不入库
+# flash (3): 调仓2页+持仓     — watchdog/watched_flash 默认档(关注选手时效主通道);
+#            detail 为轻量 stub, 带 api_ok(HTTP 健康)/data_empty(组合隐藏);
+#            main.py 已不再选此档(盘中班全员 trades), 保留供 watchdog 专用
 # full  (6): info+收益+持仓+dimensions+调仓2页 — 收盘专班 EOD 校准; 亦用于当日首班/盘中新选手初始化
 CRAWL_LEVELS = ("trades", "hourly", "flash", "full")
 
@@ -82,8 +83,17 @@ def _load_tokens() -> Dict[str, str]:
     return {}
 
 
-def _call_api_new(method: str, args: Dict[str, Any], tokens: Dict[str, str]) -> Optional[Dict]:
-    """新协议调用: spzhapi/rtV2 + token(args 内) + 新字段三件套。"""
+def _call_api_new(method: str, args: Dict[str, Any], tokens: Dict[str, str],
+                  with_ok: bool = False):
+    """新协议调用: spzhapi/rtV2 + token(args 内) + 新字段三件套。
+
+    with_ok=True 返回 (data, api_ok): api_ok 表示「HTTP 层拿到 code=0 响应」,
+    与 data 是否为空无关 —— 用于区分「接口全失败(限流/断网/token失效)」与
+    「接口正常但组合隐藏/无数据」。默认 False 保持原返回形状, 其它档位零改动。
+    """
+    def _ret(data, ok):
+        return (data, ok) if with_ok else data
+
     payload = {
         "args": args,
         "method": method,
@@ -101,29 +111,29 @@ def _call_api_new(method: str, args: Dict[str, Any], tokens: Dict[str, str]) -> 
             resp = requests.post(API_V2_URL, json=payload, headers=headers, timeout=20)
             data = resp.json()
             if data.get("code") == 0:
-                return data.get("data", {})
+                return _ret(data.get("data", {}), True)
             msg = str(data.get("message", ""))
             if "版本较低" in msg:
                 # 门禁类: 重试无意义, 直接失败并给出可行动提示
                 logger.error(f"EM 门禁拒绝({method}): {msg} — token 可能过期, 请重新抓包更新"
                              f" EM_CT_TOKEN/EM_UT_TOKEN 或 data/em_tokens.json")
-                return None
+                return _ret(None, False)
             logger.warning(f"API 返回错误: code={data.get('code')}, {msg}, method={method}")
-            return None
+            return _ret(None, False)
         except requests.Timeout:
             if attempt < MAX_RETRIES - 1:
                 logger.warning(f"API 超时 (尝试 {attempt+1}/{MAX_RETRIES})")
                 continue
             logger.error(f"API 超时，method={method}")
-            return None
+            return _ret(None, False)
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
                 logger.warning(f"API 调用失败 (尝试 {attempt+1}/{MAX_RETRIES}): {e}")
                 time.sleep(RETRY_DELAY)
                 continue
             logger.error(f"API 调用失败: {e}")
-            return None
-    return None
+            return _ret(None, False)
+    return _ret(None, False)
 
 
 def _call_api(method: str, args: Dict[str, str]) -> Optional[Dict]:
@@ -189,17 +199,22 @@ def _resolve_user_id(zh_id: str) -> Optional[str]:
 
 
 def _fetch_trades_pages(tokens: Dict[str, str], uid: str, zh_id: str,
-                        max_pages: int = 3) -> List[Dict[str, Any]]:
+                        max_pages: int = 3, with_ok: bool = False):
     """调仓流水分页(新→旧), 聚合为旧 tradeSummary 形状的行:
-    每 (date, stock, 方向) 一行, trades_count=当日该方向笔数, 价格/仓位档取最新一笔。"""
+    每 (date, stock, 方向) 一行, trades_count=当日该方向笔数, 价格/仓位档取最新一笔。
+
+    with_ok=True 返回 (out, any_ok): any_ok = 任一次分页 HTTP 拿到 code=0。
+    """
     agg = {}
     pages = 0
+    any_ok = False
     for page in range(1, max_pages + 1):
-        d = _call_api_new("CombinationRelocatePositionHandler", {
+        d, ok = _call_api_new("CombinationRelocatePositionHandler", {
             "ctToken": tokens["ctToken"], "utToken": tokens["utToken"],
             "userId": uid, "combinationId": int(zh_id),
             "pageNum": page, "pageSize": 20, "beginDate": "", "endDate": "",
-        }, tokens)
+        }, tokens, with_ok=True)
+        any_ok = any_ok or ok
         rows = (d or {}).get("pages") or []
         pages += 1
         for r in rows:
@@ -235,7 +250,7 @@ def _fetch_trades_pages(tokens: Dict[str, str], uid: str, zh_id: str,
             "price": a["price"],
             "position_change": 0,
         })
-    return out
+    return (out, any_ok) if with_ok else out
 
 
 def _pct(v) -> float:
@@ -306,14 +321,24 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
     if level == "trades":
         return (None, [], _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
 
-    # flash 档: 调仓(2页, 覆盖高频选手当日操作) + 真实持仓(关注选手盘中班/watchdog)
-    # detail 返回轻量 stub: watchdog/watched_flash 以 `detail is not None` 判定组合
-    # 是否隐藏, 必须非 None 才不误判; main.py 侧剥离 stub, 不作为完整档案入库
+    # flash 档: 调仓(2页) + 真实持仓(watchdog/watched_flash 默认档)
+    # detail = 轻量 stub + 两个独立信号:
+    #   api_ok     : 至少一次 HTTP 调用拿到 code=0 → token/网络正常
+    #   data_empty : 接口正常但持仓与流水全空 → 组合隐藏/删除
+    # watchdog 用 api_ok 判「拉取成功」(接口全失败绝不能静默当作"今日无操作"),
+    # watched_flash 仅在 api_ok=True 时按 data_empty 更新隐藏状态(失败不动旧状态)。
     if level == "flash":
-        pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
-        return ({"zh_id": zh_id, "user_id": uid, "stub": True},
-                _parse_positions(zh_id, pos_raw),
-                _fetch_trades_pages(tokens, uid, zh_id, max_pages=2))
+        pos_raw, pos_ok = _call_api_new(
+            "CombinationHoldPositionPermitHandler", dict(base), tokens, with_ok=True)
+        positions = _parse_positions(zh_id, pos_raw)
+        trades, trades_ok = _fetch_trades_pages(tokens, uid, zh_id, max_pages=2, with_ok=True)
+        return ({
+            "zh_id": zh_id,
+            "user_id": uid,
+            "stub": True,
+            "api_ok": pos_ok or trades_ok,
+            "data_empty": not positions and not trades,
+        }, positions, trades)
 
     # hourly 档: 调仓 + 收益净值(整点班, 待 workflow 启用)
     if level == "hourly":

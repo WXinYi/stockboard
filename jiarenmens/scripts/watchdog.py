@@ -260,11 +260,14 @@ def fetch_all(players, date_str: str) -> dict:
         try:
             detail, positions, trades = crawl_player_all_data(zh)
             today = [t for t in trades if t.get("trade_date") == date_str]
+            # api_ok=False = 接口全失败(限流/断网/token失效): 绝不能当成"今日无操作",
+            # 否则 n_ok 恒>0 → fails 永远清零 → 降级告警永不触发、钉钉静默漏推。
+            api_ok = bool(detail and detail.get("api_ok", True))
             out[zh] = {"name": nm, "trades": today, "positions": positions,
-                       "ok": detail is not None}
+                       "ok": api_ok}
         except Exception as e:
-            # 瞬时异常不判"隐藏"; 计入本轮失败数(全员失败才累计降级)
-            out[zh] = {"name": nm, "trades": [], "positions": [], "ok": True, "err": str(e)}
+            # 瞬时异常同样计入本轮失败数(全员失败才累计降级), 不动已推集合
+            out[zh] = {"name": nm, "trades": [], "positions": [], "ok": False, "err": str(e)}
     return out
 
 

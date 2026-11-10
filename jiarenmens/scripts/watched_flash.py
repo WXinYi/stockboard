@@ -33,17 +33,25 @@ def _stock_link(code: str, name: str) -> str:
 
 
 def fetch_all(date_str: str):
-    """串行拉关注选手组合接口 → {zh: {name, trades_today, positions, ok}}"""
+    """串行拉关注选手组合接口 → {zh: {name, trades, positions, ok, hidden_state}}
+
+    ok           : 拉取是否成功(api_ok); 接口全失败=False, 不判隐藏
+    hidden_state : True=隐藏 / False=公开 / None=无法判定(接口失败, 保持旧可见性)
+    """
     out = {}
     for zh, nm in WATCHED_PLAYERS:
         try:
             detail, positions, trades = crawl_player_all_data(zh)
             today = [t for t in trades if t.get("trade_date") == date_str]
+            api_ok = bool(detail and detail.get("api_ok", True))
             out[zh] = {"name": nm, "trades": today, "positions": positions,
-                       "ok": detail is not None}
+                       "ok": api_ok,
+                       # 只有 HTTP 正常时数据全空才是"组合隐藏"; 调用失败不能固化成隐藏
+                       "hidden_state": bool(detail.get("data_empty")) if (api_ok and detail) else None}
         except Exception as e:
-            # 网络等瞬时异常不算"隐藏"(隐藏由接口返回空判定), 明天自动重探
-            out[zh] = {"name": nm, "trades": [], "positions": [], "ok": True, "err": str(e)}
+            # 网络等瞬时异常不算"隐藏", 明天自动重探; hidden_state=None 不动旧状态
+            out[zh] = {"name": nm, "trades": [], "positions": [],
+                       "ok": False, "hidden_state": None, "err": str(e)}
     return out
 
 
@@ -54,7 +62,10 @@ def build_markdown(date_str: str, data: dict, hhmm: str) -> str:
     for zh, nm in WATCHED_PLAYERS:
         o = data.get(zh, {})
         if not o.get("ok", True):
-            hidden.append(nm)          # 组合已隐藏/删除 → 自动跳过, 恢复后自动回归
+            quiet.append(f"{nm}(拉取失败)")   # 接口失败 ≠ 隐藏
+            continue
+        if o.get("hidden_state"):
+            hidden.append(nm)          # HTTP 正常但数据全空 → 组合已隐藏/删除, 恢复后自动回归
             continue
         if o.get("err"):
             quiet.append(f"{nm}(拉取失败)")
@@ -116,8 +127,10 @@ def main():
     date_str = args.date or datetime.now(BJ_TZ).strftime("%Y-%m-%d")
     hhmm = datetime.now(BJ_TZ).strftime("%H:%M")
     data = fetch_all(date_str)
-    # 可见性状态更新: 接口返回空的选手记为隐藏, 恢复公开自动回归(跟单日报同读此状态)
-    visibility.update({zh: not o.get("ok", True) for zh, o in data.items()})
+    # 可见性状态更新: 仅 HTTP 正常且数据全空的选手记为隐藏, 恢复公开自动回归;
+    # 接口失败(hidden_state=None)不写, 避免网络故障把全量关注选手固化成"已隐藏"
+    visibility.update({zh: bool(o["hidden_state"]) for zh, o in data.items()
+                       if o.get("hidden_state") is not None})
     text = build_markdown(date_str, data, hhmm)
 
     if args.dry_run:
