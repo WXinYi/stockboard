@@ -55,6 +55,13 @@ NEW_USER_IDS = {
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # 秒
 
+# ── 分层采集档位(2026-11-10, 盘中班 4 调用/人 → 1-2 调用/人) ──
+# trades(1): 调仓1页          — 盘中常规班·老选手; 持仓由 main.py 用流水推算(position_delta), detail=None
+# hourly(2): 调仓1页+收益净值  — 整点班; detail 只含收益字段, name 等由 main.py 合并库内旧值
+# flash (2): 调仓1页+持仓     — 盘中班·关注选手(watchdog 要真实持仓); watched_flash 默认档
+# full  (6): info+收益+持仓+dimensions+调仓2页 — 收盘专班 EOD 校准; 亦用于盘中新选手初始化
+CRAWL_LEVELS = ("trades", "hourly", "flash", "full")
+
 
 def _load_tokens() -> Dict[str, str]:
     """登录态 token: env EM_CT_TOKEN/EM_UT_TOKEN 优先, 其次 data/em_tokens.json。
@@ -230,42 +237,13 @@ def _fetch_trades_pages(tokens: Dict[str, str], uid: str, zh_id: str,
     return out
 
 
-def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
-                          full: bool = False) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
-    """
-    爬取单个选手的全部数据（同步版本, 2026-11-10 新协议）
+def _pct(v) -> float:
+    """0.4570 → 45.70"""
+    return _safe_float(v) * 100 if v not in (None, "") else 0.0
 
-    Args:
-        zh_id: 选手组合ID
-        user_id: 选手 userId(缺省走解析链: NEW_USER_IDS → 采集库)
-        full: 全量模式(收盘专班)——含 dimensions(回撤)+调仓2页;
-              瘦身模式(默认, 盘中班)省略 dimensions、调仓1页 → 每选手 4 调用 vs 6,
-              新协议每选手接口数是旧版 4-6 倍, 不瘦身班次会被限速拖到被下一班取消
 
-    Returns:
-        (detail_dict, positions_list, trades_list) — 形状与旧协议一致
-    """
-    tokens = _load_tokens()
-    if not tokens:
-        logger.error("EM token 缺失 — 请配置 EM_CT_TOKEN/EM_UT_TOKEN 或 em_tokens.json")
-        return (None, [], [])
-    uid = user_id or _resolve_user_id(zh_id)
-    if not uid:
-        logger.error(f"{zh_id}: 无法解析 userId, 跳过(rtV1 榜单或搜索接口可反查)")
-        return (None, [], [])
-    zh_int = int(zh_id)
-    base = {"ctToken": tokens["ctToken"], "utToken": tokens["utToken"],
-            "userId": uid, "combinationId": zh_int}
-
-    info = _call_api_new("CombinationInfoHandler", dict(base), tokens) or {}
-    yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
-    pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
-    dims = (_call_api_new("combination_dimensions", {"zh": zh_int, "unit": "20d"}, tokens) or {}) if full else {}
-    if not info and not yld and not pos_raw:
-        logger.error(f"{zh_id}: 全部接口无数据(组合可能已删除)")
-        return (None, [], [])
-
-    pct = lambda v: _safe_float(v) * 100 if v not in (None, "") else 0.0   # 0.4570 → 45.70
+def _parse_positions(zh_id: str, pos_raw) -> List[Dict[str, Any]]:
+    """CombinationHoldPositionPermitHandler 返回 → positions 行(形状与旧协议一致)"""
     positions = []
     if isinstance(pos_raw, list):
         for blk in pos_raw:
@@ -282,6 +260,81 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
                     "position_rate_detail": p.get("positionRateDetail", ""),
                     "update_time": "",
                 })
+    return positions
+
+
+def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
+                          full: Optional[bool] = None,
+                          level: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
+    """
+    爬取单个选手数据（同步版本, 2026-11-10 新协议 + 分层档位）
+
+    Args:
+        zh_id: 选手组合ID
+        user_id: 选手 userId(缺省走解析链: NEW_USER_IDS → 采集库)
+        level: 采集档位(见模块级 CRAWL_LEVELS 注释):
+            trades(1调用) — 盘中常规班·老选手, 持仓由 main.py 用调仓流水推算(position_delta)
+            hourly(2调用) — 整点班, 调仓+收益净值; detail 只含收益字段(name 等由 main.py 合并库内旧值)
+            flash (2调用) — 盘中班·关注选手, 调仓+真实持仓(watchdog 语义)
+            full  (6调用) — 收盘专班 EOD 校准 + 盘中新选手初始化
+        full: 布尔兼容。True→"full"; 未传 level 时 False/None→"flash"
+              (watched_flash 等旧调用方需要持仓+调仓, 瘦身但不丢持仓)
+
+    Returns:
+        (detail_dict, positions_list, trades_list)
+        trades/hourly/flash 档 detail 为 None 或只含部分字段 → main.py 按档位入库
+    """
+    if level is None:
+        level = "full" if full else "flash"
+    if level not in CRAWL_LEVELS:
+        logger.error(f"未知采集档位 level={level!r}, 可选: {CRAWL_LEVELS}")
+        return (None, [], [])
+    tokens = _load_tokens()
+    if not tokens:
+        logger.error("EM token 缺失 — 请配置 EM_CT_TOKEN/EM_UT_TOKEN 或 em_tokens.json")
+        return (None, [], [])
+    uid = user_id or _resolve_user_id(zh_id)
+    if not uid:
+        logger.error(f"{zh_id}: 无法解析 userId, 跳过(rtV1 榜单或搜索接口可反查)")
+        return (None, [], [])
+    zh_int = int(zh_id)
+    base = {"ctToken": tokens["ctToken"], "utToken": tokens["utToken"],
+            "userId": uid, "combinationId": zh_int}
+
+    # trades 档: 只拉调仓(watchdog 核心, 每班必拉)
+    if level == "trades":
+        return (None, [], _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
+
+    # flash 档: 调仓 + 真实持仓(关注选手盘中班)
+    if level == "flash":
+        pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
+        return (None, _parse_positions(zh_id, pos_raw),
+                _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
+
+    # hourly 档: 调仓 + 收益净值(整点班, 待 workflow 启用)
+    if level == "hourly":
+        yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
+        detail = {
+            "zh_id": zh_id,
+            "user_id": uid,
+            "total_return": _pct(yld.get("totalYieldRate")),
+            "daily_return": _pct(yld.get("dayYieldRate")),
+            "monthly_return": _pct(yld.get("monthYieldRate")),
+            "yearly_return": _pct(yld.get("yearYieldRate")),
+            "net_value": _safe_float(yld.get("netWorth")),
+        }
+        return (detail, [], _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
+
+    # full 档: 收盘专班 EOD 校准 / 盘中新选手初始化
+    info = _call_api_new("CombinationInfoHandler", dict(base), tokens) or {}
+    yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
+    pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
+    dims = _call_api_new("combination_dimensions", {"zh": zh_int, "unit": "20d"}, tokens) or {}
+    if not info and not yld and not pos_raw:
+        logger.error(f"{zh_id}: 全部接口无数据(组合可能已删除)")
+        return (None, [], [])
+
+    positions = _parse_positions(zh_id, pos_raw)
     portf_rat = sum(x["position_rate_detail"] and _safe_float(x["position_rate_detail"]) or 0
                     for x in positions) if positions else _safe_float(info.get("portfRat"))
 
@@ -290,11 +343,11 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
         "name": info.get("zuheName", ""),
         "user_id": uid,
         "followers": _safe_int(info.get("concernCnt")),
-        "total_return": pct(yld.get("totalYieldRate")),
-        "daily_return": pct(yld.get("dayYieldRate")),
+        "total_return": _pct(yld.get("totalYieldRate")),
+        "daily_return": _pct(yld.get("dayYieldRate")),
         "weekly_return": 0.0,   # 新协议无周收益字段(诚实置 0; 原口径 5 日收益待发现数据源)
-        "monthly_return": pct(yld.get("monthYieldRate")),
-        "yearly_return": pct(yld.get("yearYieldRate")),
+        "monthly_return": _pct(yld.get("monthYieldRate")),
+        "yearly_return": _pct(yld.get("yearYieldRate")),
         "net_value": _safe_float(yld.get("netWorth")),
         "max_drawdown": _safe_float(dims.get("maxDrawdown")),
         "win_rate": _opt_rate(dims.get("dayWinRate")),   # 口径变化: 原成交胜率已不可得, 此为当日胜率
@@ -307,24 +360,27 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
         "rate_max_stk": "",
         "rate_max_stk_code": "",
     }
-    trades = _fetch_trades_pages(tokens, uid, zh_id, max_pages=2 if full else 1)
+    trades = _fetch_trades_pages(tokens, uid, zh_id, max_pages=2)
     return (detail, positions, trades)
 
 
 async def crawl_player_all_data_async(
-    zh_id: str, full: bool = False
+    zh_id: str, user_id: Optional[str] = None,
+    full: bool = False, level: Optional[str] = None
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict], List[Dict]]:
     """
     爬取单个选手的全部数据（异步版本，在线程池中执行同步请求）
 
     Args:
         zh_id: 选手组合ID
-        full: 全量模式(收盘专班)
+        user_id: 榜单携带的 userId(修复 16:22 穿透: 旧签名缺此参, main.py 3 参调用会 TypeError)
+        full: 布尔兼容(未传 level 时生效)
+        level: 采集档位 trades/hourly/flash/full(优先于 full)
 
     Returns:
         (detail_dict, positions_list, trades_list)
     """
-    return await asyncio.to_thread(crawl_player_all_data, zh_id, None, full)
+    return await asyncio.to_thread(crawl_player_all_data, zh_id, user_id, full, level)
 
 
 # =============================================================================
@@ -334,7 +390,7 @@ if __name__ == "__main__":
     # 测试同步版本
     print("=== 测试 API 爬虫 ===")
     for test_id in ["900240956", "900056513"]:
-        detail, positions, trades = crawl_player_all_data(test_id)
+        detail, positions, trades = crawl_player_all_data(test_id, level="full")
         if detail:
             print(f"\n选手: {detail['name']} ({test_id})")
             print(f"  总收益: {detail['total_return']}%")

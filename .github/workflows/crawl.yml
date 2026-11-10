@@ -174,9 +174,12 @@ jobs:
         env:
           EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
           EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
-          # 收盘专班全量(dimensions+调仓2页); 盘中班非关注选手瘦身(4调用)防限速拖班
-          EM_FULL_CRAWL: ${{ github.event.action == 'crawl-eod' && '1' || '0' }}
-        run: cd jiarenmens && python main.py --checkpoint-reset
+          # 分层采集(2026-11-10): 盘中班 trades(1调用/人, 只拉调仓, 持仓由流水推算);
+          # 收盘专班 crawl-eod → full(6调用/人, EOD 校准真实持仓)。
+          # 关注选手自动升 flash(调仓+真实持仓), 新选手自动升 full(初始化) — 见 main.py pick_level。
+          # checkpoint 不再每班重置: 完成集跨日自动失效, 承担"每天首班 = 全员初始化"的识别。
+          EM_CRAWL_LEVEL: ${{ github.event.action == 'crawl-eod' && 'full' || 'trades' }}
+        run: cd jiarenmens && python main.py
 
       # 东财人气榜快照(每天最多两份: 09:25 auction 已存 am 则此处自动记 pm, 同(date,snap)去重)
       # 三个 continue-on-error 步骤的可见化(2026-09-15 静默审计): 它们不能判红(人气/宽度/炸板
