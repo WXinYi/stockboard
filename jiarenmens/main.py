@@ -106,6 +106,7 @@ async def crawl_player_data_async(
     zh_id: str,
     name: str,
     full: bool = False,
+    user_id: str = "",
 ) -> Tuple[str, str, Optional[Dict], List, List]:
     """
     通过 API 获取单个选手的所有数据
@@ -114,12 +115,13 @@ async def crawl_player_data_async(
         zh_id: 选手ID
         name: 选手名称
         full: 全量模式(收盘专班)——非关注选手默认瘦身(4调用), 关注选手始终全量
+        user_id: 榜单携带的 userId(新协议必需, 缺失走解析链)
 
     Returns:
         (zh_id, name, detail, positions, trades)
     """
     want_full = full or zh_id in WATCHED_ZH_IDS
-    detail, positions, trades = await crawl_player_all_data_async(zh_id, want_full)
+    detail, positions, trades = await crawl_player_all_data_async(zh_id, user_id, want_full)
     return (zh_id, name, detail, positions, trades)
 
 
