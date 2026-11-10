@@ -1,21 +1,21 @@
 {
  "date": "2026-11-10",
- "generated_at": "09:25",
+ "generated_at": "19:47",
  "env": {
   "pass": true,
   "reasons": [
-   "环境正常"
+   "情绪值84 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)"
   ],
   "data": {
-   "strong": 53,
-   "lbgd": 3,
+   "strong": 84,
+   "lbgd": 7,
    "capacity_ratio": null,
-   "red_ratio": 0.9090395480225989,
+   "red_ratio": 0.7880855772777573,
    "bid_count": [
     181,
     161,
     50,
-    35,
+    39,
     1
    ],
    "bid_total": "166亿",
@@ -28,43 +28,43 @@
    "name": "芯片",
    "burst": 22.3,
    "amount": 2858226469.0,
-   "main_net": 415989170.0,
+   "main_net": 482271395.0,
    "src": "爆量+强度",
-   "strength": 691.0
+   "strength": 3023.0
   },
   {
    "code": "801660",
    "name": "通信",
    "burst": 15.3,
    "amount": 2137775228.0,
-   "main_net": 472742853.0,
-   "src": "爆量+强度",
-   "strength": 212.0
+   "main_net": 503685010.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
    "code": "801159",
    "name": "机器人概念",
    "burst": 11.0,
    "amount": 752206575.0,
-   "main_net": 41008032.0,
+   "main_net": 47778914.0,
    "src": "爆量+强度",
-   "strength": 447.0
+   "strength": 23725.0
   },
   {
    "code": "801199",
    "name": "汽车零部件",
    "burst": 10.5,
    "amount": 449050626.0,
-   "main_net": 29580225.0,
+   "main_net": 29427554.0,
    "src": "爆量+强度",
-   "strength": 157.0
+   "strength": 2502.0
   },
   {
    "code": "801062",
    "name": "军工",
    "burst": 6.5,
    "amount": 244904793.0,
-   "main_net": 10646268.0,
+   "main_net": 2525963.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -73,16 +73,16 @@
    "name": "PCB概念",
    "burst": 6.5,
    "amount": 538335856.0,
-   "main_net": 24821874.0,
+   "main_net": 22146804.0,
    "src": "爆量+强度",
-   "strength": 242.0
+   "strength": 4125.0
   },
   {
    "code": "801351",
    "name": "科创板",
    "burst": 6.5,
    "amount": 620159640.0,
-   "main_net": 65268814.0,
+   "main_net": 90715060.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -91,7 +91,7 @@
    "name": "5G",
    "burst": 6.3,
    "amount": 825414308.0,
-   "main_net": 134964601.0,
+   "main_net": 139997065.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -100,165 +100,147 @@
    "name": "医药",
    "burst": 6.3,
    "amount": 412513042.0,
-   "main_net": 7235143.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "main_net": 3719087.0,
+   "src": "爆量+强度",
+   "strength": 879.0
   },
   {
    "code": "801807",
    "name": "算力",
    "burst": 6.0,
    "amount": 278213607.0,
-   "main_net": 24706496.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "main_net": 23627946.0,
+   "src": "爆量+强度",
+   "strength": 3152.0
   },
   {
-   "code": "801070",
-   "name": "光伏",
+   "code": "801878",
+   "name": "端侧AI",
    "burst": 0.0,
-   "amount": 2759598856.0,
-   "main_net": 15485515.0,
+   "amount": 205241400439.0,
+   "main_net": 3717979618.0,
    "src": "强度",
-   "strength": 627.0
+   "strength": 12141.0
   },
   {
    "code": "803023",
    "name": "AI应用",
    "burst": 0.0,
-   "amount": 2271023305.0,
-   "main_net": 41891245.0,
+   "amount": 254952681642.0,
+   "main_net": 5385294130.0,
    "src": "强度",
-   "strength": 623.0
+   "strength": 11256.0
+  },
+  {
+   "code": "801095",
+   "name": "游戏",
+   "burst": 0.0,
+   "amount": 67086299489.0,
+   "main_net": 1473397501.0,
+   "src": "强度",
+   "strength": 4207.0
+  },
+  {
+   "code": "801031",
+   "name": "文化传媒",
+   "burst": 0.0,
+   "amount": 116008623230.0,
+   "main_net": 2976951627.0,
+   "src": "强度",
+   "strength": 3295.0
   },
   {
    "code": "801250",
    "name": "并购重组",
    "burst": 0.0,
-   "amount": 2839629222.0,
-   "main_net": 40444031.0,
+   "amount": 238040665657.0,
+   "main_net": 161458158.0,
    "src": "强度",
-   "strength": 622.0
+   "strength": 2513.0
   },
   {
    "code": "801787",
    "name": "实控人变更",
    "burst": 0.0,
-   "amount": 598863909.0,
-   "main_net": 3857120.0,
+   "amount": 41275310448.0,
+   "main_net": 203293358.0,
    "src": "强度",
-   "strength": 618.0
+   "strength": 1713.0
   },
   {
-   "code": "801270",
-   "name": "基础建设",
+   "code": "801169",
+   "name": "VR/AR/MR",
    "burst": 0.0,
-   "amount": 1016141649.0,
-   "main_net": 11590266.0,
+   "amount": 126170392084.0,
+   "main_net": 655665314.0,
    "src": "强度",
-   "strength": 599.0
+   "strength": 1482.0
   },
   {
-   "code": "801120",
-   "name": "电力",
+   "code": "803041",
+   "name": "光通信",
    "burst": 0.0,
-   "amount": 1054997843.0,
-   "main_net": 50431143.0,
+   "amount": 263667052716.0,
+   "main_net": 10300737.0,
    "src": "强度",
-   "strength": 573.0
+   "strength": 1415.0
   },
   {
-   "code": "801377",
-   "name": "金刚石概念",
+   "code": "801248",
+   "name": "智能驾驶",
    "burst": 0.0,
-   "amount": 75158984.0,
-   "main_net": 1263003.0,
+   "amount": 244380590620.0,
+   "main_net": 879924170.0,
    "src": "强度",
-   "strength": 260.0
-  },
-  {
-   "code": "801139",
-   "name": "培育钻石",
-   "burst": 0.0,
-   "amount": 39374434.0,
-   "main_net": 1101474.0,
-   "src": "强度",
-   "strength": 214.0
-  },
-  {
-   "code": "801067",
-   "name": "面板",
-   "burst": 0.0,
-   "amount": 1740930087.0,
-   "main_net": 16479974.0,
-   "src": "强度",
-   "strength": 197.0
+   "strength": 1405.0
   },
   {
    "code": "803029",
    "name": "物理AI",
    "burst": 0.0,
-   "amount": 858968318.0,
-   "main_net": 2045587.0,
+   "amount": 95588357242.0,
+   "main_net": 190609885.0,
    "src": "强度",
-   "strength": 176.0
+   "strength": 1227.0
   }
  ],
  "strike": [
   {
    "code": "002578",
    "name": "闽发铝业",
-   "height": 6,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 6连板 | 算力主线空间龙, 封单 1.88亿；逆市连板(火种观察) 6板",
+   "height": 7,
+   "status": "可做(接力)",
+   "reason": "龙头谱系[空间锚(最高连板)] 7连板 | 封单 0.94亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "688585",
-   "name": "上纬新材",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(机器人概念)] 成交 33.3亿 容量核心",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "301718",
-   "name": "通则康威",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(商业航天)] 成交 8.8亿 容量核心",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "002310",
-   "name": "东方新能",
+   "code": "002708",
+   "name": "光洋股份",
    "height": 2,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 2板",
+   "status": "可做(接力)",
+   "reason": "龙头谱系[总龙头] 主线[机器人概念] 22只涨停, 封单 2.65亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "603366",
-   "name": "日出东方",
+   "code": "600715",
+   "name": "文投控股",
    "height": 2,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 2板",
+   "status": "可做(接力)",
+   "reason": "龙头谱系[板块龙头(AI应用)] 主线[AI应用] 17只涨停, 封单 1.85亿",
    "tag": null,
    "bid_pct": null
   }
  ],
- "strike_watch": true,
+ "strike_watch": false,
  "bidrank": [
   {
    "code": "600327",
    "name": "大东方",
    "height": 2,
    "bid_pct": 9.26,
-   "turnover": 3.4328261507987685
+   "turnover": 3.4097094761678224
   },
   {
    "code": "002578",
@@ -282,54 +264,66 @@
    "turnover": 1.44
   },
   {
-   "code": "600278",
-   "name": "东方创业",
+   "code": "601188",
+   "name": "龙江交通",
    "height": 2,
-   "bid_pct": -0.89,
-   "turnover": 1.052356132325659
+   "bid_pct": 10.02,
+   "turnover": 1.02
   }
  ],
  "regime": {
   "regime": "主线",
-  "relay": 0.28125,
+  "relay": 0.35185185185185186,
   "max_board": 5,
   "top1_days": 1,
   "detail": [
-   "昨日再板率28%",
+   "昨日再板率35%",
    "最高5板",
    "TOP1连续1日"
   ]
  },
  "cycle": {
-  "stage": "退潮",
-  "confidence": 7,
-  "gate": "closed",
+  "stage": "高潮",
+  "confidence": 5,
+  "gate": "open",
   "mainlines": [
    "机器人概念",
-   "商业航天",
-   "算力",
-   "冰雪产业",
-   "通信",
-   "AI应用"
+   "AI应用",
+   "端侧AI",
+   "AI眼镜",
+   "AI视频",
+   "商业航天"
   ],
   "leaders": [
    {
     "code": "002578",
     "name": "闽发铝业",
-    "pid": 6,
+    "pid": 7,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "688585",
-    "name": "上纬新材",
+    "code": "002708",
+    "name": "光洋股份",
+    "pid": 2,
+    "role": "总龙头"
+   },
+   {
+    "code": "002048",
+    "name": "宁波华翔",
     "pid": 1,
     "role": "中军(机器人概念)"
    },
    {
-    "code": "301718",
-    "name": "通则康威",
+    "code": "600715",
+    "name": "文投控股",
+    "pid": 2,
+    "role": "板块龙头(AI应用)"
+   },
+   {
+    "code": "603533",
+    "name": "掌阅科技",
     "pid": 1,
-    "role": "中军(商业航天)"
+    "role": "中军(AI应用)"
    }
   ]
  },
@@ -382,11 +376,10 @@
   "prompt_ver": "v3",
   "latency_s": 12.6,
   "degraded": false,
-  "generated_at": "2026-11-10T02:03:44",
-  "slot": "1000"
+  "generated_at": "2026-11-10T02:03:45"
  },
  "stats": {
-  "pool": 672,
+  "pool": 643,
   "boards": 20,
   "genes": 0
  },
