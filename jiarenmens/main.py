@@ -20,7 +20,6 @@ from typing import List, Dict, Any, Tuple, Optional
 from src.spiders.player_list import PlayerListSpider
 from src.spiders.api_detail import crawl_player_all_data_async
 from src.storage.storage_factory import get_storage
-from src.utils.position_delta import apply_trades_to_positions
 from src.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -56,8 +55,8 @@ WATCHED_PLAYERS = [
     ("900455448", "捏盘冲升"),          # 2026-11-07 加入: 狙击手打法(58天仅6笔全胜), 总+98.1% 净值1.98, 现满仓002086东方海洋浮盈+78%; 他的卖出动作比买入值钱
 ]
 
-# 派生集合，供断点续跳过判断使用（勿手工维护，避免与 WATCHED_PLAYERS 漂移）
-WATCHED_ZH_IDS = {zh_id for zh_id, _ in WATCHED_PLAYERS}
+# 关注名单只用于置顶插入采集列表; 盘中时效性由 watchdog.yml 独立负责,
+# 采集班不再按关注身份分档(避免与 watchdog 争抢同一 EM token 的限流额度)。
 
 
 # =============================================================================
@@ -114,9 +113,9 @@ async def crawl_player_data_async(
 
     档位由 crawl_with_semaphore 按班次与选手身份决定:
       full   收盘专班 EOD 校准 / 盘中新选手初始化(6调用)
-      flash  盘中班关注选手 — 调仓+真实持仓(watchdog 语义, 2调用)
-      trades 盘中常规班老选手 — 只调仓, 持仓由收集侧用流水推算(1调用)
+      trades 盘中常规班(含关注选手) — 只调仓, 持仓由收集侧复制最近校准快照(1调用)
       hourly 整点班 — 调仓+收益净值(2调用)
+      flash  watchdog/watched_flash 专用 — 调仓2页+真实持仓(main.py 不再选此档)
 
     Returns:
         (zh_id, name, detail, positions, trades)
@@ -144,7 +143,7 @@ async def crawl_all_data_async(
         max_workers: 最大并发数
         skip_existing: (已废弃, 完成集现用于降档而非跳过; 保留参数兼容调用方)
         checkpoint_interval: 检查点保存间隔
-        level: 班次基础档位 trades/hourly/full(关注选手自动升 flash, 新选手自动升 full)
+        level: 班次基础档位 trades/hourly/full(新选手自动升 full; 关注选手与老选手同档)
     """
     # 本次数据日期
     crawl_date = date.today().isoformat()
@@ -154,10 +153,11 @@ async def crawl_all_data_async(
     completed_ids = set(checkpoint.get('completed_ids', []))
     start_time = checkpoint.get('start_time') or time.time()
 
-    # checkpoint 是"当日完成集": 跨日自动失效 → 每天首班全员按新选手初始化
+    # checkpoint 是"当日完成集": 跨日自动失效, 避免完成集跨日无限累积。
+    # 它不再用于档位判定(盘中班全员 trades), 仅作进度统计与断点记录。
     if checkpoint.get('crawl_date') != crawl_date:
         if completed_ids:
-            logger.info("checkpoint 属于旧日期, 视为当日首班: 完成集清空")
+            logger.info("checkpoint 属于旧日期: 完成集清空")
         completed_ids = set()
     checkpoint['crawl_date'] = crawl_date
 
@@ -168,12 +168,7 @@ async def crawl_all_data_async(
         logger.warning(f"已知选手集合加载失败, 全员按已知处理: {e}")
         known_ids = set()
 
-    # 当日首班判定(确定性快照, 避免并发下 completed_ids 边采边变的竞态):
-    # 首班对老选手也做 full 初始化(刷新 info/收益/持仓校准), 后续班才降档 trades
-    first_class = not completed_ids
-
-    logger.info(f"检查点: 已完成 {len(completed_ids)} 个选手, 库内已知选手 {len(known_ids)} 个"
-                f"{', 当日首班' if first_class else ''}")
+    logger.info(f"检查点: 已完成 {len(completed_ids)} 个选手, 库内已知选手 {len(known_ids)} 个")
     logger.info(f"本次数据日期: {crawl_date}, 班次档位: {level}")
 
     # 批量数据缓冲区
@@ -218,18 +213,16 @@ async def crawl_all_data_async(
 
         def pick_level(zh_id: str) -> str:
             """班次基础档位 → 选手档位:
-            收盘专班全员 full; 关注选手盘中走 flash(watchdog 要真实持仓);
-            当日首班或新选手走 full 初始化; 其余老选手按班次档位(trades/hourly)。
-            确定性函数: 收集侧重算与发起时一致
-            (first_class 是快照; 收集时本人必尚未进 completed_ids)。"""
+            收盘专班(level=full)全员 full 校准;
+            盘中班: 库内无档案的新选手 full 初始化, 其余(含关注选手)一律 trades/hourly。
+            关注选手的实时性由 watchdog.yml(每 5 分钟, flash 档)独立负责, crawl 班
+            只保留 1 次调仓拉取保证库内不断档, 不再重复拉持仓 —— 避免与 watchdog
+            争抢同一 EM token 的限流额度, 也缩短让位闸门的等待。
+            确定性函数: 收集侧重算与发起时一致(known_ids 只在 full 成功分支追加)。"""
             if level == "full":
                 return "full"
-            if zh_id in WATCHED_ZH_IDS:
-                return "flash"
-            if first_class and zh_id not in completed_ids:
-                return "full"      # 每天首班: 老选手也全量校准一轮(info/收益/持仓)
             if zh_id not in known_ids:
-                return "full"      # 盘中新进选手: 初始化, 之后各班降档推算
+                return "full"      # 新选手初始化: 全量持仓+info, 之后各班降档
             return level
 
         async def crawl_with_semaphore(player: Dict[str, Any]) -> Tuple[str, str, Any, List, List]:
@@ -299,25 +292,29 @@ async def crawl_all_data_async(
                     pending_positions.clear()
                     pending_trades.clear()
             else:
-                # 瘦身档(trades/hourly/flash): 无完整 detail → players 表不写(收益/名字保持库内旧值)
+                # 瘦身档(trades/hourly): 无完整 detail → players 表不写(收益/名字保持库内旧值)
                 lvl = pick_level(zh_id)
                 if trades or positions or lvl in ("trades", "hourly", "flash"):
                     success_count += 1
                     completed_ids.add(zh_id)
                     if trades:
                         pending_trades.append((zh_id, trades))
+                    calib = ""
                     if not positions and lvl in ("trades", "hourly"):
-                        # 持仓推算: 上次校准持仓 + 校准日以来的调仓流水(旧→新)
+                        # 盘中持仓 = 复制最近一次 EOD 校准快照(0 次 API)。
+                        # 全员持仓只在收盘后更新; 盘中显示昨收, 同时保证 export_json
+                        # 当日持仓快照非空(covered_ids/清仓守卫/变化对比不误判"空仓 0%")
                         prev = storage.load_positions(zh_id)
                         if prev:
                             calib = str(prev[0].get("crawl_date") or "")
-                            day = [t for t in trades if str(t.get("trade_date") or "") >= calib]
-                            day.reverse()   # 采集输出为新→旧, 推算需旧→新
-                            positions = apply_trades_to_positions(prev, day)
+                            positions = [dict(p) for p in prev
+                                         if str(p.get("crawl_date") or "") == calib
+                                         and p.get("stock_code")]
                     if positions:
                         pending_positions.append((zh_id, positions))
+                    tag = f"校准{calib}快照" if calib else ("真实" if lvl == "flash" else "无")
                     logger.info(f"  ✓ [{i}/{len(players)}] {name}({zh_id}): "
-                                f"{len(positions)}持仓({'真实' if lvl == 'flash' else '推算'}), {len(trades)}调仓")
+                                f"{len(positions)}持仓({tag}), {len(trades)}调仓")
 
                     # 批量保存(瘦身班也要走, 防止长班次积压)
                     if len(pending_trades) + len(pending_positions) >= BATCH_SIZE:
@@ -440,7 +437,7 @@ def main():
 
     # Step 2: 异步获取数据(分层档位, 2026-11-10)
     # 班次档位: crawl-eod(EM_FULL_CRAWL=1 兼容)→full 收盘校准;
-    #           EM_CRAWL_LEVEL 显式指定(trades/hourly/flash/full); 默认盘中常规班 trades(1调用/人, 持仓推算)
+    #           EM_CRAWL_LEVEL 显式指定(trades/hourly/flash/full); 默认盘中常规班 trades(1调用/人, 持仓复制校准快照)
     level = os.environ.get("EM_CRAWL_LEVEL", "").strip()
     if level not in ("trades", "hourly", "flash", "full"):
         level = "full" if os.environ.get("EM_FULL_CRAWL") == "1" else "trades"

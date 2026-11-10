@@ -174,10 +174,11 @@ jobs:
         env:
           EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
           EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
-          # 分层采集(2026-11-10): 盘中班 trades(1调用/人, 只拉调仓, 持仓由流水推算);
-          # 收盘专班 crawl-eod → full(6调用/人, EOD 校准真实持仓)。
-          # 关注选手自动升 flash(调仓+真实持仓), 新选手自动升 full(初始化) — 见 main.py pick_level。
-          # checkpoint 不再每班重置: 完成集跨日自动失效, 承担"每天首班 = 全员初始化"的识别。
+          # 分层采集(2026-11-10): 盘中班 trades(1调用/人, 只拉调仓; 持仓复制最近
+          # EOD 校准快照, 0 次 API); 收盘专班 crawl-eod → full(6调用/人, 真实持仓校准)。
+          # 关注选手盘中不再重复拉持仓(时效由 watchdog.yml 每 5 分钟独立负责),
+          # 仅库内无档案的新选手升 full 初始化 — 见 main.py pick_level。
+          # checkpoint 不再每班重置: 完成集跨日自动失效, 仅作进度统计与断点记录。
           EM_CRAWL_LEVEL: ${{ github.event.action == 'crawl-eod' && 'full' || 'trades' }}
         run: cd jiarenmens && python main.py
 
