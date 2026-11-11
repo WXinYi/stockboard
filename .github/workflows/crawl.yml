@@ -91,10 +91,13 @@ jobs:
           fi
           sha256sum data/auction.db | awk '{print $1}' > /tmp/auction_sha_start
 
-      # 格局推送搭 crawl 便车(每日12次 dispatch), 时间窗各只触发一次:
-      # 午盘=13:05 那次 / 尾盘=14:40 那次; push 触发不推
+      # 格局推送搭 crawl 便车。2026-11-11 修正: cron-job.org 的 20 个盘中班
+      # 全部是 workflow_dispatch(仅 15:15 收盘专班是 repository_dispatch),
+      # 原条件 github.event_name == 'repository_dispatch' 使这两步在盘中班
+      # 永远 skipped → 午盘/尾盘格局钉钉从未自动发出。改为排除 push 班即可。
+      # 时间窗对准真实班次: 午盘 13:05 / 尾盘 14:51, 各只命中一班。
       - name: 午盘格局推送
-        if: github.event_name == 'repository_dispatch' && steps.dayguard.outputs.trading != 'false'
+        if: github.event_name != 'push' && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
@@ -102,14 +105,15 @@ jobs:
         run: |
           cd jiarenmens
           H=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$H" -ge 1300 ] && [ "$H" -le 1320 ]; then
+          # 13:15 也有一班, 收窄到 1314 避免两班都进窗(幂等 state 为第二道保障)
+          if [ "$H" -ge 1300 ] && [ "$H" -le 1314 ]; then
             python scripts/cycle_push.py --session midday
           else
             echo "非午盘时段($H), 跳过"
           fi
 
       - name: 尾盘格局推送
-        if: github.event_name == 'repository_dispatch' && steps.dayguard.outputs.trading != 'false'
+        if: github.event_name != 'push' && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
@@ -117,9 +121,9 @@ jobs:
         run: |
           cd jiarenmens
           H=$(TZ=Asia/Shanghai date +%H%M)
-          # 2026-11-11: 原 25 分钟窗口会命中多个采集班(14:30/14:40/14:51),
-          # 叠加 cycle-eod.yml 14:45 专班最多 3 条重复钉钉。收窄到末班时段,
-          # 并配合 cycle_push.py 的 (交易日,session) 幂等状态做双重保障。
+          # 2026-11-11: 窗口收窄到只命中 14:51 末班, 并配合 cycle_push.py 的
+          # (交易日,session) 幂等状态做双重保障。注: cycle-eod.yml 专班在
+          # cron-job.org 未配置定时(仅手动验证), 尾盘推送实际由本步骤承担。
           if [ "$H" -ge 1448 ] && [ "$H" -le 1455 ]; then
             python scripts/cycle_push.py --session eod
           else
