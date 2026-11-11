@@ -157,6 +157,13 @@
 
 **明日 15:15 EOD 专班实战验收**：日志应出现「收盘校准班: eod 档」、班时是否短于今天 24.4 分钟、2190 人零失败、页面持仓/收益与 `full` 口径无差异、`Release` 热层正常回传。不符则把 `vars.EM_EOD_LEVEL` 设回 `full` 回滚。
 
+**逻辑校准（11-11 盘后复核，实现成立）**：
+
+- `players` 表（含 `_PLAYER_INSERT_SQL`）**没有** `portf_rat` / `rate_max_stk` / `manager_name` / `start_date` / `crawl_date` 列，入库只消费固定字段列表 → `eod` 省略这些字段对数据零影响；合并 `old`（`SELECT *` 含 `updated_at`/`created_at`）也不会带入过期时间戳，SQL 用 `CURRENT_TIMESTAMP` 覆盖。
+- `fail_count` 只在 **全员失败** 时判红（`main.py:473`）。`eod` 的异常判定少一个 `info` 信号（`yld+pos` 两信号 vs `full` 三信号），个别「info 有响应但收益/持仓全空」的组合在 eod 会记为失败、full 会继续写空收益档案 → eod 反而更保守（不写坏数据），不会判红整班。**已知取舍**：明日 EOD 的失败计数可能由 0 变为个位数，属预期。
+- `weekly_return=0.0` 覆盖库内历史值是 `full` 档既有行为，非 `eod` 引入；口径专项已把「真 0% / 源缺失」问题另列待办。
+- 掐班告警两处已知限制：UTC 日期过滤依赖 schedule 在 07:45（北京 15:45）前后同日，极端延迟跨 UTC 日会漏报；只覆盖 `cancelled`，「整天无班次」心跳仍留波 3。
+
 ### 今日验收收口（15:39 EOD 完成）
 
 - [x] EOD 专班 `42978141542` success，15:15:18→15:39:42（24 分 24 秒），2190/2190 人、EM 失败 0
