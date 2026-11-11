@@ -60,8 +60,13 @@ RETRY_DELAY = 1  # 秒
 # flash (3): 调仓2页+持仓     — watchdog/watched_flash 默认档(关注选手时效主通道);
 #            detail 为轻量 stub, 带 api_ok(HTTP 健康)/data_empty(组合隐藏);
 #            main.py 已不再选此档(盘中班全员 trades), 保留供 watchdog 专用
-# full  (6): info+收益+持仓+dimensions+调仓2页 — 收盘专班 EOD 校准; 亦用于当日首班/盘中新选手初始化
-CRAWL_LEVELS = ("trades", "hourly", "flash", "full")
+# full  (6): info+收益+持仓+dimensions+调仓2页 — 新选手初始化 / 手动全量 / eod 回滚档
+# eod   (5): 收益+持仓+dimensions+调仓2页   — 收盘校准班·老选手(2026-11-11);
+#            省掉 info(1调用), name/followers/days 等档案字段由 main.py:271-273 的
+#            「缺字段不覆盖」合并从库内旧档案取(full 档 info 偶发失败已走同一路径)。
+#            调仓仍保留 2 页: 实测本地库有 647 个(选手,日)超过单页 20 行,
+#            降到 1 页会丢当日调仓; dimensions 仍拉, 避免 max_drawdown/win_rate 退化。
+CRAWL_LEVELS = ("trades", "hourly", "flash", "full", "eod")
 
 
 def _load_tokens() -> Dict[str, str]:
@@ -295,7 +300,9 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
             trades(1调用) — 盘中常规班·老选手, 持仓由 main.py 用调仓流水推算(position_delta)
             hourly(2调用) — 整点班, 调仓+收益净值; detail 只含收益字段(name 等由 main.py 合并库内旧值)
             flash (2调用) — 盘中班·关注选手, 调仓+真实持仓(watchdog 语义)
-            full  (6调用) — 收盘专班 EOD 校准 + 盘中新选手初始化
+            full  (6调用) — 新选手初始化 / 手动全量 / eod 档回滚
+            eod   (5调用) — 收盘校准班·老选手: 收益+真实持仓+dimensions+调仓2页,
+                            不拉 info; 档案字段由 main.py 合并库内旧值
         full: 布尔兼容。True→"full"; 未传 level 时 False/None→"flash"
               (watched_flash 等旧调用方需要持仓+调仓, 瘦身但不丢持仓)
 
@@ -357,7 +364,36 @@ def crawl_player_all_data(zh_id: str, user_id: Optional[str] = None,
         }
         return (detail, [], _fetch_trades_pages(tokens, uid, zh_id, max_pages=1))
 
-    # full 档: 收盘专班 EOD 校准 / 盘中新选手初始化
+    # eod 档: 收盘校准班·老选手(2026-11-11) —— 只省 1 次 info 调用。
+    # 收益/真实持仓/dimensions/调仓2页 与 full 完全一致; 不放 name 等档案字段,
+    # 让 main.py:271-273 的「缺字段不覆盖」合并从库内旧档案取(full 档 info
+    # 偶发失败时已走同一路径, 有实战验证)。
+    if level == "eod":
+        yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
+        pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)
+        dims = _call_api_new("combination_dimensions", {"zh": zh_int, "unit": "20d"}, tokens) or {}
+        if not yld and not pos_raw:
+            logger.error(f"{zh_id}: 收益/持仓接口均无数据(组合可能已删除)")
+            return (None, [], [])
+        positions = _parse_positions(zh_id, pos_raw)
+        detail = {
+            "zh_id": zh_id,
+            "user_id": uid,
+            "total_return": _pct(yld.get("totalYieldRate")),
+            "daily_return": _pct(yld.get("dayYieldRate")),
+            "weekly_return": 0.0,   # 与 full 档一致(新协议无周收益字段)
+            "monthly_return": _pct(yld.get("monthYieldRate")),
+            "yearly_return": _pct(yld.get("yearYieldRate")),
+            "net_value": _safe_float(yld.get("netWorth")),
+            "max_drawdown": _safe_float(dims.get("maxDrawdown")),
+            "win_rate": _opt_rate(dims.get("dayWinRate")),
+            # 故意不放 name/followers/days/concept/intro/portf_rat 等档案字段:
+            # 它们在库内已有, 省略可避免被默认值清空; 收益类仍当日刷新。
+        }
+        trades = _fetch_trades_pages(tokens, uid, zh_id, max_pages=2)
+        return (detail, positions, trades)
+
+    # full 档: 新选手初始化 / 手动全量 / eod 档回滚
     info = _call_api_new("CombinationInfoHandler", dict(base), tokens) or {}
     yld = _call_api_new("combination_yield_detail_handler", dict(base), tokens) or {}
     pos_raw = _call_api_new("CombinationHoldPositionPermitHandler", dict(base), tokens)

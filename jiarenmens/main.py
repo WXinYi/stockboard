@@ -113,7 +113,9 @@ async def crawl_player_data_async(
     按档位采集单个选手（分层采集, 2026-11-10）
 
     档位由 crawl_with_semaphore 按班次与选手身份决定:
-      full   收盘专班 EOD 校准 / 盘中新选手初始化(6调用)
+      eod    收盘校准班·老选手(5调用) — 收益+真实持仓+dimensions+调仓2页, 不拉 info;
+             档案字段由收集侧合并库内旧值(main.py:271-273)
+      full   新选手初始化 / 手动全量 / eod 回滚档(6调用)
       trades 盘中常规班(含关注选手) — 只调仓, 持仓由收集侧复制最近校准快照(1调用)
       hourly 整点班 — 调仓+收益净值(2调用)
       flash  watchdog/watched_flash 专用 — 调仓2页+真实持仓(main.py 不再选此档)
@@ -214,7 +216,8 @@ async def crawl_all_data_async(
 
         def pick_level(zh_id: str) -> str:
             """班次基础档位 → 选手档位:
-            收盘专班(level=full)全员 full 校准;
+            收盘班: level=eod 时老选手走 eod(省 info), 库内无档案的新选手仍 full 初始化;
+            level=full 时全员 full(回滚档);
             盘中班: 库内无档案的新选手 full 初始化, 其余(含关注选手)一律 trades/hourly。
             关注选手的实时性由 watchdog.yml(每 5 分钟, flash 档)独立负责, crawl 班
             只保留 1 次调仓拉取保证库内不断档, 不再重复拉持仓 —— 避免与 watchdog
@@ -440,10 +443,12 @@ def main():
     # 班次档位: crawl-eod(EM_FULL_CRAWL=1 兼容)→full 收盘校准;
     #           EM_CRAWL_LEVEL 显式指定(trades/hourly/flash/full); 默认盘中常规班 trades(1调用/人, 持仓复制校准快照)
     level = os.environ.get("EM_CRAWL_LEVEL", "").strip()
-    if level not in ("trades", "hourly", "flash", "full"):
+    if level not in ("trades", "hourly", "flash", "full", "eod"):
         level = "full" if os.environ.get("EM_FULL_CRAWL") == "1" else "trades"
-    if level == "full":
-        logger.info("收盘专班/初始化班: 全量模式(EOD 校准)")
+    if level == "eod":
+        logger.info("收盘校准班: eod 档(老选手省 info; 新选手仍 full 初始化)")
+    elif level == "full":
+        logger.info("收盘专班/初始化班: 全量模式(full)")
     logger.info(f"\n[Step 2] 异步获取选手数据 (并发数={args.workers}, 班次档位={level})...")
 
     try:

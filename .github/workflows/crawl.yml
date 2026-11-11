@@ -186,7 +186,10 @@ jobs:
           # 关注选手盘中不再重复拉持仓(时效由 watchdog.yml 每 5 分钟独立负责),
           # 仅库内无档案的新选手升 full 初始化 — 见 main.py pick_level。
           # checkpoint 不再每班重置: 完成集跨日自动失效, 仅作进度统计与断点记录。
-          EM_CRAWL_LEVEL: ${{ github.event.action == 'crawl-eod' && 'full' || 'trades' }}
+          # 2026-11-11: EOD 专班默认 eod 档(老选手省 info 1 调用/人), 新选手仍由
+          # main.py pick_level 升 full 初始化。灰度回滚: 仓库变量 vars.EM_EOD_LEVEL
+          # 设为 "full" 即恢复旧全量档, 无需改代码/重发版。
+          EM_CRAWL_LEVEL: ${{ github.event.action == 'crawl-eod' && (vars.EM_EOD_LEVEL || 'eod') || 'trades' }}
         run: cd jiarenmens && python main.py
 
       # 东财人气榜快照(每天最多两份: 09:25 auction 已存 am 则此处自动记 pm, 同(date,snap)去重)
