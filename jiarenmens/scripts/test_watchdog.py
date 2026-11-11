@@ -212,14 +212,14 @@ class TestBuildMessage(unittest.TestCase):
         t_a = _t("600371", "买入", 1)
         t_b = _t("000002", "买入", 1)
         data = {"900456476": {"name": "狼之行一", "ok": True, "trades": [t_a], "positions": []},
-                "900450475": {"name": "武研琳", "ok": True, "trades": [t_b], "positions": []},
+                "900458047": {"name": "点火的佩斯", "ok": True, "trades": [t_b], "positions": []},
                 "900240956": {"name": "股得猫咛", "ok": True, "trades": [], "positions": []},
                 "900438148": {"name": "我嘚财富", "hidden": True}}
         new_mark = {"900456476": {id(t_a): False}}   # 只有甲有本轮新增
         msg = watchdog.build_message("2026-09-18", "10:00", data, new_mark, {})
         lines = msg.splitlines()
         i_a = next(i for i, l in enumerate(lines) if "狼之行一" in l)
-        i_b = next(i for i, l in enumerate(lines) if "武研琳" in l)
+        i_b = next(i for i, l in enumerate(lines) if "点火的佩斯" in l)
         self.assertEqual(lines[i_b - 1], "", "选手块之间必须有空行")
         self.assertIn("🆕", lines[i_a], "有本轮新增的选手名应标 🆕")
         self.assertNotIn("🆕", lines[i_b], "无新增的选手不标 🆕")
