@@ -34,10 +34,22 @@ def is_hidden(zh_id: str, state: dict | None = None) -> bool:
 
 
 def update(results: dict) -> dict:
-    """results: {zh_id: detail is None(=hidden)} → 合并写回, 返回最新状态"""
+    """results: {zh_id: detail is None(=hidden)} → 合并写回, 返回最新状态
+
+    熔断器(2026-11-11 事故防线): 单日新增隐藏 ≥5 个 = 系统性故障(EM 关闸/限流),
+    不是选手行为 → 拒绝写入并报错, 防止全名单被固化成"已隐藏"
+    (11-10 事故: 全名单隐藏状态持续两天, watchdog/日报零推送)。"""
     st = load()
     hidden = st.get("hidden", {})
     today = datetime.now().strftime("%Y-%m-%d")
+    new_hidden = [zh for zh, is_none in results.items()
+                  if is_none and zh not in hidden]
+    if len(new_hidden) >= 5:
+        import sys
+        print(f"::error:: 可见性熔断触发: 单日新增隐藏 {len(new_hidden)} 人 "
+              f"({','.join(new_hidden[:5])}…) — 系统性故障特征, 拒绝写入; "
+              f"请查 EM 接口/token, 修复后次日探测自动纠正", file=sys.stderr)
+        return st
     for zh, is_none in results.items():
         if is_none:
             hidden.setdefault(zh, today)

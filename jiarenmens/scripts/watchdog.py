@@ -259,24 +259,30 @@ def fetch_all(players, date_str: str) -> dict:
     out = {}
     date_key = date_str.replace("-", "")
     for zh, nm in players:
-        if visibility.is_hidden(zh):
-            # 隐藏号走 relocate 流水通道(2026-11-07): 调仓可见可推, 持仓/净值仍不可得
-            uid = HIDDEN_UIDS.get(zh)
+        if visibility.is_hidden(zh) and zh in HIDDEN_UIDS:
+            # 已知隐藏号走 relocate 流水通道(2026-11-07): 调仓可见可推, 持仓/净值仍不可得
+            uid = HIDDEN_UIDS[zh]
             trades = []
-            if uid:
-                try:
-                    trades = fetch_hidden_trades(uid, zh, date_key)
-                except Exception as e:
-                    out[zh] = {"name": nm, "hidden": True, "trades": [], "err": str(e)}
-                    continue
+            try:
+                trades = fetch_hidden_trades(uid, zh, date_key)
+            except Exception as e:
+                out[zh] = {"name": nm, "hidden": True, "trades": [], "err": str(e)}
+                continue
             out[zh] = {"name": nm, "hidden": True, "trades": trades, "ok": True}
             continue
+        # 状态文件判隐藏但无流水通道凭证 → 可能是文件误标(2026-11-11 事故:
+        # EM 关闸日探测全失败, 全名单被固化成隐藏), 照常拉取自愈;
+        # 数据确实为空(detail None)时按隐藏脚注处理, 不误报"拉取失败"
         try:
             detail, positions, trades = crawl_player_all_data(zh)
             today = [t for t in trades if t.get("trade_date") == date_str]
             # api_ok=False = 接口全失败(限流/断网/token失效): 绝不能当成"今日无操作",
             # 否则 n_ok 恒>0 → fails 永远清零 → 降级告警永不触发、钉钉静默漏推。
             api_ok = bool(detail and detail.get("api_ok", True))
+            if visibility.is_hidden(zh) and not api_ok:
+                # 误标隐藏 + 数据确实为空 → 按隐藏脚注, 不计失败
+                out[zh] = {"name": nm, "hidden": True, "trades": [], "ok": True}
+                continue
             out[zh] = {"name": nm, "trades": today, "positions": positions,
                        "ok": api_ok}
         except Exception as e:

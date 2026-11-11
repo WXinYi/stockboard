@@ -80,6 +80,9 @@ jobs:
         env:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          # 探测/快报走 EM 新协议(需登录态 token): 缺失会把全名单误标隐藏并持久化
+          EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
+          EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
         run: cd jiarenmens && python scripts/watched_flash.py
 
       - name: 出击选股 + 昨日连板换手Top5 + 钉钉推送(09:29 前)
