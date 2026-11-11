@@ -23,6 +23,7 @@
     python scripts/watchdog.py --force             # 无视交易时段闸门(排障用)
 """
 import argparse
+import email.utils
 import json
 import re
 import sys
@@ -176,18 +177,43 @@ def seed_baseline(pushed_player: dict, base_file: dict, date_str: str) -> int:
 
 
 def fetch_base_player(zh_id: str, retries: int = 3):
-    """拉线上已部署的选手文件作叠加底稿; 失败返回 None(宁可跳过叠加, 不可丢历史)。"""
+    """拉线上已部署的选手文件作叠加底稿; 失败返回 (None, None)(宁可跳过叠加, 不可丢历史)。
+
+    返回 (base, last_modified_str): last_modified 为 Pages 响应头的 Last-Modified
+    (GMT, RFC1123), 供 seed 防剧透判定; 拉不到时为 None。"""
     url = f"{BASE_URL}/data/latest/players/{zh_id}.json"
     last = None
     for i in range(retries):
         try:
             with urllib.request.urlopen(url, timeout=10) as r:
-                return json.loads(r.read().decode("utf-8"))
+                lm = r.headers.get("Last-Modified") or ""
+                return json.loads(r.read().decode("utf-8")), lm
         except Exception as e:          # 大陆网络对 Pages 常见 SSL 瞬断, 退避重试
             last = e
             time.sleep(1 + i)
     print(f"  ⚠️ {zh_id} 线上底稿拉取失败({retries}次), 跳过叠加: {last}")
-    return None
+    return None, ""
+
+
+def base_is_spoiled(last_modified: str) -> bool:
+    """底稿 Last-Modified 是今日(北京) → 视为 crawl 盘中剧透, 不得作"已推"基线。
+
+    2026-11-11 事故: crawl 09:38 班 09:52 先把选手当日操作部署到页面,
+    watchdog 10:21 首次成功时 seed_baseline 把这些操作当"已推送"吞掉,
+    月儿兰 2 笔被吞的机制性风险。规则:
+    - 今日部署的底稿来源只有三种: crawl 盘中班(剧透, 未推过钉钉)、
+      watchdog 自身叠加(必然已推过, 且此时非 first_of_day 不走 seed)、
+      15:15 EOD(部署的是当日操作, 但 15:05 后 watchdog 不再跑) → 一律不 seed;
+    - 昨日及更早 → 正常 seed(防与昨日日报重复的语义不变);
+    - 无 header/解析失败 → 不判剧透(保持现行为, 宁可误吞不误推——与现状一致)。
+    """
+    if not last_modified:
+        return False
+    try:
+        lm = email.utils.parsedate_to_datetime(last_modified).astimezone(BJ)
+    except Exception:
+        return False
+    return lm.date() == bj_now().date()
 
 
 def merge_player(base: dict, positions: list, trades_today: list, date_str: str) -> dict:
@@ -234,6 +260,11 @@ def fetch_hidden_trades(uid: str, zh: str, date_key: str) -> list:
     d = _call_api("CombinationRelocatePositionHandler", {
         "userId": uid, "combinationId": zh, "pageNum": 1, "pageSize": 20,
         "beginDate": "", "endDate": ""})
+    if d is None:
+        # 2026-11-11: _call_api 失败(含 9061 组合不存在)返回 None; 原先静默折算成
+        # "今日暂无操作", 把通道失效掩盖成无操作。改为显式失败 → fetch_all 计 err,
+        # 消息脚注与日志可见(9061 详见 fetch_all 的 🚨 提示)。
+        raise RuntimeError("relocate 流水接口失败(组合不存在 9061 / 限流 / 断网)")
     rows = (d or {}).get("pages") or []
     agg = {}
     for r in rows:
@@ -266,6 +297,11 @@ def fetch_all(players, date_str: str) -> dict:
             try:
                 trades = fetch_hidden_trades(uid, zh, date_key)
             except Exception as e:
+                if "9061" in str(e):
+                    # 2026-11-11 实测: 该组合在东财 relocate 接口已不存在(确定性失败,
+                    # 重试无意义)。此班只有 footNote 提示, 静默班外人不可见 → 每班落日志。
+                    print(f"  🚨 {nm}({zh}) 东财组合已不存在(code=9061), 调仓流水通道失效"
+                          f"—盘中操作将无法推送; 请核对其新组合 ID 更新 HIDDEN_UIDS 或移出名单")
                 out[zh] = {"name": nm, "hidden": True, "trades": [], "err": str(e)}
                 continue
             out[zh] = {"name": nm, "hidden": True, "trades": trades, "ok": True}
@@ -383,9 +419,15 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
         pushed_player = st["pushed"].setdefault(zh, {})
         if first_of_day:
             base_cache.setdefault(zh, fetch_base_player(zh))
-            base = base_cache.get(zh)
+            base, lm = base_cache.get(zh, (None, ""))
             if base:
-                seed_baseline(pushed_player, base, date_str)
+                if base_is_spoiled(lm):
+                    # 2026-11-11: 底稿是今日盘中部署 → 里面的当日操作未经钉钉,
+                    # 若 seed 会把"crawl 先于 watchdog 部署"的操作永久静默。
+                    # 不吞, 交给 decide_pushes 正常比对(可能晚于 crawl 部署, 但不漏)。
+                    print(f"  ℹ️ {nm} 底稿为今日部署(crawl 剧透), 不作已推基线")
+                else:
+                    seed_baseline(pushed_player, base, date_str)
         newt, _known = decide_pushes(o["trades"], pushed_player)
         if newt:
             new_mark[zh] = {id(t): is_add for t, is_add in newt}
@@ -399,7 +441,13 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
             print(msg)
         else:
             DingTalk().send_markdown(f"🚨 盯盘提醒 {date_str} {hhmm}", msg)
-            print(f"✅ 已推送 {len(new_pushes)} 笔新操作(全员列表)")
+            # 摘要进日志(2026-11-11): 消息体此前只发钉钉不进日志, 事后无法对账
+            # (当日 15 笔推送的构成只能间接推断)。逐笔落一行, 便于回查。
+            detail = " | ".join(
+                f"{nm}{'↩️追加' if is_add else ''}{t.get('direction', '?')}{t.get('stock_name', '?')}"
+                f"(tc={t.get('trades_count')})"
+                for _zh, nm, t, is_add in new_pushes)
+            print(f"✅ 已推送 {len(new_pushes)} 笔新操作(全员列表): {detail}")
 
     if st["fails"] >= MAX_FAILS and not st["alerted"] and not args.dry_run:
         try:
@@ -419,10 +467,10 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
             o = data[zh]
             if o.get("hidden"):
                 continue   # 隐藏号无持仓/净值, 只推送不叠加(页面停留隐藏前快照)
-            base = base_cache.get(zh)
+            base = base_cache.get(zh, (None, ""))[0]
             if base is None:
-                base = fetch_base_player(zh)
-                base_cache[zh] = base
+                base, _lm = fetch_base_player(zh)
+                base_cache[zh] = (base, _lm)
             if base is None:
                 continue
             write_player_json(zh, merge_player(base, o["positions"], o["trades"], date_str))
