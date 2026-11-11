@@ -165,7 +165,9 @@ onMounted(async () => {
 
     <!-- 页脚时点诚实化(2026-09-13): core.date 是采集日(周末采集会落在非交易日),
          此前标成"数据日期"误导(09-12周六曾当数据日展示)。交易日单独给出, 两者不一致时都亮出来 -->
-    <footer class="footer" :title="crawlTime ? `数据采集于 ${crawlTime}` : ''">
+    <!-- 2026-11-11: title 补全三类数据的时点口径(页脚可见文本保持简洁) ——
+         盘面为 KPL 实时(30s), 选手持仓/收益为最近收盘校准快照, 竞价为 09:25 定格快照 -->
+    <footer class="footer" :title="`数据采集于 ${crawlTime || '—'} · 盘面为实时行情 · 选手持仓/收益为最近收盘校准值(盘中不刷新, 15:15 后更新当日) · 竞价为 09:25 快照`">
       StockBoard · 采集 {{ crawlTimeShort || currentDate || '—' }}<template v-if="tradingDay && tradingDay !== crawlDay"> · 数据截至 {{ tradingDay }}</template>
     </footer>
 

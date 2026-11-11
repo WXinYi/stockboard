@@ -8,8 +8,15 @@
 用法:
   python scripts/cycle_push.py --session eod            # 推钉钉
   python scripts/cycle_push.py --session midday --dry-run
+  python scripts/cycle_push.py --session eod --force    # 忽略去重状态手动补推
+
+2026-11-11 去重: 尾盘同时由 crawl.yml 尾盘窗口与 cycle-eod.yml 专班触发,
+cycle_push.py 原先无任何状态, 同一交易日可能推 2-3 条几乎相同的钉钉。
+现按 (交易日, session) 幂等, state 落 data/.cycle_push_state.json 并随数据提交
+持久化, 两个通道谁先推谁写状态, 后到者跳过。--dry-run 不受状态影响。
 """
 import argparse
+import json
 import sys
 import time
 from datetime import datetime
@@ -22,6 +29,30 @@ from src.spiders.auction_spider import KPLSpider  # noqa: E402
 from src.analysis.emotion_cycle import compute_cycle  # noqa: E402
 
 BJ_TZ = ZoneInfo("Asia/Shanghai")
+STATE_PATH = ROOT / "data" / ".cycle_push_state.json"
+
+
+def state_key(date_str: str, session: str) -> str:
+    """同一交易日同一场次只推一次(跨 crawl.yml / cycle-eod.yml 两个通道)。"""
+    return f"{date_str}|{session}"
+
+
+def already_sent(key: str, path: Path = STATE_PATH) -> bool:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("key") == key
+    except Exception:
+        return False   # 文件缺失/损坏 → 当作未推过, 宁可多推不漏推
+
+
+def mark_sent(key: str, path: Path = STATE_PATH) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "key": key, "sent_at": datetime.now(BJ_TZ).isoformat(timespec="seconds"),
+        }, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        # 状态写不进去不影响本次已送达的推送, 但下一通道可能重复 → 留可见注解
+        print(f"::warning::写入推送去重状态失败(不影响本次推送): {e}", file=sys.stderr)
 
 
 def fetch_rt_today(spider: KPLSpider) -> dict:
@@ -108,7 +139,8 @@ def build_markdown(res: dict, session: str) -> str:
 def main():
     ap = argparse.ArgumentParser(description="超短格局定时推送")
     ap.add_argument("--session", choices=["midday", "eod"], required=True)
-    ap.add_argument("--dry-run", action="store_true", help="只打印不推送")
+    ap.add_argument("--dry-run", action="store_true", help="只打印不推送(不受去重状态影响)")
+    ap.add_argument("--force", action="store_true", help="忽略去重状态, 手动补推用")
     ap.add_argument("--fail-flag", default="/tmp/cycle_push_failed",
                     help="推送失败时写标志文件(workflow 在数据步骤之后再据此判红: "
                          "既不因推送故障阻断落库/部署, 也不让失败无声无息)")
@@ -122,11 +154,16 @@ def main():
     if args.dry_run:
         print(text)
         return 0
+    key = state_key(res["date"], args.session)
+    if not args.force and already_sent(key, STATE_PATH):
+        print(f"[cycle_push] {res['date']} {args.session} 已推送过, 跳过(多通道去重)")
+        return 0
     from src.notify.dingtalk import DingTalk
     tag = "午盘" if args.session == "midday" else "尾盘"
     try:
         resp = DingTalk().send_markdown(f"超短格局 {res['date']} {tag}", text)
         print(f"📣 已推送: {resp}")
+        mark_sent(key, STATE_PATH)
     except Exception as e:
         # 钉钉挂/被限流/keyword 被拒 = 该班推送没送到; 写标志文件 + 非零退出, 让失败可见
         try:

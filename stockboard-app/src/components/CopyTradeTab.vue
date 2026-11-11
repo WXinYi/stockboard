@@ -62,6 +62,9 @@ function pct(v) {
   <!-- 持仓变更摘要 -->
   <div v-if="posCh && posCh.hasHistory" class="summary-bar">
     {{ posCh.today }} · +{{ posCh.addedCount }}新进 -{{ posCh.clearedCount }}清仓 {{ posCh.changeCount }}笔变动
+    <!-- 2026-11-11 时点诚实化: 盘中班只拉调仓、持仓是复制的最近收盘校准快照,
+         两日快照相同会让"变动 0"看起来像"今日无操作"; 明示统计口径避免误读 -->
+    <span style="color:#888;font-size:12px;"> · 按采集日统计，盘中持仓为收盘校准快照，15:15 后更新当日</span>
     <!-- 周六/周日采集的班次对比的是错位日期, 清仓计数可能因采集覆盖面失真(09-12 实例 -164), 明示不掩饰 -->
     <span v-if="isWeekendCrawl" style="color:#b06020;"> · ⚠️ 该班为周末采集, 变动计数可能失真, 以交易日班次为准</span>
   </div>
@@ -134,7 +137,7 @@ function pct(v) {
   <!-- 核心重仓 -->
   <div class="card" style="margin-top:20px;">
     <h2>● 高手核心重仓 <span class="badge">Top 20</span></h2>
-    <p class="hint">多个高质量选手重仓持有的股票，代表经过深度研究的方向</p>
+    <p class="hint">多个高质量选手重仓持有的股票，代表经过深度研究的方向 · 持仓/收益为最近收盘校准值（盘中不刷新，15:15 后更新当日）</p>
     <div class="grid-2">
       <div style="max-height:500px;overflow-y:auto;">
         <table><thead><tr>

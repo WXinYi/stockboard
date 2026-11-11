@@ -186,6 +186,8 @@ onMounted(() => { if (route.params.zh_id) loadPlayer(route.params.zh_id) })
     <div class="grid-2">
       <div class="card">
         <h2>📦 当前持仓 <span class="badge">{{ sortedPos.length }}</span></h2>
+        <!-- 2026-11-11: 盘中班持仓为最近收盘校准快照(0 次 API 复制), 明示时点避免误读为实时 -->
+        <p class="hint">持仓/收益为最近收盘校准值（盘中不刷新，15:15 后更新当日）</p>
         <div v-if="!sortedPos.length" class="empty-state">📭 暂无持仓数据</div>
         <div class="table-wrap" v-else>
         <table>

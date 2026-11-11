@@ -2,7 +2,7 @@
 // 09:25 盘前候选 · 全量页(选股域二级页)
 // 环境结论 + 昨日连板·竞价换手 TOP5 + 出击选股(早盘存档);
 // 状态词走全站唯一口径(可买/待确认/只看不买), 原始 Python 状态词在此归一。
-import { computed, onMounted, ref } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchAuction } from '../data/loader.js'
 import { statusWord } from '../utils/stockPicks.js'
@@ -11,6 +11,12 @@ const auction = ref(null)
 const loading = ref(true)
 const error = ref(false)
 const router = useRouter()
+
+// 2026-11-11: 本页被 KeepAlive 保留, onMounted 只拉一次; 竞价班 09:25 单独部署后
+// 已打开的页面不会自动更新。跟随 App 的 refreshTick(useUX 探测到新数据会 +1)重拉,
+// 配合 loader.clearDataCache() 拿到最新 auction.json。
+const refreshTick = inject('refreshTick', ref(0))
+watch(refreshTick, () => load())
 
 onMounted(load)
 

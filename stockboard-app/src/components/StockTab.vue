@@ -89,7 +89,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
       重仓共识
       <span class="badge">Top 20</span>
     </h2>
-    <p class="hint">全体采集选手的持仓聚合(含榜单漂移样本) · 点击表头可切换排序</p>
+    <p class="hint">全体采集选手的持仓聚合(含榜单漂移样本) · 持仓为最近收盘校准值（盘中不刷新，15:15 后更新当日）· 点击表头可切换排序</p>
       <div>
         <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>

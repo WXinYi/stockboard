@@ -15,6 +15,8 @@ concurrency:
 jobs:
   eod:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # 2026-11-11: 落盘去重状态供 crawl.yml 末班读取
 
     steps:
       - uses: actions/checkout@v5
@@ -46,6 +48,33 @@ jobs:
           DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: cd jiarenmens && python scripts/cycle_push.py --session eod
+
+      # 2026-11-11: 把 (交易日,session) 幂等状态提交回仓库, 让 14:51 采集班
+      # checkout 时能读到"本班已推过"而跳过。两个通道谁先推谁写状态, 恰好一条。
+      - name: 持久化推送去重状态
+        if: success()
+        run: |
+          # 去重跳过时 cycle_push 不会写 state 文件, 直接 git add -f 会因路径不存在判红
+          if [ ! -f jiarenmens/data/.cycle_push_state.json ]; then
+            echo "本班未产生去重状态(已推送过或无需推送), 跳过提交"
+            exit 0
+          fi
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f jiarenmens/data/.cycle_push_state.json
+          if git diff --staged --quiet; then
+            echo "去重状态无变化, 跳过提交"
+          else
+            git commit -m "📌 尾盘推送去重状态 $(date +%F) [skip ci]"
+            for i in 1 2 3; do
+              if git pull --rebase -X theirs && git push; then
+                echo "✅ 去重状态已持久化"
+                break
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep 5
+            done
+          fi
 
 
   # 失败告警(2026-09-15 静默审计补链): 此前 9 个 workflow 没有任何 if: failure() 步骤,

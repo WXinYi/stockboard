@@ -117,7 +117,10 @@ jobs:
         run: |
           cd jiarenmens
           H=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$H" -ge 1430 ] && [ "$H" -le 1455 ]; then
+          # 2026-11-11: 原 25 分钟窗口会命中多个采集班(14:30/14:40/14:51),
+          # 叠加 cycle-eod.yml 14:45 专班最多 3 条重复钉钉。收窄到末班时段,
+          # 并配合 cycle_push.py 的 (交易日,session) 幂等状态做双重保障。
+          if [ "$H" -ge 1448 ] && [ "$H" -le 1455 ]; then
             python scripts/cycle_push.py --session eod
           else
             echo "非尾盘时段($H), 跳过"
