@@ -1,0 +1,35 @@
+name: 采集掐班告警
+# 2026-11-11: concurrency.cancel-in-progress 取消整个 run, cancelled 不触发
+# failure(), 且被取消 run 里未启动的 job 不会再启动(if: cancelled() 救不了)
+# → 现有 alert-on-failure 看不到掐班。11-11 上午 4 班连环 cancelled 无人知晓。
+# 用独立心跳(GitHub 原生 schedule)只读 API + 发钉钉, 不依赖 cron-job.org,
+# 不写仓库、不碰采集/推送链路。UTC 07:45 = 北京 15:45(EOD 15:39 完成后)。
+
+on:
+  schedule:
+    - cron: '45 7 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只打印不发送钉钉(演练用)'
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: 检查当日采集班是否被掐
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/crawl_cancel_alert.py ${{ inputs.dry_run && '--dry-run' || '' }}
