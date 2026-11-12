@@ -1,221 +1,347 @@
 {
- "date": "2026-11-11",
+ "date": "2026-11-12",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "红盘占比 26% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 28,
+   "strong": 37,
    "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.26180720293293075,
+   "red_ratio": 0.47419712070874864,
    "bid_count": [
-    118,
-    116,
+    157,
+    150,
     50,
-    21,
-    1
+    33,
+    0
    ],
-   "bid_total": "120亿",
-   "bid_total_prev": "166亿"
+   "bid_total": "157亿",
+   "bid_total_prev": "120亿"
   }
  },
  "boards": [
   {
-   "code": "801199",
-   "name": "汽车零部件",
-   "burst": 9.0,
-   "amount": 408978290.0,
-   "main_net": -32286099.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "code": "801001",
+   "name": "芯片",
+   "burst": 32.9,
+   "amount": 1613386846.0,
+   "main_net": 47064350.0,
+   "src": "爆量+强度",
+   "strength": 506.0
   },
   {
    "code": "801159",
    "name": "机器人概念",
-   "burst": 8.0,
-   "amount": 538536163.0,
-   "main_net": -35934143.0,
-   "src": "爆量L2",
-   "strength": 0.0
+   "burst": 13.8,
+   "amount": 657886402.0,
+   "main_net": 154123783.0,
+   "src": "爆量+强度",
+   "strength": 2504.0
   },
   {
-   "code": "801286",
-   "name": "磷化工",
-   "burst": 5.0,
-   "amount": 50642413.0,
-   "main_net": 8414009.0,
+   "code": "801199",
+   "name": "汽车零部件",
+   "burst": 10.5,
+   "amount": 482360779.0,
+   "main_net": 79345981.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801519",
-   "name": "汽车类",
-   "burst": 4.5,
-   "amount": 54583758.0,
-   "main_net": 371568.0,
+   "code": "801722",
+   "name": "存储",
+   "burst": 9.2,
+   "amount": 508262295.0,
+   "main_net": -23829206.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801004",
-   "name": "锂电池",
-   "burst": 4.0,
-   "amount": 34732251.0,
-   "main_net": -58999.0,
+   "code": "801660",
+   "name": "通信",
+   "burst": 8.8,
+   "amount": 453591121.0,
+   "main_net": 78774790.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801374",
-   "name": "造船",
+   "code": "801807",
+   "name": "算力",
+   "burst": 8.8,
+   "amount": 375484240.0,
+   "main_net": 24892561.0,
+   "src": "爆量+强度",
+   "strength": 6.0
+  },
+  {
+   "code": "801351",
+   "name": "科创板",
+   "burst": 8.3,
+   "amount": 434759336.0,
+   "main_net": 52462206.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801695",
+   "name": "CPO/MPO",
+   "burst": 8.3,
+   "amount": 507657845.0,
+   "main_net": 35600632.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801003",
+   "name": "5G",
+   "burst": 7.0,
+   "amount": 879935111.0,
+   "main_net": 15253649.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801085",
+   "name": "人工智能",
+   "burst": 6.8,
+   "amount": 417878518.0,
+   "main_net": 27208660.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801787",
+   "name": "实控人变更",
    "burst": 0.0,
-   "amount": 43590957.0,
-   "main_net": 49874.0,
+   "amount": 714849752.0,
+   "main_net": 15266950.0,
    "src": "强度",
-   "strength": 29.0
+   "strength": 718.0
   },
   {
-   "code": "801246",
-   "name": "水务",
+   "code": "803014",
+   "name": "海峡两岸",
    "burst": 0.0,
-   "amount": 8554355.0,
-   "main_net": 1006199.0,
+   "amount": 1232348889.0,
+   "main_net": 29675649.0,
    "src": "强度",
-   "strength": 9.0
+   "strength": 503.0
+  },
+  {
+   "code": "801250",
+   "name": "并购重组",
+   "burst": 0.0,
+   "amount": 2937422628.0,
+   "main_net": 19138684.0,
+   "src": "强度",
+   "strength": 499.0
   },
   {
    "code": "801964",
    "name": "压缩机",
    "burst": 0.0,
-   "amount": 152917449.0,
-   "main_net": 773659.0,
+   "amount": 122504681.0,
+   "main_net": 14897.0,
    "src": "强度",
-   "strength": 1.0
+   "strength": 53.0
+  },
+  {
+   "code": "801606",
+   "name": "成渝经济圈",
+   "burst": 0.0,
+   "amount": 2552723.0,
+   "main_net": 311686.0,
+   "src": "强度",
+   "strength": 50.0
+  },
+  {
+   "code": "801184",
+   "name": "包装印刷",
+   "burst": 0.0,
+   "amount": 153781178.0,
+   "main_net": 295461.0,
+   "src": "强度",
+   "strength": 21.0
+  },
+  {
+   "code": "801227",
+   "name": "烟草",
+   "burst": 0.0,
+   "amount": 53006818.0,
+   "main_net": 1285047.0,
+   "src": "强度",
+   "strength": 20.0
+  },
+  {
+   "code": "801075",
+   "name": "自主可控",
+   "burst": 0.0,
+   "amount": 415390183.0,
+   "main_net": 1735911.0,
+   "src": "强度",
+   "strength": 12.0
+  },
+  {
+   "code": "801880",
+   "name": "燃气轮机",
+   "burst": 0.0,
+   "amount": 109740793.0,
+   "main_net": 10977112.0,
+   "src": "强度",
+   "strength": 12.0
+  },
+  {
+   "code": "801052",
+   "name": "环保",
+   "burst": 0.0,
+   "amount": 571768489.0,
+   "main_net": 14993594.0,
+   "src": "强度",
+   "strength": 9.0
   }
  ],
  "strike": [
   {
-   "code": "002578",
-   "name": "闽发铝业",
-   "height": 7,
-   "status": "可做(接力)",
-   "reason": "龙头谱系[空间锚(最高连板)] 7连板 | 封单 0.94亿",
+   "code": "603366",
+   "name": "日出东方",
+   "height": 4,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 封单 5.69亿；逆市连板(火种观察) 4板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "002708",
-   "name": "光洋股份",
-   "height": 2,
-   "status": "可做(接力)",
-   "reason": "龙头谱系[总龙头] 主线[机器人概念] 22只涨停, 封单 2.65亿",
+   "code": "002931",
+   "name": "锋龙股份",
+   "height": 3,
+   "status": "观察(只看最强)",
+   "reason": "龙头谱系[总龙头] 主线[机器人概念] 20只涨停, 封单 1.47亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "600715",
-   "name": "文投控股",
+   "code": "000678",
+   "name": "襄阳轴承",
    "height": 2,
-   "status": "可做(接力)",
-   "reason": "龙头谱系[板块龙头(AI应用)] 主线[AI应用] 17只涨停, 封单 1.85亿",
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(机器人概念)] 成交 34.5亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002209",
+   "name": "达意隆",
+   "height": 2,
+   "status": "观察",
+   "reason": "龙头谱系[补涨/卡位(机器人概念)] 龙头被关时的板块内补涨位",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "688498",
+   "name": "源杰科技",
+   "height": 1,
+   "status": "观察(容量)",
+   "reason": "龙头谱系[中军(光通信)] 成交 72.5亿 容量核心",
    "tag": null,
    "bid_pct": null
   }
  ],
- "strike_watch": false,
+ "strike_watch": true,
  "bidrank": [
+  {
+   "code": "603366",
+   "name": "日出东方",
+   "height": 4,
+   "bid_pct": 5.26,
+   "turnover": 7.104235645750167
+  },
   {
    "code": "600327",
    "name": "大东方",
-   "height": 3,
-   "bid_pct": 9.93,
-   "turnover": 4.76
+   "height": 4,
+   "bid_pct": 0.0,
+   "turnover": 3.5701130315047314
   },
   {
-   "code": "002578",
-   "name": "闽发铝业",
-   "height": 5,
-   "bid_pct": 3.47,
-   "turnover": 3.83
-  },
-  {
-   "code": "002310",
-   "name": "东方新能",
-   "height": 3,
-   "bid_pct": 9.96,
-   "turnover": 2.75
-  },
-  {
-   "code": "002347",
-   "name": "泰尔股份",
+   "code": "603536",
+   "name": "惠发食品",
    "height": 2,
-   "bid_pct": 7.01,
-   "turnover": 2.47
+   "bid_pct": 5.49,
+   "turnover": 3.4786280757373027
   },
   {
-   "code": "601188",
-   "name": "龙江交通",
-   "height": 3,
-   "bid_pct": -6.51,
-   "turnover": 2.3957774623611847
+   "code": "002313",
+   "name": "日海智能",
+   "height": 2,
+   "bid_pct": 9.15,
+   "turnover": 2.81
+  },
+  {
+   "code": "000678",
+   "name": "襄阳轴承",
+   "height": 2,
+   "bid_pct": 6.61,
+   "turnover": 2.55
   }
  ],
  "regime": {
-  "regime": "主线",
-  "relay": 0.35185185185185186,
-  "max_board": 5,
+  "regime": "过渡",
+  "relay": 0.20430107526881722,
+  "max_board": 4,
   "top1_days": 2,
   "detail": [
-   "昨日再板率35%",
-   "最高5板",
+   "昨日再板率20%",
+   "最高4板",
    "TOP1连续2日"
   ]
  },
  "cycle": {
-  "stage": "高潮",
-  "confidence": 5,
-  "gate": "open",
+  "stage": "退潮",
+  "confidence": 7,
+  "gate": "closed",
   "mainlines": [
    "机器人概念",
+   "光通信",
+   "光模块",
    "AI应用",
-   "端侧AI",
-   "AI眼镜",
-   "AI视频",
-   "商业航天"
+   "汽车零部件",
+   "算力"
   ],
   "leaders": [
    {
-    "code": "002578",
-    "name": "闽发铝业",
-    "pid": 7,
+    "code": "603366",
+    "name": "日出东方",
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "002708",
-    "name": "光洋股份",
-    "pid": 2,
+    "code": "002931",
+    "name": "锋龙股份",
+    "pid": 3,
     "role": "总龙头"
    },
    {
-    "code": "002048",
-    "name": "宁波华翔",
-    "pid": 1,
+    "code": "000678",
+    "name": "襄阳轴承",
+    "pid": 2,
     "role": "中军(机器人概念)"
    },
    {
-    "code": "600715",
-    "name": "文投控股",
+    "code": "002209",
+    "name": "达意隆",
     "pid": 2,
-    "role": "板块龙头(AI应用)"
+    "role": "补涨/卡位(机器人概念)"
    },
    {
-    "code": "603533",
-    "name": "掌阅科技",
+    "code": "688498",
+    "name": "源杰科技",
     "pid": 1,
-    "role": "中军(AI应用)"
+    "role": "中军(光通信)"
    }
   ]
  },
@@ -231,12 +357,11 @@
   "prompt_ver": "v3",
   "latency_s": 7.0,
   "degraded": false,
-  "generated_at": "2026-11-11T02:03:37",
-  "slot": "1000"
+  "generated_at": "2026-11-11T02:03:37"
  },
  "stats": {
-  "pool": 243,
-  "boards": 8,
+  "pool": 429,
+  "boards": 20,
   "genes": 0
  },
  "candidates": [],
