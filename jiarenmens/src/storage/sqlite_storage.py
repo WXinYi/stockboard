@@ -8,7 +8,6 @@ SQLite 数据仓库
 - SQL 分析查询
 """
 import json
-import os
 import sqlite3
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
@@ -349,12 +348,6 @@ class SQLiteStorage(StorageInterface):
         """
         批量保存调仓记录（按日期去重，同一天只保留最新一次）
 
-        2026-11-12 写前内容比对: 盘中相邻班次约 94% 选手的调仓流水完全相同
-        (实测单班新增调仓选手 22~322 / 2190)。未变化则跳过 DELETE+INSERT,
-        避免每班约 6.5 万行重复写库、重复导出与重复 git blob。
-        `trades.updated_at` 无任何消费方, 跳过写入不会改变业务数据。
-        灰度回滚: 环境变量 SB_TRADE_DEDUP=0 恢复「每班无条件重写」旧行为。
-
         Args:
             data: List of (zh_id, trades_list) tuples
             crawl_date: 爬取日期，格式如 '2026-03-24'
@@ -363,71 +356,26 @@ class SQLiteStorage(StorageInterface):
             return
         if crawl_date is None:
             crawl_date = date.today().isoformat()
-
-        def _norm(v):
-            """规范化用于比对: 数值统一按 float 6 位小数, None 视作空串, 其余转字符串。
-
-            必须把 int 也转成 float 格式: position_change 写入时是 0(int), 而
-            SQLite REAL 列读回是 0.0(float), 若分别成字符串会导致每班误判为变化。
-            """
-            if v is None:
-                return ""
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                return f"{float(v):.6f}"
-            return str(v)
-
-        def _rows(zh_id, trades):
-            return [(
-                zh_id,
-                t.get('stock_name', ''),
-                t.get('stock_code', ''),
-                t.get('trades', t.get('trades_count', 1)),
-                t.get('position_ratio', ''),
-                t.get('position_value', 0.0),
-                t.get('price', 0.0),
-                t.get('trade_date', ''),
-                t.get('direction', ''),
-                t.get('position_change', 0.0),
-                crawl_date,
-            ) for t in trades]
-
-        dedup = os.environ.get('SB_TRADE_DEDUP', '1') != '0'
         with self.get_connection() as conn:
-            existing = {}
-            if dedup:
-                # 一次 SELECT 取当前分区全部行(约 6.5 万), 内存按选手分组;
-                # 比逐选手 SELECT/DELETE/INSERT 便宜得多。
-                for row in conn.execute(
-                    # 字段数必须与 _rows() 去掉 zh_id 后一致(含 crawl_date),
-                    # 否则两侧元组长度不同会永远判为「有变化」而退化成每班重写。
-                    "SELECT zh_id, stock_name, stock_code, trades_count, position_ratio, "
-                    "position_value, price, trade_date, direction, position_change, crawl_date "
-                    "FROM trades WHERE crawl_date=?", (crawl_date,)):
-                    existing.setdefault(str(row[0]), []).append(
-                        tuple(_norm(v) for v in row[1:]))
-
-            skipped = 0
             for zh_id, trades in data:
-                rows = _rows(zh_id, trades)
-                key = str(zh_id)
-                if dedup:
-                    new = sorted(tuple(_norm(v) for v in r[1:]) for r in rows)
-                    old = sorted(existing.get(key, []))
-                    if new == old:
-                        # 两边都为空也算「无变化」: 旧行为只是 DELETE 一次空分区, 无副作用
-                        skipped += 1
-                        continue
-                conn.execute("DELETE FROM trades WHERE zh_id=? AND crawl_date=?",
-                             (zh_id, crawl_date))
-                if rows:
-                    conn.executemany(self._TRADE_INSERT_SQL, rows)
-                if dedup:
-                    # 同一批次内 zh_id 重复出现时, 后续条目需要与刚写入的结果比对
-                    existing[key] = [tuple(_norm(v) for v in r[1:]) for r in rows]
-
-            if dedup and skipped:
-                logger.info(f"trades 写前去重: 跳过 {skipped}/{len(data)} 个未变化选手, "
-                            f"重写 {len(data) - skipped} 个")
+                conn.execute("DELETE FROM trades WHERE zh_id=? AND crawl_date=?", (zh_id, crawl_date))
+                if trades:
+                    conn.executemany(self._TRADE_INSERT_SQL, [
+                        (
+                            zh_id,
+                            trade.get('stock_name', ''),
+                            trade.get('stock_code', ''),
+                            trade.get('trades', trade.get('trades_count', 1)),
+                            trade.get('position_ratio', ''),
+                            trade.get('position_value', 0.0),
+                            trade.get('price', 0.0),
+                            trade.get('trade_date', ''),
+                            trade.get('direction', ''),
+                            trade.get('position_change', 0.0),
+                            crawl_date,
+                        )
+                        for trade in trades
+                    ])
 
     def load_trades(self, zh_id: str, crawl_date: str | None = None) -> List[Dict[str, Any]]:
         """加载调仓记录（可选按日期过滤）"""
