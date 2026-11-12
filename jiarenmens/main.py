@@ -382,7 +382,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='股票数据看板 - 数据采集')
     parser.add_argument('--test', action='store_true', help='测试模式(只处理10个选手)')
-    parser.add_argument('--limit', type=int, default=500, help='每榜单获取数量(default: 500)')
+    parser.add_argument('--limit', type=int, default=300, help='每榜单获取数量(default: 300; 2026-11-12 由 500 下调)')
     parser.add_argument('--workers', type=int, default=20, help='并发数(default: 20)')
     parser.add_argument('--no-skip', action='store_true', help='不跳过已存在的文件')
     parser.add_argument('--checkpoint-reset', action='store_true', help='重置检查点')
