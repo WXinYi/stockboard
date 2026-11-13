@@ -192,3 +192,82 @@ describe('PlayerDetail · 今日操作要显示操作了什么', () => {
     expect(w.find('.pd-today-table').exists()).toBe(false)
   })
 })
+
+/** 调仓块确定性失败(-1)：其余块正常，用来验证「失败 ≠ 今日没操作」。 */
+function stubFetchTradesFail() {
+  return vi.fn().mockImplementation((_url, opts) => {
+    const { method } = JSON.parse(opts.body)
+    let body
+    if (method === 'CombinationHoldPositionPermitHandler') body = { code: 0, data: POS }
+    else if (method === 'CombinationRelocatePositionHandler') body = { code: -1, message: '登录失效，请重新登录', data: {} }
+    else body = { code: 0, data: YIELD }
+    return Promise.resolve({ json: async () => body })
+  })
+}
+
+/** 调仓两页，每页各 1 笔当日操作；验证跨页合并后的明细不丢。 */
+function stubFetchPagedTrades() {
+  return vi.fn().mockImplementation((_url, opts) => {
+    const { method, args } = JSON.parse(opts.body)
+    let body
+    if (method === 'CombinationHoldPositionPermitHandler') body = { code: 0, data: POS }
+    else if (method === 'CombinationRelocatePositionHandler') {
+      const p = args.pageNum
+      const row = p === 1
+        ? { relocateTime: '2026-11-13 10:59:48', stkCode: '000938', stkName: '紫光股份', bsMark: 'B', relocatePrice: '22.920', positionRatio: '1成以下' }
+        : { relocateTime: '2026-11-13 09:35:02', stkCode: '600519', stkName: '贵州茅台', bsMark: 'S', relocatePrice: '1500.000', positionRatio: '2成' }
+      body = { code: 0, data: { pages: [row], totalPages: 2, pageIndex: p, totalCount: 2 } }
+    } else body = { code: 0, data: YIELD }
+    return Promise.resolve({ json: async () => body })
+  })
+}
+
+describe('PlayerDetail · Failure ≠ Fact：今日操作状态语义', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('实时调仓失败：明确「无法确认」，不谎称今日无操作', async () => {
+    vi.stubGlobal('fetch', stubFetchTradesFail())
+    const w = mountDetail()
+    await flushPromises()
+    expect(w.find('[data-today="unavailable"]').exists()).toBe(true)
+    expect(w.text()).toContain('今日是否有操作无法确认')
+    expect(w.text()).not.toContain('今日暂无调仓记录')
+    expect(w.text()).not.toContain('今日尚无调仓快照')
+  })
+
+  it('实时成功但返回空 pages：才可以说「今日暂无调仓记录」', async () => {
+    vi.stubGlobal('fetch', stubFetch(false, { pages: [], totalCount: 0, totalPages: 1, pageIndex: 1 }))
+    const w = mountDetail()
+    await flushPromises()
+    expect(w.find('[data-today="none"]').exists()).toBe(true)
+    expect(w.text()).toContain('实时接口已确认：今日暂无调仓记录')
+    expect(w.find('[data-today="unavailable"]').exists()).toBe(false)
+  })
+
+  it('静态快照有笔数但实时明细失败：保留笔数，同时说明明细不可用', async () => {
+    const withSnapshot = {
+      playerLookup: computed(() => ({
+        '900438148': { zh_id: '900438148', name: '我嘚财富', userId: 'u-test', watched: true,
+                       total_return: null, daily_return: null, net_value: null,
+                       today: { updatedAt: '15:15', tradeCount: 3 } },
+      })),
+    }
+    vi.stubGlobal('fetch', stubFetchTradesFail())
+    const w = mountDetail(withSnapshot)
+    await flushPromises()
+    expect(w.text()).toContain('静态快照：今日 3 笔调仓')
+    expect(w.text()).toContain('实时明细接口不可用')
+    expect(w.text()).not.toContain('具体买卖明细见下方')
+  })
+
+  it('调仓跨两页：今日明细表包含两页记录，不再只显示第 1 页', async () => {
+    vi.stubGlobal('fetch', stubFetchPagedTrades())
+    const w = mountDetail()
+    await flushPromises()
+    expect(w.text()).toContain('实时接口：今日 2 笔调仓')
+    const today = w.find('.pd-today-table')
+    expect(today.text()).toContain('紫光股份')
+    expect(today.text()).toContain('贵州茅台')
+    expect(w.text()).not.toContain('第 1 页明细')
+  })
+})

@@ -131,3 +131,47 @@ describe('useEmPlayer · 限流', () => {
     expect(r.retryable).toBe(false)
   })
 })
+
+describe('useEmPlayer · 调仓多页合并', () => {
+  const tradeFetch = (totalPages = 1, failFrom = Infinity) => vi.fn().mockImplementation((_url, opts) => {
+    const { method, args } = JSON.parse(opts.body)
+    if (method !== 'CombinationRelocatePositionHandler') {
+      return Promise.resolve({ json: async () => ({ code: 0, data: { row: 1 } }) })
+    }
+    const p = args.pageNum
+    if (p >= failFrom) {
+      return Promise.resolve({ json: async () => ({ code: 9061, message: 'gone', data: {} }) })
+    }
+    return Promise.resolve({
+      json: async () => ({
+        code: 0,
+        data: { pages: [{ page: p }], totalPages, pageIndex: p, totalCount: totalPages },
+      }),
+    })
+  })
+
+  it('totalPages=3：按 1→2→3 翻页并合并 pages', async () => {
+    const spy = tradeFetch(3)
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900293400', 'trades')
+    expect(r.ok).toBe(true)
+    expect(r.data.pages.map(x => x.page)).toEqual([1, 2, 3])
+    expect(spy.mock.calls.map(c => JSON.parse(c[1].body).args.pageNum)).toEqual([1, 2, 3])
+  })
+
+  it('totalPages 虚高：最多只翻 MAX_TRADE_PAGES 页', async () => {
+    const spy = tradeFetch(99)
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900293400', 'trades')
+    expect(spy).toHaveBeenCalledTimes(5)
+    expect(r.data.pages).toHaveLength(5)
+  })
+
+  it('第 2 页失败：保留第 1 页，不把整个调仓区块判死', async () => {
+    const spy = tradeFetch(3, 2)
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900293400', 'trades')
+    expect(r.ok).toBe(true)
+    expect(r.data.pages.map(x => x.page)).toEqual([1])
+  })
+})

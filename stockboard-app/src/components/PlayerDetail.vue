@@ -79,7 +79,8 @@ const tradeRows = computed(() => {
   const b = blocks.value.trades
   if (b.state !== 'live' || !b.data) return []
   const pages = Array.isArray(b.data) ? b.data : (b.data.pages || [])
-  return pages.slice(0, 30).map(t => ({
+  // 调仓已按 totalPages 合并多页(最多 5 页 × 20 条)，行上限同步放宽，避免当日明细被 30 条截断
+  return pages.slice(0, 100).map(t => ({
     time: t.relocateTime || bizDateToTime(t.bizDate),
     code: t.stkCode || '',
     name: t.stkName || '',
@@ -104,6 +105,20 @@ const todayTrades = computed(() => {
 const todaySnapshot = computed(() => {
   const t = player.value?.today
   return t && Object.keys(t).length ? t : null
+})
+
+// Failure ≠ Fact：实时调仓失败 ≠ 今日没操作。
+// 只有 trades 区块 live 且确实没有当日记录，才是「今日暂无调仓」。
+const tradesBlock = computed(() => blocks.value.trades)
+const tradesUnavailable = computed(() => ['error', 'stale'].includes(tradesBlock.value.state))
+const tradesPending = computed(() => tradesBlock.value.state === 'idle' || loading.value)
+const todayState = computed(() => {
+  if (todayTrades.value.length) return 'live'
+  if (todaySnapshot.value) return 'snapshot'
+  if (!String(currentDate.value || '').slice(0, 10)) return 'no-date'
+  if (tradesUnavailable.value) return 'unavailable'
+  if (tradesPending.value) return 'pending'
+  return 'none'
 })
 
 // 顶部读数：实时收益优先；yield 失败则回退静态 prevClose（可能为空 → 显示 —）
@@ -197,17 +212,22 @@ function openMarket() { router.push('/market') }
 
     <div class="card">
       <h2>今日操作</h2>
-      <div v-if="todayTrades.length" class="pd-today">
+      <div v-if="todayState === 'live'" class="pd-today">
         <span class="pd-today-time">实时接口：今日 {{ todayTrades.length }} 笔调仓</span>
         <span class="pd-today-count">最新 {{ todayTrades[0].time }}</span>
         <span class="trade-dot" aria-label="今日有调仓"></span>
       </div>
-      <div v-else-if="todaySnapshot" class="pd-today">
+      <div v-else-if="todayState === 'snapshot'" class="pd-today">
         <span class="pd-today-time">静态快照：今日 {{ todaySnapshot.tradeCount ?? 0 }} 笔调仓</span>
         <span class="pd-today-count">{{ todaySnapshot.updatedAt }}</span>
         <span v-if="traded" class="trade-dot" aria-label="今日有调仓"></span>
       </div>
-      <div v-else class="empty-state">今日尚无调仓快照（实时接口与静态快照均无当日记录）</div>
+      <div v-else-if="todayState === 'no-date'" class="empty-state" data-today="no-date">数据时点未知，无法判定今日操作</div>
+      <div v-else-if="todayState === 'unavailable'" class="empty-state" data-today="unavailable">
+        实时调仓接口不可用（{{ tradesBlock.reason || '原因见下方徽标' }}），今日是否有操作无法确认
+      </div>
+      <div v-else-if="todayState === 'pending'" class="empty-state" data-today="pending">实时调仓请求中…</div>
+      <div v-else class="empty-state" data-today="none">实时接口已确认：今日暂无调仓记录</div>
 
       <template v-if="todayTrades.length">
         <div class="pd-table-wrap"><table class="pd-table pd-today-table">
@@ -222,9 +242,12 @@ function openMarket() { router.push('/market') }
             </tr>
           </tbody>
         </table></div>
-        <div class="pd-count">共 {{ todayTrades.length }} 笔当日调仓（实时接口第 1 页明细）</div>
+        <div class="pd-count">共 {{ todayTrades.length }} 笔当日调仓（实时接口明细，已合并多页）</div>
       </template>
-      <div v-else-if="todaySnapshot" class="pd-foot">静态快照仅记录笔数，具体买卖明细见下方「调仓」实时区块。</div>
+      <div v-else-if="todaySnapshot" class="pd-foot">
+        <template v-if="tradesUnavailable">静态快照仅记录笔数；实时明细接口不可用，原因见下方「调仓」徽标。</template>
+        <template v-else>静态快照仅记录笔数，具体买卖明细见下方「调仓」实时区块。</template>
+      </div>
     </div>
 
     <!-- 收益：实时接口读数 -->
@@ -279,7 +302,7 @@ function openMarket() { router.push('/market') }
             </tr>
           </tbody>
         </table></div>
-        <div class="pd-count">共 {{ tradeRows.length }} 条调仓（最多 30 条）</div>
+        <div class="pd-count">共 {{ tradeRows.length }} 条调仓（最多 100 条 · 前 5 页）</div>
       </template>
       <div v-else class="empty-state">{{ loading ? '实时调仓请求中…' : '该区块实时数据不可用（原因见徽标），本区块暂无数据' }}</div>
     </div>

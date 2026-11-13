@@ -11,6 +11,9 @@ export const TIMEOUT_MS = 8000
 export const MAX_RETRY = 1
 export const BACKOFF_MS = 500
 export const MAX_CONCURRENCY = 3
+// 调仓 20 条/页；最多翻 5 页(100 条)，避免盘中把分页接口打穿。
+export const TRADE_PAGE_SIZE = 20
+export const MAX_TRADE_PAGES = 5
 export const RT_V2 = 'https://spzhapi.dfcfs.cn/rtV2'
 
 export const BLOCKS = ['position', 'yield', 'trades']
@@ -57,7 +60,7 @@ function hhmmss() {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-async function requestOnce(userId, zhId, block) {
+async function requestOnce(userId, zhId, block, pageNum = 1) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
@@ -65,7 +68,7 @@ async function requestOnce(userId, zhId, block) {
     // 顶层不附加 randomCode/deviceId：哨兵的最小 payload 已验证可用，多余字段会被服务端严格校验拒绝。
     const args = { userId, combinationId: String(zhId) }
     if (block === 'trades') {
-      Object.assign(args, { pageNum: 1, pageSize: 20, beginDate: '', endDate: '' })
+      Object.assign(args, { pageNum, pageSize: TRADE_PAGE_SIZE, beginDate: '', endDate: '' })
     }
     const payload = {
       args,
@@ -113,14 +116,41 @@ async function requestOnce(userId, zhId, block) {
   }
 }
 
-export async function requestBlock(userId, zhId, block) {
+async function withRetry(run) {
   let last = null
   for (let i = 0; i <= MAX_RETRY; i++) {
     if (i > 0) await sleep(BACKOFF_MS)
-    last = await requestOnce(userId, zhId, block)
+    last = await run()
     if (last.ok || last.retryable === false) return last
   }
   return last
+}
+
+/**
+ * 调仓按 totalPages 翻页合并：只取第 1 页会把「今日操作」漏掉跨页的记录。
+ * 后续页失败不推翻已拿到的第 1 页（部分可用优于整体判死），由 UI 标注页数。
+ */
+async function loadTradePages(userId, zhId) {
+  const first = await withRetry(() => requestOnce(userId, zhId, 'trades', 1))
+  if (!first.ok) return first
+  const d = first.data
+  const asArray = Array.isArray(d)
+  const pages = asArray ? [...d] : [...(d?.pages || [])]
+  const declared = asArray ? 1 : (Number(d?.totalPages) || 1)
+  const totalPages = Math.min(Math.max(1, declared), MAX_TRADE_PAGES)
+  for (let p = 2; p <= totalPages; p++) {
+    const r = await withRetry(() => requestOnce(userId, zhId, 'trades', p))
+    if (!r.ok) break
+    const extra = Array.isArray(r.data) ? r.data : (r.data?.pages || [])
+    if (!extra.length) break
+    pages.push(...extra)
+  }
+  return { ok: true, data: asArray ? pages : { ...d, pages } }
+}
+
+export async function requestBlock(userId, zhId, block) {
+  if (block === 'trades') return loadTradePages(userId, zhId)
+  return withRetry(() => requestOnce(userId, zhId, block))
 }
 
 export function useEmPlayer() {

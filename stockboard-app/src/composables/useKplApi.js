@@ -17,34 +17,41 @@ const HOST_SECTION = DEV_PROXY ? '/kpl-sec' : PROD_PROXY + '/kpl-sec' // 板块�
 const HOST_LHB = DEV_PROXY ? '/kpl-lhb' : PROD_PROXY + '/kpl-lhb'     // 龙虎榜
 const COMMON = { PhoneOSNew: 1, VerSion: '6.2.20.2', Red: 0, apiv: 'w47' }
 
-function withTimeout(promise, ms = 8000) {
-  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('请求超时')), ms))])
+export function withTimeout(promise, ms = 8000) {
+  let timer
+  const timeout = new Promise((_, rej) => {
+    timer = setTimeout(() => rej(new Error('请求超时')), ms)
+  })
+  // 成功/失败都清掉定时器，避免 8s 悬挂占用事件循环。
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+// 超时必须覆盖「等响应头 + 读响应体」整条链：上游挂起时 resp.json() 会永久 pending，
+// 旧实现只包住 fetch()，body 不返回就永远不触发超时。
+async function requestJson(makeFetch, silent, label) {
+  try {
+    return await withTimeout((async () => {
+      const resp = await makeFetch()
+      return resp.json()
+    })())
+  } catch (e) {
+    if (!silent) console.error('[KPL]', label, e?.message)
+    if (silent) return null
+    throw e
+  }
 }
 
 // POST form-urlencoded; silent=true 失败返回 null 不抛(轮询静默模式)
-async function postForm(url, params, silent) {
-  try {
-    const resp = await withTimeout(fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-      body: new URLSearchParams(params).toString(),
-    }))
-    return await resp.json()
-  } catch (e) {
-    if (!silent) console.error('[KPL]', params.a || url, e?.message)
-    if (silent) return null
-    throw e
-  }
+function postForm(url, params, silent) {
+  return requestJson(() => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+    body: new URLSearchParams(params).toString(),
+  }), silent, params.a || url)
 }
 
-async function getJson(url, silent) {
-  try {
-    const resp = await withTimeout(fetch(url))
-    return await resp.json()
-  } catch (e) {
-    if (silent) return null
-    throw e
-  }
+function getJson(url, silent) {
+  return requestJson(() => fetch(url), silent, url)
 }
 
 // ---- 交易时段判定: 周一至五 09:30-11:30 / 13:00-15:00 (本地时间) ----

@@ -9,7 +9,10 @@ import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 const router = useRouter()
 // P3 4 契约只提供 { totalReturn, dailyReturn, monthlyReturn, yearlyReturn, netValue }。
 // 周收益 / 回撤 / 风格 / 仓位 / 运行天数 / 关注数已无数据源：相关列、排序项与筛选一并下线。
-const { sortedPlayers: sorted, tradedPlayerIds, watchedIds: WATCHED } = inject('stockData')
+const {
+  sortedPlayers: sorted, tradedPlayerIds, watchedIds: WATCHED,
+  loading, sliceErrors, sliceLoaded, ensureSlices,
+} = inject('stockData')
 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 
@@ -20,6 +23,26 @@ const search = ref('')
 const hasTodayTrades = computed(() => tradedPlayerIds.value.size > 0)
 
 const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
+
+// ── 榜单三态：加载中 / 分片失败可重试 / 数据为空 ──
+// Failure ≠ Fact：拉不到 players 分片时不能让空表格冒充「今日无人操作」，
+// 也不能把缺失收益显示成 +0.00%。三态各自显式，且失败/空态都给重试入口。
+const retrying = ref(false)
+const rankState = computed(() => {
+  if (retrying.value || loading.value.players) return 'loading'
+  if (sliceErrors.value.players || sliceErrors.value.today) return 'error'
+  if (sliceLoaded.value.players && !allPlayers.value.length) return 'empty'
+  return 'ok'
+})
+
+async function retry() {
+  if (retrying.value) return
+  retrying.value = true
+  try {
+    await ensureSlices(['players', 'today'])
+  } catch { /* ensureSlices 已在 sliceErrors 中标记失败原因 */ }
+  finally { retrying.value = false }
+}
 
 const { sorted: sortedList, toggle: tog, indicator: ind, sortKey, sortDir } = useTableSort(allPlayers, 'total_return')
 
@@ -123,6 +146,7 @@ function syncColWidth() {
   })
 }
 watch(activePeriod, syncColWidth)  // 列数变化（如切"全部"）时重算
+watch(rankState, s => { if (s === 'ok') syncColWidth() })  // 三态切回榜单时表头才存在，需重算列宽
 function onWindowResize() { syncColWidth() }  // 断点切换（移动↔桌面）列宽变化
 onMounted(() => {
   syncColWidth()
@@ -150,7 +174,22 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
       <span style="font-size:11px;color:var(--ink-3);margin-left:auto;">{{ filteredCount }} 人</span>
     </div>
     <div class="rank-wrap" ref="rankWrap">
-      <div class="rank-hscroll">
+      <div v-if="rankState === 'loading'" class="rank-state" data-state="loading">
+        <div class="loading-spinner"></div>
+        <p class="rank-state-title">正在加载选手榜单…</p>
+        <p class="rank-state-sub">读取 players / today 分片</p>
+      </div>
+      <div v-else-if="rankState === 'error'" class="rank-state" data-state="error">
+        <p class="rank-state-title">榜单数据加载失败</p>
+        <p class="rank-state-sub">players / today 分片读取失败。未用 0 填充收益，请重试后再看榜单。</p>
+        <button class="filter-btn rank-retry" @click="retry()">重试</button>
+      </div>
+      <div v-else-if="rankState === 'empty'" class="rank-state" data-state="empty">
+        <p class="rank-state-title">暂无选手数据</p>
+        <p class="rank-state-sub">当前快照没有榜单记录；若刚完成采集，可重试刷新。</p>
+        <button class="filter-btn rank-retry" @click="retry()">重试</button>
+      </div>
+      <div v-else class="rank-hscroll">
         <div class="rank-cols">
           <div class="rank-head">
             <span class="c-rank">#</span>
@@ -181,6 +220,16 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 </template>
 
 <style scoped>
+/* 三态占位：与榜单共用容器，避免加载/失败时露出空表头 + 0 人的误导性表格 */
+.rank-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; min-height: 220px; padding: 24px 16px;
+  text-align: center; font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+}
+.rank-state-title { margin: 0; font-size: 13px; color: var(--ink-2); }
+.rank-state-sub { margin: 0; max-width: 320px; font-size: 11px; line-height: 1.6; }
+.rank-state p { margin: 0; }
+.rank-retry { margin-top: 6px; }
 .rank-wrap {
   display: flex;
   flex-direction: column;

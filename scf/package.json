@@ -1,7 +1,7 @@
 {
   "name": "kpl-proxy-scf",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
   "dependencies": {
     "tencentcloud-sdk-nodejs-scf": "^4.0.0"
   }
