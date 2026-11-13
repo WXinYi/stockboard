@@ -36,6 +36,10 @@ export const BLOCK_METHOD = {
   trades: 'CombinationRelocatePositionHandler',
 }
 
+// 确定性失败：重试不会改变结果（登录态 / 组合ID / 参数 / 空数据），立即回退。
+// 只有超时/CORS/风控这类瞬时故障才走 MAX_RETRY。
+export const NO_RETRY_CODES = new Set(['9035', '9061', '-1', '400', 'empty'])
+
 const EMPTY = () => ({
   state: 'idle',      // idle | loading | live | stale | error
   at: '',             // HH:MM:SS（live 时）
@@ -84,12 +88,17 @@ async function requestOnce(userId, zhId, block) {
     const json = await resp.json()
     const code = json?.code
     if (code !== 0 && code !== '0') {
-      return { ok: false, kind: String(code ?? '-1'), detail: { code, message: json?.message || '' } }
+      const kind = String(code ?? '-1')
+      return {
+        ok: false, kind,
+        detail: { code, message: json?.message || '' },
+        retryable: !NO_RETRY_CODES.has(kind),
+      }
     }
     const data = json?.data
     if (!data || (Array.isArray(data) && !data.length) ||
         (typeof data === 'object' && !Array.isArray(data) && !Object.keys(data).length)) {
-      return { ok: false, kind: 'empty', detail: { code, message: 'data 为空' } }
+      return { ok: false, kind: 'empty', detail: { code, message: 'data 为空' }, retryable: false }
     }
     return { ok: true, data }
   } catch (e) {
@@ -109,7 +118,7 @@ export async function requestBlock(userId, zhId, block) {
   for (let i = 0; i <= MAX_RETRY; i++) {
     if (i > 0) await sleep(BACKOFF_MS)
     last = await requestOnce(userId, zhId, block)
-    if (last.ok) return last
+    if (last.ok || last.retryable === false) return last
   }
   return last
 }

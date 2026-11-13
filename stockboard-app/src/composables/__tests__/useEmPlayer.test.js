@@ -112,11 +112,22 @@ describe('useEmPlayer · 限流', () => {
     expect(peak).toBeLessThanOrEqual(3)
   })
 
-  it('失败最多重试 1 次（合计 2 次请求）', async () => {
+  it('瞬时故障最多重试 1 次（合计 2 次请求）', async () => {
     const spy = vi.fn().mockResolvedValue({ ok: false, status: 503 })
     vi.stubGlobal('fetch', spy)
     const r = await requestBlock('u1', '900456476', 'position')
     expect(spy).toHaveBeenCalledTimes(2)
     expect(r.kind).toBe('network')
+  })
+
+  it('-1 登录失效是确定性失败：0 重试，立即回退', async () => {
+    const spy = vi.fn().mockResolvedValue({
+      json: async () => ({ code: -1, message: '登录失效，请重新登录', data: {} }),
+    })
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900438148', 'yield')
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(r.kind).toBe('-1')
+    expect(r.retryable).toBe(false)
   })
 })
