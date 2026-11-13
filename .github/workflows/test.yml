@@ -39,7 +39,7 @@ jobs:
         run: pip install requests beautifulsoup4 lxml
 
       - name: 语法检查
-        run: python -m compileall -q jiarenmens/src jiarenmens/scripts jiarenmens/main.py
+        run: python -m compileall -q jiarenmens/src jiarenmens/scripts
 
       - name: 单元测试
         working-directory: jiarenmens

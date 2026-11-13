@@ -1,7 +1,12 @@
+"""配置常量（原 ``src/config.py``；S2 / AQ2=A 包化以容纳 ``src.config.watched``）。
+
+包化后 ``from src.config import AUCTION_OUT, DATA_DIR`` 等既有导入保持完全不变；
+仅修正相对层级 —— 本文件比原 ``src/config.py`` 深一层，故 parents 索引各 +1。
+"""
 from pathlib import Path
 import os
 
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]   # jiarenmens/
 DATA_DIR = BASE_DIR / "data"
 
 BASE_URL = "https://groupwap.eastmoney.com"
@@ -48,4 +53,4 @@ KPL_TIMEOUT = 10
 KPL_HIS_PROXY = os.environ.get("KPL_HIS_PROXY", "").rstrip("/")
 
 # 竞价扫描结果输出路径(前端读取)
-AUCTION_OUT = Path(__file__).resolve().parents[2] / "stockboard-app" / "public" / "data" / "latest" / "auction.json"
+AUCTION_OUT = Path(__file__).resolve().parents[3] / "stockboard-app" / "public" / "data" / "latest" / "auction.json"

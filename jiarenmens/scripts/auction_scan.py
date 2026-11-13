@@ -43,11 +43,8 @@ from src.analysis.emotion_cycle import compute_cycle  # noqa: E402
 from src.config import AUCTION_OUT, DATA_DIR  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.spiders.auction_spider import AuctionStore, HotRankStore, KPLSpider  # noqa: E402
-try:
-    from export_json import _tencent_auction_amt  # noqa: E402  # 竞价换手0值补算(同 scripts/ 目录)
-except ImportError:  # 以包形式导入(scripts.auction_scan, 单测)时 scripts/ 不在 sys.path
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from export_json import _tencent_auction_amt  # noqa: E402
+# AQ2=A / S2: 竞价换手 0 值补算改从共享模块取, 与 export_json.py 的删除解耦
+from src.notify.quotes import tencent_auction_amt as _tencent_auction_amt  # noqa: E402
 
 BJ_TZ = ZoneInfo("Asia/Shanghai")
 WORKERS = 20          # 并发

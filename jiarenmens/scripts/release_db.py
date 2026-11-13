@@ -729,13 +729,8 @@ def main():
                          "远端已被他人更新则跳过上传(防热层覆盖, 基线文件缺失时保持原行为)")
     ap.add_argument("--archive-weeks", action="store_true")
     ap.add_argument("--archive-months", action="store_true")
-    ap.add_argument("--sync", action="store_true")
     ap.add_argument("--init", action="store_true")
     ap.add_argument("--download-latest", action="store_true")
-    ap.add_argument("--download-fallback", action="store_true",
-                    help="④降级链: 热层→温层周快照→cache副本, 非hot来源过库龄闸门并写 marker")
-    ap.add_argument("--cache-db", default=None, metavar="GZ",
-                    help="--download-fallback 的第三级: actions/cache 恢复出的库 gz 副本路径")
     ap.add_argument("--dest", default=None, help="--download-latest 目标路径(默认按 --what 取注册表)")
     ap.add_argument("--retain-weeks", type=int, metavar="N")
     ap.add_argument("--hot-status", action="store_true",
@@ -760,8 +755,6 @@ def main():
         cmd_archive_months()
     if args.retain_weeks:
         cmd_retain_weeks(args.retain_weeks)
-    if args.sync:
-        cmd_sync()
     if args.init:
         cmd_init()
     if args.download_latest:
@@ -769,12 +762,8 @@ def main():
     if args.hot_status:
         print(f"hot_status[{args.what}]: {hot_status(args.what)}")
         return
-    if args.download_fallback:
-        if args.what != "crawl":
-            sys.exit("--download-fallback 目前只支持 crawl 库(auction 已有日快照回退)")
-        raise SystemExit(cmd_download_fallback(Path(args.cache_db) if args.cache_db else None))
     if not any([args.upload_latest, args.archive_weeks, args.archive_months,
-                args.sync, args.init, args.download_latest, args.download_fallback,
+                args.init, args.download_latest,
                 args.hot_status, args.retain_weeks, args.gz_only]):
         ap.print_help()
 

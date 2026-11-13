@@ -184,7 +184,7 @@ def main():
 
     if args.watched:
         global DRAGON
-        from main import WATCHED_PLAYERS  # 关注名单单一数据源(main.py), 勿在别处另建名单
+        from src.config.watched import WATCHED_PLAYERS  # 关注名单单一数据源, 勿在别处另建名单
         DRAGON = {zh: (name, DRAGON.get(zh, (None, "关注选手"))[1])
                   for zh, name in WATCHED_PLAYERS}
 

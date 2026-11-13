@@ -16,8 +16,8 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import watchdog  # noqa: E402
-import notify_daily  # noqa: E402
-from notify_daily import load_watchdog_pushed  # noqa: E402
+from src.notify import watchdog_state as _wd_state  # noqa: E402
+from src.notify.watchdog_state import load_watchdog_pushed  # noqa: E402
 
 
 def _t(code, dr, cnt, price=10.0, name="测试股"):
@@ -159,9 +159,10 @@ class TestTradingWindow(unittest.TestCase):
         return datetime(2026, 9, 14 + wd, int(hm[:2]), int(hm[2:]))
 
     def test_boundaries(self):
-        self.assertTrue(watchdog.in_trading_window(self._dt(0, "0931")))
+        # AQ4=A: 起点改为 09:26（>= 闭区间），开盘冲刺闸门另由 TestWindowGates 锁死
+        self.assertTrue(watchdog.in_trading_window(self._dt(0, "0926")))
         self.assertTrue(watchdog.in_trading_window(self._dt(0, "1505")))
-        self.assertFalse(watchdog.in_trading_window(self._dt(0, "0930")))
+        self.assertFalse(watchdog.in_trading_window(self._dt(0, "0925")))
         self.assertFalse(watchdog.in_trading_window(self._dt(0, "1506")))
         self.assertFalse(watchdog.in_trading_window(self._dt(5, "1000")))   # 周六
         self.assertFalse(watchdog.in_trading_window(self._dt(6, "1000")))   # 周日
@@ -183,14 +184,14 @@ class TestDingTalkSharedDedup(unittest.TestCase):
             f.write_text(json.dumps({"date": "2026-09-17",
                                      "pushed": {"900461598": {"600371": {"买入": 1}}}}),
                          encoding="utf-8")
-            old = notify_daily.WATCHDOG_STATE
+            old = _wd_state.WATCHDOG_STATE
             try:
-                notify_daily.WATCHDOG_STATE = f
+                _wd_state.WATCHDOG_STATE = f
                 self.assertEqual(load_watchdog_pushed("2026-09-17"),
                                  {("900461598", "600371", "买入")})
                 self.assertEqual(load_watchdog_pushed("2026-09-18"), set())  # 跨日=兜底
             finally:
-                notify_daily.WATCHDOG_STATE = old
+                _wd_state.WATCHDOG_STATE = old
 
 
 class TestVisibilityPath(unittest.TestCase):
@@ -198,7 +199,7 @@ class TestVisibilityPath(unittest.TestCase):
         """回归(2026-09-18): STATE 曾多拼一层 jiarenmens → CI 解析到不存在的路径,
         隐藏选手从不被识别(每班白拉), 可见性状态也从未被持久化。"""
         repo = Path(__file__).resolve().parents[2]
-        self.assertEqual(notify_daily.WATCHDOG_STATE,
+        self.assertEqual(_wd_state.WATCHDOG_STATE,
                          repo / "jiarenmens" / "data" / ".watchdog_state.json")
         import src.utils.visibility as vis
         self.assertEqual(vis.STATE,
@@ -309,27 +310,48 @@ class TestIncrementKeyMigration(unittest.TestCase):
         exp_new, exp_old = trade_keys(_t("600371", "买入", 1, 13.13), "900461598")
         self.assertEqual((row["_k"], row["_k_legacy"]), (exp_new, exp_old))
 
-    def test_历史seen只有旧键时日报不标新增(self):
-        from src.utils.trade_key import trade_keys
-        new_key, old_key = trade_keys(_t("600371", "买入", 1, 13.13), "900461598")
-        t = {"sc": "600371", "dr": "买入", "sn": "测试股", "pr": 13.13,
-             "_k": new_key, "_k_legacy": old_key}
-        seen, counter = {old_key}, [0]
-        line = notify_daily._trade_line(t, {}, seen, True, counter)
-        self.assertNotIn("🆕", line, "迁移失败会全量重推历史操作")
-        self.assertEqual(counter[0], 0)
-        self.assertIn(new_key, seen, "写入 seen 应迁移到新键")
+    # 注: 原 test_历史seen只有旧键时日报不标新增 / test_真正的新操作仍标新增
+    # 测的是 notify_daily._trade_line(日报随 P2 下线), 随模块一并移除;
+    # merge_player 的增量键语义仍由上方 test_叠加文件今日行带同源增量键 覆盖。
 
-    def test_真正的新操作仍标新增(self):
-        from src.utils.trade_key import trade_keys
-        old_new, old_key = trade_keys(_t("600371", "买入", 1, 13.13), "900461598")
-        fresh_new, fresh_old = trade_keys(_t("000001", "买入", 1, 9.9), "900461598")
-        t = {"sc": "000001", "dr": "买入", "sn": "新票", "pr": 9.9,
-             "_k": fresh_new, "_k_legacy": fresh_old}
-        seen, counter = {old_key}, [0]
-        line = notify_daily._trade_line(t, {}, seen, True, counter)
-        self.assertIn("🆕", line)
-        self.assertEqual(counter[0], 1)
+
+class TestWindowGates(unittest.TestCase):
+    """AQ4=A: WINDOW_START="0926" 是唯一真源(>= 闭区间), 开盘冲刺闸门保持 0930–0935。"""
+
+    def _dt(self, hm):
+        return datetime(2026, 11, 13, int(hm[:2]), int(hm[2:]),
+                        tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    def test_0926_in_window(self):
+        self.assertEqual(watchdog.WINDOW_START, "0926")
+        self.assertTrue(watchdog.in_trading_window(self._dt("0926")))
+        self.assertFalse(watchdog.in_trading_window(self._dt("0925")))
+
+    def test_0930_sprint_gate_unchanged(self):
+        import inspect
+        src = inspect.getsource(watchdog.main)
+        self.assertIn('"0930" <= hm <= "0935"', src)
+        self.assertIn('default="0935"', src)
+
+
+class TestFlashSecondPageSameDayOnly(unittest.TestCase):
+    """PRD-Q5=C 例外: flash 仍拉 2 页 HTTP, 但历史 40 条不进推送口径。"""
+
+    def test_第二页仅当日增量(self):
+        date = "2026-11-13"
+        hist = [{"stock_code": str(600000 + i), "direction": "买入",
+                 "trades_count": 1, "trade_date": "2026-11-12"} for i in range(40)]
+        today = [{"stock_code": "600371", "direction": "买入",
+                  "trades_count": 1, "trade_date": date}]
+        with unittest.mock.patch.object(watchdog.visibility, "is_hidden",
+                                        return_value=False), \
+             unittest.mock.patch.object(watchdog, "crawl_player_all_data",
+                                        return_value=({"api_ok": True}, [], hist + today)):
+            out = watchdog.fetch_all([("900456476", "狼之行一")], date)
+        got = out["900456476"]["trades"]
+        self.assertEqual(len(got), 1, "历史 40 条必须被当日过滤掉")
+        self.assertEqual(got[0]["stock_code"], "600371")
+        self.assertTrue(all(t["trade_date"] == date for t in got))
 
 
 if __name__ == "__main__":

@@ -38,11 +38,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from main import WATCHED_PLAYERS  # noqa: E402
+from src.config.watched import WATCHED_PLAYERS  # noqa: E402 (AQ2=A: 名单唯一真源)
 from src.spiders.api_detail import crawl_player_all_data, _call_api  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.utils import visibility  # noqa: E402
-from notify_daily import fetch_quotes  # noqa: E402 (复用腾讯→新浪行情链)
+from src.notify.quotes import fetch_quotes  # noqa: E402 (复用腾讯→新浪行情链)
 from src.utils.trade_key import trade_keys  # noqa: E402 (与 export_json 同源增量键)
 
 BASE_URL = "https://WXinYi.github.io/stockboard"
@@ -51,7 +51,7 @@ STATE_FILE = ROOT / "data" / ".watchdog_state.json"
 CHANGED_FILE = ROOT / "data" / ".watchdog_changed"
 PLAYER_DIR = ROOT.parent / "stockboard-app" / "public" / "data" / "latest" / "players"
 TRADING_CAL_JS = ROOT.parent / "stockboard-app" / "src" / "utils" / "tradingCalendar.js"
-WINDOW_START, WINDOW_END = "0931", "1505"   # 09:31 起(竞价段由 09:26 快报覆盖, 避免开盘重复响铃); 15:05 收盘班前停
+WINDOW_START, WINDOW_END = "0926", "1505"   # AQ4=A 唯一真源: 09:26 起(>= 闭区间); 15:05 收盘班前停
 MAX_FAILS = 3                                # 连续 N 班全员失败 → 降级自曝
 
 # 隐藏号 detail 被东财整体下架(净值/持仓/搜索全无), 但 relocate 流水照常实时产生(2026-10-28 实测)。
@@ -248,14 +248,6 @@ def merge_player(base: dict, positions: list, trades_today: list, date_str: str)
             "p": p, "t": t, "i": base.get("i") or []}
 
 
-def write_player_json(zh_id: str, detail: dict) -> None:
-    PLAYER_DIR.mkdir(parents=True, exist_ok=True)
-    dst = PLAYER_DIR / f"{zh_id}.json"
-    tmp = dst.with_suffix(".tmp")
-    tmp.write_text(json.dumps(detail, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(dst)
-
-
 def fetch_hidden_trades(uid: str, zh: str, date_key: str) -> list:
     """隐藏号调仓: relocate 流水(新→旧, 第 1 页 20 条足够覆盖单日)聚合当日操作,
     产出与 detail tradeSummary 同形的 trade dict(供 decide_pushes/build_message 复用)。
@@ -409,7 +401,7 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
     else:
         st["fails"], st["alerted"] = 0, 0
 
-    base_cache, changed = {}, []
+    base_cache = {}
     new_pushes = []   # (zh, nm, trade, is_add)
     new_mark = {}     # zh -> {id(trade): is_add}, 供消息标记 🆕/↩️追加
     for zh, nm in WATCHED_PLAYERS:
@@ -464,29 +456,14 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
         except Exception as e:
             print(f"❌ 降级告警推送失败: {e}", file=sys.stderr)
 
-    # 叠加更新: 只对"本轮有推送"的选手做(无操作不动页面文件), 按选手去重
+    # F2 / PRD-Q2=A②: 页面叠加与 watchdog 侧 Pages 部署链整体下线, 只发钉钉。
+    # save_state 必须保留 —— 当日已推集合不落盘会导致下一班重复推送。
     if not args.dry_run:
-        for zh in dict.fromkeys(zh for zh, _nm, _t, _a in new_pushes):
-            o = data[zh]
-            if o.get("hidden"):
-                continue   # 隐藏号无持仓/净值, 只推送不叠加(页面停留隐藏前快照)
-            base = base_cache.get(zh, (None, ""))[0]
-            if base is None:
-                base, _lm = fetch_base_player(zh)
-                base_cache[zh] = (base, _lm)
-            if base is None:
-                continue
-            write_player_json(zh, merge_player(base, o["positions"], o["trades"], date_str))
-            changed.append(zh)
-        changed_file.write_text("\n".join(changed), encoding="utf-8")
         save_state(st, state_file)
         print(f"盯盘检测: {n_ok}/{len(WATCHED_PLAYERS)} 人可用(隐藏 {n_hidden}), "
-              f"新操作 {len(new_pushes)} 笔, 页面更新 {len(changed)} 人, "
-              f"连续失败 {st['fails']}")
+              f"新操作 {len(new_pushes)} 笔, 连续失败 {st['fails']}")
     else:
-        will_fix = [zh for zh, nm, _t, _a in new_pushes]
-        print(f"[dry-run] 将推送 {len(new_pushes)} 笔; 将叠加更新 {len(will_fix)} 个选手文件: "
-              f"{will_fix}; 状态不落盘")
+        print(f"[dry-run] 将推送 {len(new_pushes)} 笔; 状态不落盘")
     return len(new_pushes)
 
 
