@@ -147,10 +147,15 @@ class TestResolveOutRejectsAllProductionPaths(unittest.TestCase):
                         with redirect_stdout(io.StringIO()):
                             mod.main(base_argv + ["--out", upper])
 
-    def test_线上stocks_json仍为旧schema(self):
+    def test_线上stocks_json为P3新schema(self):
+        # S4 放行后 AQ3=B 生效：线上 stocks.json 已由 P3 原子切换为新契约。
+        # 零兼容代码：旧 stockStats / qh/qtp/qap 不得残留。
         doc = json.loads(self.online_before.decode("utf-8"))
-        self.assertIn("stockStats", doc)
-        self.assertNotIn("stats", doc)
+        self.assertEqual(set(doc.keys()), {"date", "snapshot", "updatedAt", "stats"})
+        self.assertIn(doc["snapshot"], {"1130", "close"})
+        self.assertNotIn("stockStats", doc)
+        for row in doc["stats"][:5]:
+            self.assertEqual(set(row.keys()), {"code", "name", "h", "tp", "ap"})
 
 
 if __name__ == "__main__":
