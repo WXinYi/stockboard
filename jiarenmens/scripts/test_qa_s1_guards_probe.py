@@ -110,15 +110,14 @@ class TestOnlineWriteGuard(unittest.TestCase):
         self.assertEqual(ONLINE_STOCKS.read_bytes(), self.online_before,
                          "线上 stocks.json 不得被 QA 测试改动一个字节")
 
-    def test_线上stocks_json_仍为旧stockStats_schema(self):
+    def test_线上stocks_json_为P3新schema(self):
+        # S4 放行后 AQ3=B 已生效：零兼容代码，旧 stockStats / qh/qtp/qap 不得残留。
         doc = json.loads(self.online_before.decode("utf-8"))
-        self.assertIn("stockStats", doc)
-        self.assertNotIn("stats", doc, "新 schema 不得提前上线（AQ3=B）")
-        self.assertNotIn("snapshot", doc)
-        self.assertTrue(doc["stockStats"])
-        first = doc["stockStats"][0]
-        for legacy_quality_key in ("qh", "qtp", "qap"):
-            self.assertIn(legacy_quality_key, first, "旧 quality 口径仍在 = 未被覆盖")
+        self.assertEqual(set(doc.keys()), {"date", "snapshot", "updatedAt", "stats"})
+        self.assertNotIn("stockStats", doc)
+        self.assertTrue(doc["stats"])
+        first = doc["stats"][0]
+        self.assertEqual(set(first.keys()), {"code", "name", "h", "tp", "ap"})
 
     def test_三脚本resolve_out_拒绝真实线上路径(self):
         for mod in (ps, em, ep):
