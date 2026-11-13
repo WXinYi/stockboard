@@ -280,15 +280,12 @@ jobs:
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          # AQ1=A：market 4 切片与 3 个契约均平铺在 latest/，路径零改动；精确 add，不用 -A
-          git add -f \
-            stockboard-app/public/data/latest/players.json \
-            stockboard-app/public/data/latest/stocks.json \
-            stockboard-app/public/data/latest/today.json \
-            stockboard-app/public/data/latest/hot_rank.json \
-            stockboard-app/public/data/latest/lianban_bid.json \
-            stockboard-app/public/data/latest/broken_pool.json \
-            stockboard-app/public/data/latest/market_breadth.json
+          # AQ1=A：market 4 切片与 3 个契约均平铺在 latest/，路径零改动；精确 add，不用 -A。
+          # SB_DATA_V2=0 时 players/today 尚未产出 → 逐文件判存, 避免 git add 对缺失路径报错打死整班。
+          for f in players stocks today hot_rank lianban_bid broken_pool market_breadth; do
+            p="stockboard-app/public/data/latest/$f.json"
+            if [ -f "$p" ]; then git add -f "$p"; fi
+          done
           if git diff --staged --quiet; then
             echo "数据无变化，跳过提交"
           else
