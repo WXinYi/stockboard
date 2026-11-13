@@ -70,12 +70,17 @@ const yieldData = computed(() => {
   return b.state === 'live' && d && !Array.isArray(d) ? d : null
 })
 
+function bizDateToTime(v) {
+  const s = String(v ?? '')
+  return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s
+}
+
 const tradeRows = computed(() => {
   const b = blocks.value.trades
   if (b.state !== 'live' || !b.data) return []
   const pages = Array.isArray(b.data) ? b.data : (b.data.pages || [])
   return pages.slice(0, 30).map(t => ({
-    time: t.relocateTime || String(t.bizDate || ''),
+    time: t.relocateTime || bizDateToTime(t.bizDate),
     code: t.stkCode || '',
     name: t.stkName || '',
     side: t.bsMark === 'B' ? '买入' : (t.bsMark === 'S' ? '卖出' : (t.bsMark || '—')),
@@ -85,11 +90,20 @@ const tradeRows = computed(() => {
   }))
 })
 
-// 静态 today.json 尚无快照时，用实时调仓里的当日记录给出真实结论，不要说「今日无操作」
+// 静态 today.json 的 players[].today 契约只有 {updatedAt, tradeCount}，没有买卖明细；
+// 「操作了什么」只能取实时调仓里的当日记录，不能只显示笔数。
+function tradeDay(t) {
+  const raw = String(t.time || '')
+  return /^\d{8}$/.test(raw) ? bizDateToTime(raw) : raw.slice(0, 10)
+}
 const todayTrades = computed(() => {
   const d = String(currentDate.value || '').slice(0, 10)
   if (!d) return []
-  return tradeRows.value.filter(t => String(t.time).slice(0, 10) === d)
+  return tradeRows.value.filter(t => tradeDay(t) === d)
+})
+const todaySnapshot = computed(() => {
+  const t = player.value?.today
+  return t && Object.keys(t).length ? t : null
 })
 
 // 顶部读数：实时收益优先；yield 失败则回退静态 prevClose（可能为空 → 显示 —）
@@ -183,17 +197,34 @@ function openMarket() { router.push('/market') }
 
     <div class="card">
       <h2>今日操作</h2>
-      <div v-if="player.today && Object.keys(player.today).length" class="pd-today">
-        <span class="pd-today-time">{{ player.today.updatedAt }}</span>
-        <span class="pd-today-count">{{ player.today.tradeCount ?? 0 }} 笔调仓</span>
-        <span v-if="traded" class="trade-dot" aria-label="今日有调仓"></span>
-      </div>
-      <div v-else-if="todayTrades.length" class="pd-today">
+      <div v-if="todayTrades.length" class="pd-today">
         <span class="pd-today-time">实时接口：今日 {{ todayTrades.length }} 笔调仓</span>
         <span class="pd-today-count">最新 {{ todayTrades[0].time }}</span>
         <span class="trade-dot" aria-label="今日有调仓"></span>
       </div>
+      <div v-else-if="todaySnapshot" class="pd-today">
+        <span class="pd-today-time">静态快照：今日 {{ todaySnapshot.tradeCount ?? 0 }} 笔调仓</span>
+        <span class="pd-today-count">{{ todaySnapshot.updatedAt }}</span>
+        <span v-if="traded" class="trade-dot" aria-label="今日有调仓"></span>
+      </div>
       <div v-else class="empty-state">今日尚无调仓快照（实时接口与静态快照均无当日记录）</div>
+
+      <template v-if="todayTrades.length">
+        <div class="pd-table-wrap"><table class="pd-table pd-today-table">
+          <thead><tr><th>时间</th><th>股票</th><th>方向</th><th>价格</th><th>仓位</th></tr></thead>
+          <tbody>
+            <tr v-for="(t, i) in todayTrades" :key="t.time + t.code + i">
+              <td class="pd-time">{{ t.time }}</td>
+              <td><span class="pd-stock" @click="openStockDetail(t.code, t.name)">{{ t.name || t.code }}</span><span class="pd-code">{{ t.code }}</span></td>
+              <td :style="{ color: t.buy ? 'var(--up)' : 'var(--down)' }">{{ t.side }}</td>
+              <td>{{ fmtNum(t.price) }}</td>
+              <td>{{ t.ratio || '—' }}</td>
+            </tr>
+          </tbody>
+        </table></div>
+        <div class="pd-count">共 {{ todayTrades.length }} 笔当日调仓（实时接口第 1 页明细）</div>
+      </template>
+      <div v-else-if="todaySnapshot" class="pd-foot">静态快照仅记录笔数，具体买卖明细见下方「调仓」实时区块。</div>
     </div>
 
     <!-- 收益：实时接口读数 -->

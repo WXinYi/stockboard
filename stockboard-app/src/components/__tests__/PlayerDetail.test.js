@@ -40,21 +40,22 @@ function provideStockData() {
   }
 }
 
-function mountDetail() {
+function mountDetail(overrides = null) {
+  const stockData = { ...provideStockData(), ...(overrides || {}) }
   return mount(PlayerDetail, {
     global: {
-      provide: { stockData: provideStockData(), refreshTick: ref(0) },
+      provide: { stockData, refreshTick: ref(0) },
     },
   })
 }
 
 /** 按 method 返回真实形状；yieldFail=true 时复现实测的 -1 登录失效。 */
-function stubFetch(yieldFail = false) {
+function stubFetch(yieldFail = false, trades = TRADES) {
   return vi.fn().mockImplementation((_url, opts) => {
     const method = JSON.parse(opts.body).method
     let body
     if (method === 'CombinationHoldPositionPermitHandler') body = { code: 0, message: 'Success', data: POS }
-    else if (method === 'CombinationRelocatePositionHandler') body = { code: 0, message: 'Success', data: TRADES }
+    else if (method === 'CombinationRelocatePositionHandler') body = { code: 0, message: 'Success', data: trades }
     else if (yieldFail) body = { code: -1, message: '登录失效，请重新登录', data: {} }
     else body = { code: 0, message: 'Success', data: YIELD }
     return Promise.resolve({ json: async () => body })
@@ -87,7 +88,7 @@ describe('PlayerDetail · 真实数据必须渲染出来', () => {
     expect(r.posCount).toBe(true)
     expect(w.text()).toContain('实时接口：今日 1 笔调仓')  // 静态 today 为空时用实时当日记录
     expect(w.text()).not.toContain('已获取')
-    expect(w.findAll('.pd-table')).toHaveLength(2)
+    expect(w.findAll('.pd-table')).toHaveLength(3)
   })
 
   it('顶部读数标明实时来源', async () => {
@@ -111,7 +112,7 @@ describe('PlayerDetail · 部分接口登录失效时其它区块照常展示', 
     expect(t).toContain('2/3 区块实时可用')       // 整体不判死
     expect(t).toContain('登录态')                  // 原因可见
     expect(t).not.toContain('已回退至静态快照')     // 静态为空时不谎称有回退数据
-    expect(w.findAll('.pd-table')).toHaveLength(2) // 持仓 + 调仓表格仍在
+    expect(w.findAll('.pd-table')).toHaveLength(3) // 持仓 + 调仓表格仍在
   })
 
   it('失败徽标可展开原始 code/message', async () => {
@@ -123,5 +124,71 @@ describe('PlayerDetail · 部分接口登录失效时其它区块照常展示', 
     await errBadge.trigger('click')
     expect(w.text()).toContain('登录失效，请重新登录')
     expect(w.text()).toContain('code=-1')
+  })
+})
+
+describe('PlayerDetail · 今日操作要显示操作了什么', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('当日买+卖两笔：明细列出股票/代码/方向/价格/仓位，而不只是笔数', async () => {
+    const multi = { pages: [
+      { relocateTime: '2026-11-13 10:59:48', stkCode: '000938', stkName: '紫光股份',
+        bsMark: 'B', relocatePrice: '22.920', positionRatio: '1成以下' },
+      { relocateTime: '2026-11-13 09:35:02', stkCode: '600519', stkName: '贵州茅台',
+        bsMark: 'S', relocatePrice: '1500.000', positionRatio: '2成' },
+    ], totalCount: 2, pageIndex: 1, totalPages: 1 }
+    vi.stubGlobal('fetch', stubFetch(false, multi))
+
+    const w = mountDetail()
+    await flushPromises()
+
+    expect(w.text()).toContain('实时接口：今日 2 笔调仓')
+    const today = w.find('.pd-today-table')
+    expect(today.exists()).toBe(true)
+    const t = today.text()
+    expect(t).toContain('紫光股份')
+    expect(t).toContain('000938')
+    expect(t).toContain('买入')
+    expect(t).toContain('22.92')
+    expect(t).toContain('1成以下')
+    expect(t).toContain('贵州茅台')
+    expect(t).toContain('600519')
+    expect(t).toContain('卖出')
+    expect(t).toContain('1500.00')
+    expect(t).toContain('2成')
+  })
+
+  it('调仓只有 bizDate 无 relocateTime：仍能识别为当日操作并格式化日期', async () => {
+    const compact = { pages: [
+      { bizDate: 20261113, stkCode: '000938', stkName: '紫光股份',
+        bsMark: 'B', relocatePrice: '22.920', positionRatio: '1成以下' },
+    ], totalCount: 1 }
+    vi.stubGlobal('fetch', stubFetch(false, compact))
+
+    const w = mountDetail()
+    await flushPromises()
+
+    const today = w.find('.pd-today-table')
+    expect(today.exists()).toBe(true)
+    expect(today.text()).toContain('2026-11-13')
+    expect(today.text()).toContain('紫光股份')
+  })
+
+  it('实时明细不可用时：静态快照只报笔数并说明无明细，不臆造股票', async () => {
+    const withSnapshot = {
+      playerLookup: computed(() => ({
+        '900438148': { zh_id: '900438148', name: '我嘚财富', userId: 'u-test', watched: true,
+                       total_return: null, daily_return: null, net_value: null,
+                       today: { updatedAt: '15:15', tradeCount: 3 } },
+      })),
+    }
+    vi.stubGlobal('fetch', stubFetch(false, { pages: [], totalCount: 0 }))
+
+    const w = mountDetail(withSnapshot)
+    await flushPromises()
+
+    expect(w.text()).toContain('静态快照：今日 3 笔调仓')
+    expect(w.text()).toContain('静态快照仅记录笔数')
+    expect(w.find('.pd-today-table').exists()).toBe(false)
   })
 })
