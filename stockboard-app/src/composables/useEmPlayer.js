@@ -20,9 +20,20 @@ export const REASON = {
   9035: '缺少该选手 userId 或组合已不可访问',
   9061: '组合已被删除，仅展示历史数据',
   '-1': '该组合收益需登录态（隐藏组合），已回退',
+  400: '实时接口参数校验失败，已回退',
   empty: '实时接口返回空数据，已回退',
   network: '实时接口不可达（网络/跨域/风控），已回退',
   contract: '东财接口策略变更，全站回退历史数据',
+}
+
+// rtV2 是「包一层」协议：{ args, method, client, clientType, clientVersion }。
+// 形状以 em_contract_probe.py::send_probe() 为准（该形状已实测 code=0 / emContract.ok=true）。
+// 不手动设 User-Agent / Origin：由浏览器提供，避免额外 preflight 被拒。
+export const CLIENT_VERSION = '11.5.5_3.0.0.261105130728749'
+export const BLOCK_METHOD = {
+  position: 'CombinationHoldPositionPermitHandler',
+  yield: 'combination_yield_detail_handler',
+  trades: 'CombinationRelocatePositionHandler',
 }
 
 const EMPTY = () => ({
@@ -46,23 +57,30 @@ async function requestOnce(userId, zhId, block) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
-    // 仅公开参数 + 非敏感占位；不带任何登录态 token
+    // args 只带公开 userId + combinationId；调仓另需分页参数。
+    // 顶层不附加 randomCode/deviceId：哨兵的最小 payload 已验证可用，多余字段会被服务端严格校验拒绝。
+    const args = { userId, combinationId: String(zhId) }
+    if (block === 'trades') {
+      Object.assign(args, { pageNum: 1, pageSize: 20, beginDate: '', endDate: '' })
+    }
     const payload = {
-      userId,
-      combinationId: zhId,
-      block,
-      deviceId: 'web',
-      randomCode: '0',
-      clientVersion: '1.0',
+      args,
+      method: BLOCK_METHOD[block],
+      client: 'ios',
+      clientType: 'cfw',
+      clientVersion: CLIENT_VERSION,
     }
     const resp = await fetch(RT_V2, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+      },
       body: JSON.stringify(payload),
       signal: ctrl.signal,
       credentials: 'omit',
     })
-    if (!resp.ok) throw { kind: 'network', message: `HTTP ${resp.status}` }
+    // 不按 resp.ok 短路：400 的 body 里带 code/message，必须读出来才能给出准确原因
     const json = await resp.json()
     const code = json?.code
     if (code !== 0 && code !== '0') {

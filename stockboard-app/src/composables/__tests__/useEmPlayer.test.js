@@ -41,6 +41,7 @@ describe('useEmPlayer · 三态与六类失败原因', () => {
     ['-1', '需登录态'],
     ['empty', '返回空数据'],
     ['network', '不可达'],
+    ['400', '参数校验失败'],
   ]
   for (const [kind, text] of cases) {
     it(`${kind} → 🔴 且原因可见`, async () => {
@@ -58,6 +59,42 @@ describe('useEmPlayer · 三态与六类失败原因', () => {
     expect(e.blocks.value.yield.state).toBe('error')
     expect(e.blocks.value.position.state).toBe('live')
     expect(e.blocks.value.trades.state).toBe('live')
+  })
+})
+
+describe('useEmPlayer · rtV2 协议形状（回归 400）', () => {
+  it('payload 包一层，且不含 token / 自造 block 字段', async () => {
+    const spy = vi.fn().mockResolvedValue({ json: async () => ({ code: 0, data: { row: 1 } }) })
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900293400', 'position')
+    expect(r.ok).toBe(true)
+    const body = JSON.parse(spy.mock.calls[0][1].body)
+    expect(body).toMatchObject({
+      method: 'CombinationHoldPositionPermitHandler',
+      client: 'ios',
+      clientType: 'cfw',
+      args: { userId: 'u1', combinationId: '900293400' },
+    })
+    expect(body.args.block).toBeUndefined()
+    expect(JSON.stringify(body)).not.toMatch(/ctToken|utToken|HIDDEN_UIDS/)
+  })
+
+  it('调仓带分页参数', async () => {
+    const spy = vi.fn().mockResolvedValue({ json: async () => ({ code: 0, data: [{ r: 1 }] }) })
+    vi.stubGlobal('fetch', spy)
+    await requestBlock('u1', '900293400', 'trades')
+    const body = JSON.parse(spy.mock.calls[0][1].body)
+    expect(body.args).toMatchObject({ pageNum: 1, pageSize: 20 })
+  })
+
+  it('HTTP 400 读出 code/message，不误判为网络失败', async () => {
+    const spy = vi.fn().mockResolvedValue({
+      json: async () => ({ code: 400, message: '请传入正确的参数', data: {} }),
+    })
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900293400', 'position')
+    expect(r.kind).toBe('400')
+    expect(r.detail.message).toContain('参数')
   })
 })
 
