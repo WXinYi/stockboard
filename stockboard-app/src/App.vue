@@ -2,8 +2,7 @@
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { clearDataCache } from './data/loader.js'
-import { useData } from './composables/useData.js'
-import { useHistory } from './composables/useHistory.js'
+import { useDataV2 } from './composables/useDataV2.js'
 import { useRelativeTime } from './composables/useRelativeTime.js'
 import { useDataRefresh } from './composables/useUX.js'
 import { getLatestTradingDay } from './composables/useKplApi.js'
@@ -12,22 +11,18 @@ import NavBar from './components/NavBar.vue'
 import PullToRefresh from './components/PullToRefresh.vue'
 import StockSearch from './components/StockSearch.vue'
 
-const stockData = useData()
-const stockHistory = useHistory()
-
+// P3 / AQ3=B：单一新数据层，4 契约；useData / useHistory / core.json 已下线
+const stockData = useDataV2()
 provide('stockData', stockData)
-provide('stockHistory', stockHistory)
 
-// 刷新信号：refreshData() 递增，PlayerDetail watch 后重新拉取选手详情数据
+// 刷新信号：refreshData() 递增，PlayerDetail watch 后重新直连 EM
 const refreshTick = ref(0)
 provide('refreshTick', refreshTick)
 
 const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices, clearSlices } = stockData
-const { loadChangesSummary } = stockHistory
 const { relativeTime } = useRelativeTime()
 const crawlTimeRelative = computed(() => relativeTime(crawlTime.value))
-// 数据时点显式化: 页脚直接给出"数据日期 + 采集时刻"(排行等页面的数据是采集快照,
-// 不是实时行情; 只有把时点摊开写, 才能一眼看出是不是昨天的数据)
+// 数据时点显式化：today.json.updatedAt 是唯一真源（R5#1/#8）
 const crawlTimeShort = computed(() => {
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(crawlTime.value || '')
   return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : ''
@@ -38,12 +33,11 @@ const router = useRouter()
 
 const pageTitles = {
   market: '选股',
-  copy: '抄作业',
   rankings: '排行榜',
   stocks: '重仓共识',
   auction: '竞价抢筹',
 }
-const marketSectionTitles = MARKET_SECTION_TITLES   // 唯一映射(含 cycle), 与 MarketDetail 共用
+const marketSectionTitles = MARKET_SECTION_TITLES
 const pageTitle = computed(() => {
   if (route.path.startsWith('/player/')) return '选手详情'
   if (route.path.startsWith('/stock/')) return '股票详情'
@@ -57,9 +51,8 @@ const isStockDetail = computed(() => route.path.startsWith('/stock/'))
 const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value || route.path.startsWith('/info/') || route.path.startsWith('/board/') || route.path.startsWith('/market/'))
 
 const refreshing = ref(false)
-const showSearch = ref(false)   // 全局股票搜索浮层(详情页顶栏窄, 不展示入口)
+const showSearch = ref(false)
 
-// 统一刷新入口：清缓存 → 重载 core + 当前路由分片 + 变化摘要
 async function refreshData() {
   if (refreshing.value) return
   refreshing.value = true
@@ -74,44 +67,36 @@ async function refreshData() {
   }
 }
 
-// 修正 Task 5 的 loading gating：loading 是 ref；刷新期间不闪全屏 loading
-const initialLoading = computed(() => loading.value.core && !isDetailPage.value && !refreshing.value)
+const initialLoading = computed(() => loading.value.today && !isDetailPage.value && !refreshing.value)
 
 function goBack() {
   if (window.history.length > 2) router.back()
   else router.push('/market')
 }
 
-// 拍板①(2026-09-13): 检测到新采集自动应用(refreshData 自带清缓存+重载+dismiss 横幅)
 const { updateAvailable, initCheck, dismiss } = useDataRefresh(() => { refreshData() })
 
-// 路由 → 需要的分片（data 来自 useData，history 来自 useHistory）
+// 路由 → 需要的分片（全部来自 4 契约；/copy 与 useHistory 已移除）
 const ROUTE_SLICES = {
-  '/copy':     { data: ['copy', 'nameMap'],            history: 'summary' },
-  '/rankings': { data: ['playersIndex'],               history: null },
-  '/stocks':   { data: ['stocks', 'playersIndex'],     history: null },
-  '/player':   { data: ['playersIndex'],               history: null },
+  '/rankings': ['players', 'today'],
+  '/stocks': ['stocks', 'players'],
+  '/player': ['players'],
 }
 
 async function ensureRoute() {
-  const path = route.path
-  const key = path.startsWith('/player/') ? '/player' : path
-  const m = ROUTE_SLICES[key] || { data: [], history: null }
-  await Promise.all([
-    ensureSlices(m.data),
-    m.history === 'summary' ? loadChangesSummary().catch(() => {}) : Promise.resolve(),
-  ])
+  const key = route.path.startsWith('/player/') ? '/player' : route.path
+  // 分片缺失/失败由 sliceErrors 显性化，不抛未捕获 rejection（4 契约尚未产出时页面显示空态而非白屏）
+  try { await ensureSlices(ROUTE_SLICES[key] || []) } catch { /* marked in sliceErrors */ }
 }
 
 watch(() => route.path, () => { ensureRoute() })
 
-// 页脚"数据截至"交易日: 与盘面二级页同源(getLatestTradingDay, core 采集日回退最近工作日)
 const tradingDay = ref('')
 const crawlDay = computed(() => (currentDate.value || '').slice(0, 10))
 
 onMounted(async () => {
-  await loadData()          // 只等 core（~20KB），首屏尽快渲染
-  ensureRoute()             // 当前 Tab 分片，不阻塞首屏
+  await loadData()          // R5#5：只等 today.json（最小分片，最早拿 emContract）
+  ensureRoute()
   initCheck()
   getLatestTradingDay().then(d => { if (d && d.length === 8) tradingDay.value = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` }).catch(() => {})
 })
@@ -123,39 +108,36 @@ onMounted(async () => {
     <header class="header">
       <div class="header-row">
         <div class="header-left">
+          <span class="brand-mark" aria-hidden="true">SB</span>
           <button v-if="isDetailPage" class="back-btn" @click="goBack()">←</button>
           <span class="header-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
           <button v-if="!isDetailPage" class="refresh-btn" title="搜索股票" @click="showSearch = true">🔍</button>
-          <span v-if="crawlTime" class="header-time-label">采集</span>
+          <span v-if="crawlTime" class="header-time-label">数据时点</span>
           <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeRelative }}</span>
-          <!-- 依赖 players_index 懒加载：首屏 /copy 不显示，进入榜单/重仓等页后出现 -->
-          <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }}人五榜</span>
-          <span v-if="loading.core" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
+          <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }} 名选手</span>
+          <span v-if="loading.today" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
           <button class="refresh-btn" :class="{ spinning: refreshing }"
                   @click="refreshData()" :disabled="refreshing" title="刷新最新数据">⟳</button>
         </div>
       </div>
     </header>
 
-    <!-- 非一级页面(详情/嵌套页)不展示底部导航 -->
     <NavBar v-if="!isDetailPage" />
 
     <div v-if="updateAvailable" class="update-banner" @click="refreshData()">
       📊 检测到新采集 · 正在自动刷新（点击手动重刷）
     </div>
 
-    <!-- detail-page: 无底部导航, 减少底部留白; stock-page: 股票详情全宽无左右留白 -->
     <main class="main-content" :class="{ 'detail-page': isDetailPage, 'stock-page': isStockDetail }">
       <PullToRefresh :refreshing="refreshing" @refresh="refreshData()">
         <div v-if="initialLoading" class="loading-view">
           <div class="loading-spinner"></div>
           <p class="loading-text">正在加载数据…</p>
-          <p class="loading-sub">从服务器获取最新行情</p>
+          <p class="loading-sub">读取今日快照</p>
         </div>
         <router-view v-else v-slot="{ Component }">
-          <!-- 全部页面 KeepAlive: 详情页返回保留状态不重载; 参数化页面各自 watch 参数重载 -->
           <KeepAlive>
             <component :is="Component" />
           </KeepAlive>
@@ -163,15 +145,10 @@ onMounted(async () => {
       </PullToRefresh>
     </main>
 
-    <!-- 页脚时点诚实化(2026-09-13): core.date 是采集日(周末采集会落在非交易日),
-         此前标成"数据日期"误导(09-12周六曾当数据日展示)。交易日单独给出, 两者不一致时都亮出来 -->
-    <!-- 2026-11-11: title 补全三类数据的时点口径(页脚可见文本保持简洁) ——
-         盘面为 KPL 实时(30s), 选手持仓/收益为最近收盘校准快照, 竞价为 09:25 定格快照 -->
-    <footer class="footer" :title="`数据采集于 ${crawlTime || '—'} · 盘面为实时行情 · 选手持仓/收益为最近收盘校准值(盘中不刷新, 15:15 后更新当日) · 竞价为 09:25 快照`">
-      StockBoard · 采集 {{ crawlTimeShort || currentDate || '—' }}<template v-if="tradingDay && tradingDay !== crawlDay"> · 数据截至 {{ tradingDay }}</template>
+    <footer class="footer" :title="`数据时点 ${crawlTime || '—'} · 选手持仓/收益为最近收盘校准值(盘中不刷新, 15:15 后更新当日) · 竞价为 09:25 快照`">
+      StockBoard · {{ crawlTimeShort || currentDate || '—' }}<template v-if="tradingDay && tradingDay !== crawlDay"> · 数据截至 {{ tradingDay }}</template>
     </footer>
 
-    <!-- 全局股票搜索浮层 -->
     <StockSearch v-if="showSearch" @close="showSearch = false" />
   </div>
 </template>

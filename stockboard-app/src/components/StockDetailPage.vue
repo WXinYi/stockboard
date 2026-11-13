@@ -159,9 +159,9 @@ function fmtVol(v) {
 }
 
 const isUp = computed(() => (typeof quote.value?.changePct === 'number' ? quote.value.changePct >= 0 : false))
-const upColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
-const UP_C = '#e74c3c'
-const DOWN_C = '#27ae60'
+const upColor = computed(() => (isUp.value ? 'var(--up)' : 'var(--down)'))
+const UP_C = 'var(--up)'
+const DOWN_C = 'var(--down)'
 // 顶部报价(东财布局)颜色: 十字线选中 K线时按选中涨跌, 否则按实时
 const headColor = computed(() => {
   const v = crossInfo.value ? crossInfo.value.chg : quote.value?.changePct
@@ -589,7 +589,7 @@ onUnmounted(() => {
         <div v-if="gridMore" class="sd-grid">
           <div class="sd-cell minor"><span class="lbl">昨收</span><span class="val">{{ fmt(crossInfo ? crossInfo.prevClose : quote.prevClose) }}</span></div>
           <div class="sd-cell minor"><span class="lbl">量比</span><span class="val">{{ crossInfo ? '—' : fmt(quote.volumeRatio) }}</span></div>
-          <div class="sd-cell minor"><span class="lbl">主力净流入</span><span class="val" :style="{ color: crossInfo || quote.mainFlowYi === null ? '#999' : (quote.mainFlowYi >= 0 ? '#e74c3c' : '#27ae60') }">{{ crossInfo ? '—' : mainFlowText }}</span></div>
+          <div class="sd-cell minor"><span class="lbl">主力净流入</span><span class="val" :style="{ color: crossInfo || quote.mainFlowYi === null ? 'var(--ink-3)' : (quote.mainFlowYi >= 0 ? 'var(--up)' : 'var(--down)') }">{{ crossInfo ? '—' : mainFlowText }}</span></div>
           <div class="sd-cell minor"><span class="lbl">振幅</span><span class="val">{{ crossInfo ? '—' : (quote.amplitude !== undefined && quote.amplitude !== null ? fmt(quote.amplitude) + '%' : '—') }}</span></div>
           <div class="sd-cell minor"><span class="lbl">PE(TTM)</span><span class="val">{{ fmt(quote.pe) }}</span></div>
           <div class="sd-cell minor"><span class="lbl">PB</span><span class="val">{{ fmt(quote.pb) }}</span></div>
@@ -657,8 +657,8 @@ onUnmounted(() => {
             <div class="sd-tip-row"><span>开</span><b>{{ fmt(cursorTip.open) }}</b></div>
             <div class="sd-tip-row"><span>高</span><b>{{ fmt(cursorTip.high) }}</b></div>
             <div class="sd-tip-row"><span>低</span><b>{{ fmt(cursorTip.low) }}</b></div>
-            <div class="sd-tip-row"><span>收</span><b :style="{ color: cursorTip.chgPct >= 0 ? '#e74c3c' : '#27ae60' }">{{ fmt(cursorTip.close) }}</b></div>
-            <div class="sd-tip-row"><span>涨跌</span><b :style="{ color: cursorTip.chgPct >= 0 ? '#e74c3c' : '#27ae60' }">{{ (cursorTip.chgPct >= 0 ? '+' : '') + cursorTip.chgPct.toFixed(2) + '%' }}</b></div>
+            <div class="sd-tip-row"><span>收</span><b :style="{ color: cursorTip.chgPct >= 0 ? 'var(--up)' : 'var(--down)' }">{{ fmt(cursorTip.close) }}</b></div>
+            <div class="sd-tip-row"><span>涨跌</span><b :style="{ color: cursorTip.chgPct >= 0 ? 'var(--up)' : 'var(--down)' }">{{ (cursorTip.chgPct >= 0 ? '+' : '') + cursorTip.chgPct.toFixed(2) + '%' }}</b></div>
             <div class="sd-tip-row"><span>量</span><b>{{ fmtHand(cursorTip.volume) }}</b></div>
           </div>
         </div>
@@ -673,14 +673,14 @@ onUnmounted(() => {
         <button v-if="boards.length > 12" class="sd-boards-toggle" @click="boardsMore = !boardsMore">{{ boardsMore ? '收起 ▴' : '全部 ▾' }}</button>
       </div>
       <div class="sd-chips">
-        <div v-for="b in shownBoards" :key="b.code" class="sd-chip" :style="{ color: (typeof b.strength === 'number' ? b.strength : 0) >= 0 ? '#e74c3c' : '#27ae60' }" @click="goBoard(b.code, b.name)">
+        <div v-for="b in shownBoards" :key="b.code" class="sd-chip" :style="{ color: (typeof b.strength === 'number' ? b.strength : 0) >= 0 ? 'var(--up)' : 'var(--down)' }" @click="goBoard(b.code, b.name)">
           <span class="sd-chip-name">{{ b.name }}</span>
           <span class="sd-chip-str">{{ typeof b.strength === 'number' ? (b.strength >= 0 ? '+' : '') + b.strength.toFixed(2) + '%' : '' }}</span>
         </div>
       </div>
     </div>
     <div v-else-if="boardsLoading" class="sd-boards-loading">板块加载中…</div>
-    <div v-else-if="boardsFailed" class="sd-boards-loading" style="color:#a94442;">⚠️ 所属板块加载失败（与"该股无板块"不同）</div>
+    <div v-else-if="boardsFailed" class="sd-boards-loading" style="color:var(--up);">⚠️ 所属板块加载失败（与"该股无板块"不同）</div>
 
     <!-- 功能卡区(4 列, 移动堆叠): 竞价分时 / 涨停基因 / 大单监控 / 龙虎榜; 第二行涨停原因全宽 -->
     <div class="sd-cards">
@@ -779,8 +779,8 @@ onUnmounted(() => {
           <div class="sd-f10">
             <div class="sd-f10-sec">PE(TTM) 近一年走势</div>
             <svg viewBox="0 0 340 120" preserveAspectRatio="none" class="sd-svg">
-              <line v-for="y in [30, 60, 90]" :key="y" x1="0" :x2="340" :y1="y" :y2="y" stroke="#f0f0f0" stroke-width="1"/>
-              <polyline :points="pePoints" fill="none" stroke="#2980b9" stroke-width="1.5"/>
+              <line v-for="y in [30, 60, 90]" :key="y" x1="0" :x2="340" :y1="y" :y2="y" stroke="var(--bg-3)" stroke-width="1"/>
+              <polyline :points="pePoints" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
             </svg>
             <div class="sd-svg-scale"><span>最新 {{ peStats.last }}</span><span>高 {{ peStats.max }} / 低 {{ peStats.min }}</span></div>
           </div>
@@ -794,7 +794,7 @@ onUnmounted(() => {
 /* 全宽页面: main-content.stock-page 已去左右留白, 内部区块自行控制 padding */
 /* 白卡容器(设计稿 .desk): 页面玻璃底衬托, 圆角12px + 轻阴影; 不加 overflow:hidden 保 StickyQuoteBar 吸顶 */
 .sd-page {
-  background: #fff;
+  background: var(--bg-2);
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, .06);
   margin: 0 10px;
@@ -808,11 +808,11 @@ onUnmounted(() => {
 /* 图表 + 右盘口 flex 行: 盘口固定宽, 图表区自适应; 内边距与图表头部对齐 */
 .sd-chart-row { display: flex; align-items: stretch; gap: 10px; padding: 0 14px; }
 .sd-chart-wrap { flex: 1; min-width: 0; position: relative; }
-.sd-pankou { flex: none; width: 180px; border-left: 1px solid #eef1f5; background: #fbfcfd; padding: 4px 10px 4px 8px; }   /* 浅色底对齐设计稿 .desk-pankou */
+.sd-pankou { flex: none; width: 180px; border-left: 1px solid var(--line); background: var(--bg-3); padding: 4px 10px 4px 8px; }   /* 浅色底对齐设计稿 .desk-pankou */
 .sd-name { display: flex; align-items: baseline; gap: 6px; }
-.sd-title { font-size: 16px; font-weight: 600; color: #111; }
-.sd-code { color: #999; font-size: 11px; }
-.sd-h5 { margin-left: auto; border: 1px solid #2980b9; color: #2980b9; background: #fff; font-size: 11px; padding: 3px 9px; border-radius: 7px; cursor: pointer; }
+.sd-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+.sd-code { color: var(--ink-3); font-size: 11px; }
+.sd-h5 { margin-left: auto; border: 1px solid var(--accent); color: var(--accent); background: var(--bg-2); font-size: 11px; padding: 3px 9px; border-radius: 7px; cursor: pointer; }
 
 /* 顶部报价(东财布局): 左列大价格+涨跌块, 右侧三行指标(标签灰/值深, 今开最高最低按昨收红绿) */
 .sd-qrow { display: flex; gap: 12px; align-items: stretch; margin-bottom: 4px; }
@@ -822,10 +822,10 @@ onUnmounted(() => {
 .sd-qmain { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 3px; }
 .sd-qr { display: flex; gap: 6px; }
 .sd-qr > span { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
-.sd-qr i { font-style: normal; color: #999; font-size: 10px; flex: none; }
-.sd-qr b { font-weight: 500; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; }
+.sd-qr i { font-style: normal; color: var(--ink-3); font-size: 10px; flex: none; }
+.sd-qr b { font-weight: 500; font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
 .sd-qr3 { margin-top: 3px; }   /* 东财第三行全宽: 总值/流值/市盈 + 更多 */
-.sd-qmore { flex: none; border: 1px solid #d5dbe3; background: #fff; color: #555; font-size: 11px; padding: 2px 8px; border-radius: 5px; cursor: pointer; }
+.sd-qmore { flex: none; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink-2); font-size: 11px; padding: 2px 8px; border-radius: 5px; cursor: pointer; }
 /* 分时信息行(画布上方, 东财): 均价黄 / 最新+涨跌红绿 */
 .sd-tinfo { display: flex; align-items: baseline; gap: 10px; font-size: 13px; padding: 0 12px 4px; }
 .sd-tinfo-avg { color: #f2a900; }
@@ -833,24 +833,24 @@ onUnmounted(() => {
 
 .sd-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 10px; }
 .sd-cell { display: flex; flex-direction: column; gap: 1px; }
-.sd-cell .lbl { font-size: 9px; color: #999; }
-.sd-cell .val { font-size: 11px; color: #333; font-weight: 500; }
+.sd-cell .lbl { font-size: 9px; color: var(--ink-3); }
+.sd-cell .val { font-size: 11px; color: var(--ink); font-weight: 500; }
 
 .sd-chart-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 0 14px; flex-wrap: wrap; }
 .sd-tabs { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .sd-adjust { margin-left: auto; display: flex; gap: 4px; }
-.sd-tab { border: none; background: #f0f2f5; font-size: 12px; padding: 5px 12px; border-radius: 8px; color: #666; cursor: pointer; white-space: nowrap; }
+.sd-tab { border: none; background: var(--bg-3); font-size: 12px; padding: 5px 12px; border-radius: 8px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
 .sd-tab.small { padding: 4px 9px; }
-.sd-tab.on { background: #2980b9; color: #fff; }
+.sd-tab.on { background: var(--accent); color: var(--ink); }
 
 /* 主图叠加 + 副屏指标切换 */
 .sd-inds { display: flex; gap: 4px; margin-bottom: 8px; padding: 0 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.sd-ibtn { border: none; background: #f0f2f5; font-size: 11px; padding: 4px 9px; border-radius: 7px; color: #666; cursor: pointer; white-space: nowrap; }
-.sd-ibtn.on { background: #2980b9; color: #fff; }
+.sd-ibtn { border: none; background: var(--bg-3); font-size: 11px; padding: 4px 9px; border-radius: 7px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.sd-ibtn.on { background: var(--accent); color: var(--ink); }
 .sd-ibtn.chan.on { background: #8e44ad; }   /* 缠论按钮用紫色, 与笔/中枢线同色系 */
-.sd-ibtn.wave.on { background: #d35400; }   /* 波浪按钮用橙色区分 */
-.sd-wave-note { font-size: 11px; color: #d35400; margin-bottom: 6px; padding: 0 14px; }
-.sd-isep { width: 1px; background: #e5e5e5; margin: 0 2px; flex: none; }
+.sd-ibtn.wave.on { background: var(--accent); }   /* 波浪按钮用橙色区分 */
+.sd-wave-note { font-size: 11px; color: var(--accent); margin-bottom: 6px; padding: 0 14px; }
+.sd-isep { width: 1px; background: var(--bg-3); margin: 0 2px; flex: none; }
 
 /* 图表容器: height 100% 令 StockChartCanvas(.scc-wrap height:100%) 填充到与右盘口同高(flex stretch 已定高);
    垂直手势交还页面滚动(上下滑=滚页面), 水平拖动/缩放归画布组件处理 */
@@ -870,44 +870,44 @@ onUnmounted(() => {
   padding: 0 2px;
   z-index: 9;
   font-size: 10px;
-  color: #555;
-  background: rgba(255, 255, 255, .92);
-  border: 1px solid #e0e3e8;
+  color: var(--ink-2);
+  background: rgba(32, 36, 44, .92);
+  border: 1px solid var(--line-2);
   border-radius: 5px;
   max-width: 80px;
 }
-.sd-loading { padding: 40px 0; text-align: center; color: #999; font-size: 13px; }
+.sd-loading { padding: 40px 0; text-align: center; color: var(--ink-3); font-size: 13px; }
 /* 骨架屏: 灰块微光脉动(报价/图表加载时替代"加载中…"文字) */
 .sd-sk { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 4px 0; }
 .sd-sk-quote { height: 44px; }
-.sd-sk-block { background: #eef1f5; border-radius: 6px; animation: sdPulse 1.4s ease-in-out infinite; }
+.sd-sk-block { background: var(--line); border-radius: 6px; animation: sdPulse 1.4s ease-in-out infinite; }
 @keyframes sdPulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 /* 光标浮卡: 定位在光标右下方, 白底细边框, 不遮挡 K线 */
 .sd-tip {
   position: absolute; z-index: 12; pointer-events: none;
-  width: 96px; background: rgba(255, 255, 255, .96); border: 1px solid #e0e3e8;
+  width: 96px; background: rgba(32, 36, 44, .96); border: 1px solid var(--line-2);
   border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, .08); padding: 6px 8px;
 }
-.sd-tip-date { font-size: 10px; color: #2980b9; font-weight: 600; margin-bottom: 3px; }
-.sd-tip-row { display: flex; justify-content: space-between; font-size: 10px; color: #666; line-height: 1.6; }
-.sd-tip-row b { font-weight: 600; color: #333; }
-.sd-error { padding: 40px 0; text-align: center; color: #c0392b; font-size: 13px; }
-.sd-retry { margin-left: 8px; border: 1px solid #2980b9; background: #fff; color: #2980b9; font-size: 12px; padding: 4px 12px; border-radius: 8px; cursor: pointer; }
+.sd-tip-date { font-size: 10px; color: var(--accent); font-weight: 600; margin-bottom: 3px; }
+.sd-tip-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-2); line-height: 1.6; }
+.sd-tip-row b { font-weight: 600; color: var(--ink); }
+.sd-error { padding: 40px 0; text-align: center; color: var(--up); font-size: 13px; }
+.sd-retry { margin-left: 8px; border: 1px solid var(--accent); background: var(--bg-2); color: var(--accent); font-size: 12px; padding: 4px 12px; border-radius: 8px; cursor: pointer; }
 
 /* L3 背景参考格: 小字弱化(估值市值/涨跌停价/均价) */
 .sd-cell.minor .lbl { font-size: 9px; }
-.sd-cell.minor .val { font-size: 10px; color: #666; }
+.sd-cell.minor .val { font-size: 10px; color: var(--ink-2); }
 
 /* ── 所属板块胶囊 ── */
 .sd-boards { margin: 0 14px 14px; }
 .sd-boards-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.sd-boards-title { font-size: 13px; color: #333; }
-.sd-boards-toggle { margin-left: auto; border: none; background: none; color: #2980b9; font-size: 12px; cursor: pointer; flex: none; }
+.sd-boards-title { font-size: 13px; color: var(--ink); }
+.sd-boards-toggle { margin-left: auto; border: none; background: none; color: var(--accent); font-size: 12px; cursor: pointer; flex: none; }
 .sd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.sd-chip { display: flex; align-items: center; gap: 5px; background: #f5f7fa; border: 1px solid #eceff3; border-radius: 16px; padding: 4px 10px; cursor: pointer; }
+.sd-chip { display: flex; align-items: center; gap: 5px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 16px; padding: 4px 10px; cursor: pointer; }
 .sd-chip-name { font-size: 12px; }
 .sd-chip-str { font-size: 11px; font-weight: 600; }
-.sd-boards-loading { padding: 10px 0; text-align: center; color: #999; font-size: 12px; }
+.sd-boards-loading { padding: 10px 0; text-align: center; color: var(--ink-3); font-size: 12px; }
 
 /* 功能卡区: 4 列(移动堆叠); 卡内样式见 src/styles/cards.css(.feat-card) */
 .sd-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 14px 14px; }
@@ -919,32 +919,32 @@ onUnmounted(() => {
 .sd-subtabs { margin-bottom: 10px; }
 /* min-height: tab/子tab 切换时内容高度突变导致页面跳动, 保底高度吸收加载态 */
 .sd-more-body { padding: 0 2px 10px; min-height: 200px; }
-.sd-tip { padding: 20px 0; text-align: center; color: #999; font-size: 12px; }
-.sd-tip-err { color: #c0392b; }
+.sd-tip { padding: 20px 0; text-align: center; color: var(--ink-3); font-size: 12px; }
+.sd-tip-err { color: var(--up); }
 .sd-info-list { list-style: none; margin: 0; padding: 0; }
-.sd-info-item { border-bottom: 1px solid #f0f0f0; }
+.sd-info-item { border-bottom: 1px solid var(--bg-3); }
 .sd-info-item:last-child { border-bottom: none; }
 .sd-info-line { display: flex; align-items: baseline; gap: 8px; padding: 9px 2px; cursor: pointer; }
-.sd-info-title { font-size: 13px; color: #333; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sd-info-date { font-size: 11px; color: #999; flex: none; }
-.sd-info-go { color: #ccc; font-size: 14px; flex: none; }
-.sd-more-btn { display: block; width: 100%; border: 1px solid #2980b9; background: #fff; color: #2980b9; font-size: 12px; padding: 7px 0; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+.sd-info-title { font-size: 13px; color: var(--ink); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-info-date { font-size: 11px; color: var(--ink-3); flex: none; }
+.sd-info-go { color: var(--ink-4); font-size: 14px; flex: none; }
+.sd-more-btn { display: block; width: 100%; border: 1px solid var(--accent); background: var(--bg-2); color: var(--accent); font-size: 12px; padding: 7px 0; border-radius: 8px; cursor: pointer; margin-top: 10px; }
 
 /* ── 基本面 ── */
 .sd-f10 { }
 .sd-f10-dl { margin: 0; }
-.sd-f10-dl > div { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
-.sd-f10-dl dt { color: #999; flex: none; width: 64px; }
-.sd-f10-dl dd { margin: 0; color: #333; flex: 1; }
-.sd-f10-sec { font-size: 12px; color: #333; font-weight: 600; margin: 12px 0 6px; }
-.sd-f10-date { color: #999; font-weight: 400; }
-.sd-f10-change { color: #c0392b; font-weight: 400; }
+.sd-f10-dl > div { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--bg-3); font-size: 12px; }
+.sd-f10-dl dt { color: var(--ink-3); flex: none; width: 64px; }
+.sd-f10-dl dd { margin: 0; color: var(--ink); flex: 1; }
+.sd-f10-sec { font-size: 12px; color: var(--ink); font-weight: 600; margin: 12px 0 6px; }
+.sd-f10-date { color: var(--ink-3); font-weight: 400; }
+.sd-f10-change { color: var(--up); font-weight: 400; }
 .sd-f10-tb { width: 100%; border-collapse: collapse; font-size: 12px; }
-.sd-f10-tb th { text-align: left; color: #999; font-weight: 400; padding: 5px 4px; border-bottom: 1px solid #eceff3; white-space: nowrap; }
-.sd-f10-tb td { padding: 6px 4px; color: #333; border-bottom: 1px solid #f5f5f5; }
-.sd-f10-tb td.sd-num { color: #555; }
+.sd-f10-tb th { text-align: left; color: var(--ink-3); font-weight: 400; padding: 5px 4px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.sd-f10-tb td { padding: 6px 4px; color: var(--ink); border-bottom: 1px solid var(--bg-3); }
+.sd-f10-tb td.sd-num { color: var(--ink-2); }
 .sd-svg { width: 100%; height: 120px; display: block; }
-.sd-svg-scale { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+.sd-svg-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 
 @media (max-width: 480px) {
   .sd-boards, .sd-more { margin-left: 10px; margin-right: 10px; }

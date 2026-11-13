@@ -40,8 +40,8 @@ function go(code) { emit('go-board', code, props.boardMap[code] || code) }
 
 <style scoped>
 .zt-head { display: flex; justify-content: flex-end; margin-bottom: 2px; }
-.zt-toggle { border: none; background: none; color: #2980b9; font-size: 11px; cursor: pointer; }
-.zt-text { font-size: 12px; color: #555; line-height: 1.7; margin: 0 0 8px; }
+.zt-toggle { border: none; background: none; color: var(--accent); font-size: 11px; cursor: pointer; }
+.zt-text { font-size: 12px; color: var(--ink-2); line-height: 1.7; margin: 0 0 8px; }
 .zt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.zt-chip { background: #fdecea; color: #c0392b; font-size: 11px; padding: 2px 8px; border-radius: 20px; cursor: pointer; }
+.zt-chip { background: rgba(255,77,90,.10); color: var(--up); font-size: 11px; padding: 2px 8px; border-radius: 20px; cursor: pointer; }
 </style>

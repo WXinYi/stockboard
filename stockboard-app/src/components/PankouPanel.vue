@@ -9,8 +9,8 @@ const props = defineProps({
   quote: { type: Object, default: null },
 })
 
-const UP = '#e74c3c'
-const DOWN = '#27ae60'
+const UP = 'var(--up)'
+const DOWN = 'var(--down)'
 
 const pk = computed(() => props.quote?.pankou || null)
 const wei = computed(() => calcWeiBi(pk.value))
@@ -27,7 +27,7 @@ const curChg = computed(() => {
 function px(v) { return typeof v === 'number' ? v.toFixed(2) : '—' }
 function pct(v) { return typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—' }
 // 平盘(price==prevClose)惯例显灰, 不并入红涨
-function curColor(pk) { return pk.price > pk.prevClose ? UP : pk.price < pk.prevClose ? DOWN : '#888' }
+function curColor(pk) { return pk.price > pk.prevClose ? UP : pk.price < pk.prevClose ? DOWN : 'var(--ink-3)' }
 function barStyle(vol, color) {
   const pctw = (vol / maxVol.value) * 100
   return { background: `linear-gradient(90deg, ${color}1f 0%, ${color}1f ${pctw}%, transparent ${pctw}%)` }
@@ -80,16 +80,16 @@ function barStyle(vol, color) {
 .pk-row { display: flex; align-items: center; gap: 4px; border-radius: 3px; padding: 1px 4px; }
 .pk-lvl { width: 28px; flex: none; font-size: 10px; }
 .pk-px { width: 52px; flex: none; font-weight: 500; }
-.pk-vol { flex: 1; text-align: right; color: #666; }
-.pk-cur { display: flex; align-items: baseline; justify-content: space-between; border-radius: 4px; background: #f2f6fb; padding: 3px 6px; margin: 2px 0; }
+.pk-vol { flex: 1; text-align: right; color: var(--ink-2); }
+.pk-cur { display: flex; align-items: baseline; justify-content: space-between; border-radius: 4px; background: var(--bg-3); padding: 3px 6px; margin: 2px 0; }
 .pk-cur-px { font-size: 13px; font-weight: 700; }
 .pk-cur-chg { font-size: 10px; font-weight: 600; }
-.pk-wei { display: flex; justify-content: space-between; margin-bottom: 2px; color: #666; font-size: 10px; }
+.pk-wei { display: flex; justify-content: space-between; margin-bottom: 2px; color: var(--ink-2); font-size: 10px; }
 .pk-wei-item b { font-weight: 600; }
-.pk-foot { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e5e5e5; display: flex; flex-direction: column; gap: 2px; color: #888; font-size: 10px; }
+.pk-foot { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e5e5e5; display: flex; flex-direction: column; gap: 2px; color: var(--ink-3); font-size: 10px; }
 .pk-foot-row { display: flex; justify-content: space-between; }
-.pk-foot-row b { color: #555; font-weight: 500; }
-.pk-empty { padding: 24px 0; text-align: center; color: #bbb; font-size: 11px; }
+.pk-foot-row b { color: var(--ink-2); font-weight: 500; }
+.pk-empty { padding: 24px 0; text-align: center; color: var(--ink-4); font-size: 11px; }
 /* 移动端面板 116px(内容 100px): 默认列宽 28+52 只给量列剩 12px 会换行/溢出 → 压缩列宽保住挂单量 */
 @media (max-width: 480px) {
   .pk-lvl { width: 20px; font-size: 9px; }

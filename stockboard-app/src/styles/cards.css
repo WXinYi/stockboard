@@ -1,16 +1,37 @@
-/* 功能卡通用(详情页短线卡片): 白底 + 细边框 + r-md 圆角 + 均匀内边距(spec §7.5) */
+/* 功能卡（详情页短线卡片）· 暗色终端面板 */
 .feat-card {
-  background: #fff;
-  border: 1px solid #eef1f5;
-  border-radius: 8px;
-  padding: 10px 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .06);
+  position: relative;
+  background: var(--bg-1, #0b0d11);
+  border: 1px solid var(--line, #1d222b);
+  border-radius: 3px;
+  padding: 12px 12px 10px;
 }
-.feat-card .fc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.feat-card .fc-head h3 { font-size: 12px; color: #333; font-weight: 600; margin: 0; }
+.feat-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; width: 16px; height: 1px;
+  background: var(--accent, #ff6b35);
+  opacity: .8;
+}
+.feat-card .fc-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line, #1d222b);
+}
+.feat-card .fc-head h3 {
+  font-size: 11px; color: var(--ink-2, #98a1b1); font-weight: 600;
+  margin: 0; letter-spacing: .08em;
+}
 .feat-card .fc-tag {
   margin-left: auto; flex: none;
-  font-size: 9px; color: #999;
-  background: #f5f6f8; border-radius: 10px; padding: 1px 7px;
+  font-family: var(--mono, monospace);
+  font-size: 9px; color: var(--ink-4, #3d4552);
+  background: transparent;
+  border: 1px solid var(--line, #1d222b);
+  border-radius: 2px; padding: 1px 6px;
+  letter-spacing: .08em;
 }
-.feat-card .fc-empty { padding: 18px 0; text-align: center; color: #bbb; font-size: 11px; }
+.feat-card .fc-empty {
+  padding: 18px 0; text-align: center;
+  color: var(--ink-4, #3d4552); font-size: 11px;
+  font-family: var(--mono, monospace); letter-spacing: .1em;
+}

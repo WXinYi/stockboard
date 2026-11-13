@@ -48,7 +48,7 @@ function lookupStock() {
   if (!q) { lookedUpHolders.value = null; return }
   // stockStats 是全量 code→name 映射（stocks.json），支持按股票名称反查
   const codeToName = {}
-  for (const s of stats.value) codeToName[s.c] = s.n
+  for (const s of stats.value) codeToName[s.code] = s.name
   const holders = allPlayers.value.filter(p => {
     return (p.stocks || []).some(code => {
       // code.includes 天然容忍省略前导零（01810.includes('1810')），无需额外处理
@@ -64,26 +64,10 @@ const { copiedKey, copyStockCode } = useCopyCode()
 </script>
 
 <template>
-  <div class="card" style="margin-bottom:20px;">
-    <h2>🔍 反向查股票</h2>
-    <p class="hint">输入股票代码或名称，查看哪些选手持有它</p>
-    <div class="search-box" style="display:flex;gap:8px;">
-      <input type="text" v-model="stockSearch" placeholder="例: 000938 或 紫光股份" @keyup.enter="lookupStock" style="flex:1;" />
-      <button @click="lookupStock" style="padding:8px 16px;background:#2980b9;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;">查询</button>
-    </div>
-    <div v-if="lookedUpHolders !== null" style="margin-top:12px;">
-      <p v-if="!lookedUpHolders.length" class="empty-state">未找到持有该股票的选手</p>
-      <div v-else>
-        <p style="font-size:12px;color:#888;margin-bottom:8px;">{{ lookedUpHolders.length }} 人持有:</p>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <span v-for="p in lookedUpHolders" :key="p.zh_id" style="background:#f0f2f5;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;" @click="navigateToPlayer(p.zh_id)">
-            {{ p.name || p.zh_id }}<span v-if="isQuality(p)"> 🏅</span> <span style="color:#888;">{{ p._total_position == null ? '仓位未知' : p._total_position.toFixed(0) + '%仓位' }}</span>
-          </span>
-        </div>
-      </div>
-    </div>
+  <div class="card">
+    <h2>重仓共识说明</h2>
+    <p class="hint">P3 起选手级持仓明细不再进入静态产物，反向查股票已下线（N6 已接受退化）。本页仅展示全量重仓共识。</p>
   </div>
-
   <div class="card">
     <h2>
       重仓共识
@@ -98,16 +82,16 @@ const { copiedKey, copyStockCode } = useCopyCode()
         <th style="cursor:pointer;" @click="tog('ap')">平均盈亏{{ ind('ap') }}</th>
       </tr></thead>
         <tbody>
-          <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.c">
+          <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.code">
             <td>{{ i + 1 }}</td>
             <td>
-              <strong class="stock-name" @click="openStockDetail(s.c, s.n)" :title="'点击查看详情 ' + s.n">{{ s.n }}</strong>
-              <button class="stock-copy" @click.stop="copyStockCode(s.c)" title="复制代码" :aria-label="'复制代码 ' + s.c">
+              <strong class="stock-name" @click="openStockDetail(s.code, s.name)" :title="'点击查看详情 ' + s.name">{{ s.name }}</strong>
+              <button class="stock-copy" @click.stop="copyStockCode(s.code)" title="复制代码" :aria-label="'复制代码 ' + s.code">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               </button>
-              <span v-if="copiedKey === s.c" class="copied-tip">✓ 已复制</span>
+              <span v-if="copiedKey === s.code" class="copied-tip">✓ 已复制</span>
             </td>
-            <td style="color:#999;">{{ s.c }}</td>
+            <td style="color:var(--ink-3);">{{ s.code }}</td>
             <td>{{ s.h }}人</td>
             <td>
               <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp/s.h) + '%' }"></span></span>
@@ -124,8 +108,8 @@ const { copiedKey, copyStockCode } = useCopyCode()
 <style scoped>
 /* 下划线标识可点击 → 跳详情页 */
 .stock-name { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(41,128,185,.45); }
-.stock-name:hover { color: #2980b9; }
-.stock-copy { border: none; background: none; cursor: pointer; color: #aaa; padding: 0 3px; vertical-align: middle; }
-.stock-copy:hover { color: #2980b9; }
-.copied-tip { color: #27ae60; font-size: 11px; margin-left: 4px; }
+.stock-name:hover { color: var(--accent); }
+.stock-copy { border: none; background: none; cursor: pointer; color: var(--ink-4); padding: 0 3px; vertical-align: middle; }
+.stock-copy:hover { color: var(--accent); }
+.copied-tip { color: var(--down); font-size: 11px; margin-left: 4px; }
 </style>

@@ -137,8 +137,8 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
 
 <style scoped>
 .at-page { padding: 4px 0 0; max-width: 640px; margin: 0 auto; }
-.sd-loading { padding: 40px 0; text-align: center; color: #999; font-size: 13px; }
-.sd-error { padding: 40px 0; text-align: center; color: #c0392b; font-size: 13px; }
+.sd-loading { padding: 40px 0; text-align: center; color: var(--ink-3); font-size: 13px; }
+.sd-error { padding: 40px 0; text-align: center; color: var(--up); font-size: 13px; }
 
 /* 环境结论 */
 .at-env { border-radius: 12px; padding: 11px 14px; margin-bottom: 14px; background: linear-gradient(135deg, #eaf3fd 0%, #f4f9ff 100%); border: 1px solid #cfe0f5; }
@@ -146,15 +146,15 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
 .r1 { display: flex; align-items: center; gap: 8px; }
 .time { font-size: 11px; color: #94a3b8; margin-left: auto; }
 .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 100px; }
-.badge.ok { background: #2980b9; color: #fff; }
-.badge.no { background: #c0392b; color: #fff; }
+.badge.ok { background: var(--accent); color: var(--ink); }
+.badge.no { background: var(--up); color: var(--ink); }
 /* 环境快照态(2026-09-13): 无判定语义, 中性灰蓝, 不用绿/红暗示通过与否 */
-.at-env.snapshot { background: #f7f9fc; border-color: #dbe3ee; }
-.snap-badge { background: #eef2f8; color: #5b6a85; }
-.snap-note { margin-top: 8px; font-size: 11px; color: #8a97a8; border-top: 0.5px dashed #dbe3ee; padding-top: 6px; }
-.rs { margin-top: 7px; font-size: 12px; color: #43505e; line-height: 1.7; }
+.at-env.snapshot { background: var(--bg-3); border-color: #dbe3ee; }
+.snap-badge { background: var(--bg-3); color: #5b6a85; }
+.snap-note { margin-top: 8px; font-size: 11px; color: var(--ink-3); border-top: 0.5px dashed #dbe3ee; padding-top: 6px; }
+.rs { margin-top: 7px; font-size: 12px; color: var(--ink-2); line-height: 1.7; }
 .mts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.mts span { font-size: 11px; color: #1a1a2e; background: rgba(255,255,255,.85); border: 1px solid #e6edf6; padding: 3px 10px; border-radius: 8px; }
+.mts span { font-size: 11px; color: var(--ink); background: rgba(32, 36, 44, .85); border: 1px solid #e6edf6; padding: 3px 10px; border-radius: 8px; }
 .mts i { font-style: normal; color: #64748b; margin-right: 3px; font-size: 10px; }
 .hold { font-size: 12px; color: #a63a2e; padding: 6px 2px 14px; line-height: 1.7; }
 
@@ -162,41 +162,41 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
 .at-sec { margin-bottom: 16px; }
 .sec-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; }
 .sec-head h3 { font-size: 13px; font-weight: 700; margin: 0; }
-.sec-head em { font-size: 10.5px; color: #8a97a8; font-style: normal; }
-.empty { font-size: 12px; color: #999; text-align: center; padding: 16px 0; }
-.card { border: 1px solid #eceff3; border-radius: 12px; background: #fff; overflow: hidden; }
+.sec-head em { font-size: 10.5px; color: var(--ink-3); font-style: normal; }
+.empty { font-size: 12px; color: var(--ink-3); text-align: center; padding: 16px 0; }
+.card { border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); overflow: hidden; }
 
 /* Top5 换手榜 */
-.rk { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.rk { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 .rk:last-child { border-bottom: none; }
-.rk:active { background: #f7f9fc; }
-.rk-no { width: 20px; height: 20px; border-radius: 7px; background: #c0392b; color: #fff; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; }
-.rk-no.plain { background: #eef1f6; color: #667; }
-.rk .nm { font-size: 13px; font-weight: 600; color: #333; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lv { font-size: 10px; color: #b8860b; font-weight: 800; flex: none; }
+.rk:active { background: var(--bg-3); }
+.rk-no { width: 20px; height: 20px; border-radius: 7px; background: var(--up); color: var(--ink); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; }
+.rk-no.plain { background: var(--bg-3); color: var(--ink-3); }
+.rk .nm { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv { font-size: 10px; color: var(--gold); font-weight: 800; flex: none; }
 .rk-r { flex: none; text-align: right; line-height: 1.45; width: 96px; }
-.rk-r i { font-style: normal; display: block; font-size: 12px; color: #c0392b; font-weight: 700; }
-.rk-r em { display: block; font-style: normal; font-size: 10px; color: #8a97a8; }
-.bar { flex: none; width: 52px; height: 5px; background: #f2f4f7; border-radius: 3px; overflow: hidden; }
-.fill { display: block; height: 100%; background: linear-gradient(90deg, #2980b9, #5b6daa); border-radius: 3px; }
+.rk-r i { font-style: normal; display: block; font-size: 12px; color: var(--up); font-weight: 700; }
+.rk-r em { display: block; font-style: normal; font-size: 10px; color: var(--ink-3); }
+.bar { flex: none; width: 52px; height: 5px; background: var(--bg-3); border-radius: 3px; overflow: hidden; }
+.fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent)); border-radius: 3px; }
 
 /* 出击选股(早盘存档) */
-.sk { padding: 9px 12px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.sk { padding: 9px 12px; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 .sk:last-child { border-bottom: none; }
-.sk:active { background: #f7f9fc; }
+.sk:active { background: var(--bg-3); }
 .sk-l1 { display: flex; align-items: center; gap: 7px; }
-.sk-l1 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: #333; }
-.bid { font-size: 12px; color: #c0392b; font-weight: 700; flex: none; }
-.st { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 5px; background: #eef1f5; color: #667; flex: none; }
-.st.go { background: #c0392b; color: #fff; }
-.st.alt { background: #f5a623; color: #fff; }
+.sk-l1 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
+.bid { font-size: 12px; color: var(--up); font-weight: 700; flex: none; }
+.st { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 5px; background: var(--line); color: var(--ink-3); flex: none; }
+.st.go { background: var(--up); color: var(--ink); }
+.st.alt { background: var(--gold); color: var(--ink); }
 .sk-l2 { margin-top: 4px; font-size: 11px; color: #64748b; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 强势板块 chips */
 .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
-.chip { font-size: 11px; color: #444; background: #f4f6f9; border: 1px solid #e4e8ef; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 4px; }
-.chip i { font-style: normal; color: #c0392b; font-weight: 600; }
+.chip { font-size: 11px; color: var(--ink-2); background: var(--bg-3); border: 1px solid #e4e8ef; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 4px; }
+.chip i { font-style: normal; color: var(--up); font-weight: 600; }
 
-.next { border: 1px solid #dbe7f3; background: #f4f8fd; border-radius: 12px; padding: 10px 12px; text-align: center; font-size: 12px; color: #24608f; cursor: pointer; margin-bottom: 8px; }
-.foot { text-align: center; font-size: 10.5px; color: #a0aab8; margin: 4px 0 10px; line-height: 1.7; }
+.next { border: 1px solid #dbe7f3; background: var(--bg-3); border-radius: 12px; padding: 10px 12px; text-align: center; font-size: 12px; color: #24608f; cursor: pointer; margin-bottom: 8px; }
+.foot { text-align: center; font-size: 10.5px; color: var(--ink-3); margin: 4px 0 10px; line-height: 1.7; }
 </style>

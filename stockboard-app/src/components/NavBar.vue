@@ -16,80 +16,78 @@ function isActive(key) { return route.path === '/' + key }
 
 <template>
   <nav class="nav-bar">
-    <!-- Primary tabs (all screens) -->
-    <router-link v-for="t in primary" :key="t.key" :to="'/' + t.key"
-      class="nav-item" :class="{ active: isActive(t.key) }">
+    <router-link v-for="(t, i) in primary" :key="t.key" :to="'/' + t.key"
+      class="nav-item" :class="{ active: isActive(t.key) }"
+      :style="{ '--idx': i }">
       <span class="nav-icon" v-html="icons[t.icon]"></span>
       <span class="nav-label">{{ t.label }}</span>
+      <span class="nav-scan" aria-hidden="true"></span>
     </router-link>
   </nav>
 </template>
 
 <style scoped>
-/* ---- Base Bar ---- */
+/* ── 终端导航：竖线指示 + 扫描光带 ─────────────────────────── */
 .nav-bar {
-  display: flex; gap: 2px; padding: 4px 14px;
-  background: rgba(255,255,255,.36);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border-bottom: 0.5px solid rgba(255,255,255,.25);
-  overflow-x: auto; -webkit-overflow-scrolling: touch;
-  flex-shrink: 0; position: relative;
-}
-.nav-bar::before {
-  content: ''; position: absolute; top: 0; left: 16px; right: 16px; height: 0.5px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5) 20%, rgba(255,255,255,.5) 80%, transparent);
-  pointer-events: none; z-index: 2;
+  display: flex; gap: 0; padding: 0 8px;
+  background: rgba(21, 24, 30, .88);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-bottom: 1px solid var(--line, #1d222b);
+  flex-shrink: 0; position: relative; z-index: 60;
 }
 
-/* ---- Tab ---- */
 .nav-item {
-  flex-shrink: 0; padding: 8px 16px; font-size: 12px; font-weight: 400; border-radius: 100px;
-  text-decoration: none; color: #8e8e9a; transition: all .35s cubic-bezier(.34,1.56,.64,1);
-  white-space: nowrap; border: none; background: none; cursor: pointer;
-  font-family: inherit; position: relative; z-index: 1;
-  outline: none; -webkit-tap-highlight-color: transparent;
+  flex: 1; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 4px 9px;
+  color: var(--ink-3, #5d6675);
+  text-decoration: none;
+  transition: color .22s ease;
+  -webkit-tap-highlight-color: transparent;
 }
-.nav-item:hover { color: #5b6daa; }
-.nav-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; opacity: .55; transition: opacity .3s; }
-.nav-item.active .nav-icon { opacity: 1; }
-.nav-label { pointer-events: none; font-size: 11px; }
+.nav-item:hover { color: var(--ink-2, #98a1b1); }
 
-/* Active: glowing droplet */
-.nav-item.active {
-  color: #5b6daa; font-weight: 520;
-  background: radial-gradient(ellipse at 50% 130%, rgba(107,125,179,.14) 0%, rgba(107,125,179,.04) 60%, transparent 80%);
-  box-shadow: 0 -3px 14px rgba(107,125,179,.06), 0 4px 8px rgba(107,125,179,.03);
-  transform: scale(1.04);
+.nav-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  opacity: .55; transition: opacity .22s ease, transform .22s ease;
+}
+.nav-label {
+  font-family: var(--mono, monospace);
+  font-size: 9px; letter-spacing: .14em; line-height: 1;
+  pointer-events: none;
 }
 
-/* ---- Mobile ---- */
+/* 顶部指示竖线 */
+.nav-item.active { color: var(--ink, #e7eaf0); }
+.nav-item.active .nav-icon { opacity: 1; color: var(--accent, #ff6b35); transform: translateY(-1px); }
+.nav-item.active::before {
+  content: '';
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 24px; height: 2px;
+  background: var(--accent, #ff6b35);
+  box-shadow: 0 0 12px rgba(255, 107, 53, .85);
+}
+
+/* 扫描光带：只在 active 时出现，横向缓扫 */
+.nav-scan {
+  position: absolute; inset: 0; overflow: hidden;
+  pointer-events: none; opacity: 0;
+}
+.nav-item.active .nav-scan {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(255,107,53,.10) 0%, transparent 70%);
+}
+
 @media (max-width: 767px) {
   .nav-bar {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; border-bottom: none;
-    border-top: 0.5px solid rgba(255,255,255,.2);
-    padding: 4px 8px; padding-bottom: max(4px, env(safe-area-inset-bottom));
-    justify-content: space-around; gap: 0;
-    background: rgba(245,242,238,.7);
-    backdrop-filter: blur(30px) saturate(200%);
-    -webkit-backdrop-filter: blur(30px) saturate(200%);
-    box-shadow: 0 -0.5px 0 rgba(255,255,255,.3) inset;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    border-bottom: none; border-top: 1px solid var(--line, #1d222b);
+    padding-bottom: max(2px, env(safe-area-inset-bottom));
+    justify-content: space-around;
   }
-  .nav-bar::before {
-    left: 20px; right: 20px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.6) 20%, rgba(255,255,255,.6) 80%, transparent);
-  }
-  .nav-item {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 8px 4px 6px; font-size: 11px; border-radius: 16px; min-height: 48px;
-    transition: all .4s cubic-bezier(.34,1.56,.64,1);
-  }
-  .nav-item.active {
-    color: #5b6daa; font-weight: 550;
-    background: radial-gradient(ellipse at 50% 140%, rgba(107,125,179,.16) 0%, rgba(107,125,179,.05) 60%, transparent 85%);
-    box-shadow: 0 -4px 16px rgba(107,125,179,.08), 0 6px 10px rgba(107,125,179,.03);
-    transform: translateY(-2px) scale(1.05);
-  }
-  .nav-label { font-size: 10px; line-height: 1; }
+  .nav-item { padding: 9px 4px 7px; min-height: 50px; }
+  .nav-label { font-size: 9px; }
 }
 </style>

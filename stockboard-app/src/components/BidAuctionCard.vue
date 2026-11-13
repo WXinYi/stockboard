@@ -17,7 +17,7 @@ const pts = computed(() => (hasData.value ? bidToPoints(props.bid, props.prevClo
 const linePts = computed(() => pts.value.line.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '))
 const last = computed(() => (hasData.value ? props.bid[props.bid.length - 1] : null))
 const isUp = computed(() => (last.value ? last.value.price >= props.prevClose : true))
-const lineColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
+const lineColor = computed(() => (isUp.value ? 'var(--up)' : 'var(--down)'))
 // 昨收参考线 y: (up-昨收)/(up-down)*(h-8) = 0.1/0.2*56 = 28
 </script>
 
@@ -46,7 +46,7 @@ const lineColor = computed(() => (isUp.value ? '#e74c3c' : '#27ae60'))
 <style scoped>
 .bd-price { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
 .bd-now { font-size: 15px; font-weight: 700; }
-.bd-vol { font-size: 10px; color: #999; }
+.bd-vol { font-size: 10px; color: var(--ink-3); }
 .bd-svg { width: 100%; height: 64px; display: block; }
-.bd-scale { display: flex; justify-content: space-between; font-size: 9px; color: #999; margin-top: 2px; }
+.bd-scale { display: flex; justify-content: space-between; font-size: 9px; color: var(--ink-3); margin-top: 2px; }
 </style>

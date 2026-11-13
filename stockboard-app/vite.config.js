@@ -37,11 +37,11 @@ export default defineConfig({
         name: 'StockBoard - 股票数据看板',
         short_name: 'StockBoard',
         description: '实时追踪高手持仓与调仓信号',
-        theme_color: '#5b6daa',
-        background_color: '#eef2f6',
+        theme_color: '#15181e',
+        background_color: '#15181e',
         display: 'standalone',
         icons: [
-          { src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📊</text></svg>', sizes: 'any', type: 'image/svg+xml' }
+          { src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="%2315181e"/><rect x="10" y="12" width="5" height="40" fill="%23ff6b35"/><rect x="21" y="12" width="33" height="5" fill="%23e7eaf0"/><rect x="21" y="29" width="24" height="5" fill="%23e7eaf0"/><rect x="21" y="46" width="16" height="5" fill="%235d6675"/></svg>', sizes: 'any', type: 'image/svg+xml' }
         ]
       },
       workbox: {

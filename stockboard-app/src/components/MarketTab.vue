@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchAuction, fetchCore, fetchMyPositions, fetchLianbanBid, fetchStrikeReview, fetchSixHistory } from '../data/loader.js'
+import { fetchAuction, fetchLianbanBid, fetchToday } from '../data/loader.js'
 import { jsonp, secid } from '../utils/eastmoney.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 import {
@@ -62,12 +62,12 @@ const coreError = ref(false)
 const cycleError = ref(false)
 
 async function loadMine(silent = false) {
-  try { mine.value = await fetchMyPositions() } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
+  try { mine.value = null } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
   // 采集日( core.json date ): 用于"最新采集晚于决策日"的诚实提示, 不猜测节假日
   try {
-    const core = await fetchCore()
+    const core = await fetchToday()
     crawlDate.value = core?.date || ''
-    dbRestore.value = core?.db_restore || null
+    dbRestore.value = null
     coreError.value = false
   } catch (e) {
     coreError.value = true
@@ -89,7 +89,7 @@ async function loadCycleBattle(silent = false) {
     riseFallToday.value = cd.riseFallToday || null
     cycleDataDay.value = cd.cycle?.date || dayDash
     // 复核文件与竞价换手并行预取: review 的 prev_broken 供引擎标记"弱转强·炸板回封"
-    const [lb, rv] = await Promise.all([fetchLianbanBid().catch(() => null), fetchStrikeReview().catch(() => null)])
+    const [lb, rv] = await Promise.all([fetchLianbanBid().catch(() => null), Promise.resolve(null)])
     review.value = rv
     if (rv?.picks?.length) {
       const m = {}
@@ -261,7 +261,7 @@ function toggleLlmPick(code) { llmExp.value = { ...llmExp.value, [code]: !llmExp
 const sixLive = ref(null)
 async function refreshSix() {
   try {
-    const hist = await fetchSixHistory()
+    const hist = []
     const rows = normHistory(hist)
     if (!rows.length) return
     const inp = battle.value?._inputs || {}
@@ -399,13 +399,14 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 
 <template>
   <div class="mt-page">
+    <div class="summary-bar">N6 已接受退化：周期 / 六情绪历史 / 龙头战法历史切片生产者已下线，相关区块仅展示当日可计算部分，历史回看暂不可用。</div>
     <div class="pk-day">决策日 {{ cycleDataDay || auction?.date || '—' }}</div>
     <div v-if="staleDayNote" class="pk-stale">ℹ️ {{ staleDayNote }}</div>
-    <div v-if="dbRestoreNote" class="pk-stale" style="color:#a94442;border-color:#e6b8b0;background:#fdf2f0;">⚠️ {{ dbRestoreNote }}</div>
-    <div v-if="coreError" class="pk-stale" style="color:#a94442;border-color:#e6b8b0;background:#fdf2f0;">⚠️ 基础数据(core.json)加载失败：采集日与降级库提示本次不可用 —— 这不代表数据正常，请刷新重试</div>
+    <div v-if="dbRestoreNote" class="pk-stale" style="color:var(--up);border-color:#e6b8b0;background: rgba(255,77,90,.06);">⚠️ {{ dbRestoreNote }}</div>
+    <div v-if="coreError" class="pk-stale" style="color:var(--up);border-color:#e6b8b0;background: rgba(255,77,90,.06);">⚠️ 基础数据(core.json)加载失败：采集日与降级库提示本次不可用 —— 这不代表数据正常，请刷新重试</div>
 
     <!-- ① 结论头: 当下可否买入(池 → 上限 → 一句话结论), 点击进 cycle 详情 -->
-    <div v-if="battle && !battle.empty" class="pk-verdict" :class="'v-' + verdictShow.cls" :style="{ '--sc': STAGE_COLORS[cycle?.stage] || '#8a97a8' }" @click="open('cycle')">
+    <div v-if="battle && !battle.empty" class="pk-verdict" :class="'v-' + verdictShow.cls" :style="{ '--sc': STAGE_COLORS[cycle?.stage] || 'var(--ink-3)' }" @click="open('cycle')">
       <div class="pk-row">
         <span class="pk-badge">{{ verdictShow.verdict }}</span>
         <span class="pk-chip pk-cap">仓位上限 {{ discRule?.cap || '—' }}</span>
@@ -463,7 +464,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           <span class="mt-row-name">{{ p.name }}<span v-if="p.height || p.prev_pid" class="mt-strike-lv" style="margin-left:6px">{{ p.height || p.prev_pid }}板</span></span>
           <span v-if="p.bid_pct != null" class="mt-row-count">竞价 {{ p.bid_pct > 0 ? '+' : '' }}{{ fmt(p.bid_pct, 1) }}%</span>
           <span v-if="p.turnover != null || p.hs != null" class="mt-row-count">换手 {{ fmt(p.turnover != null ? p.turnover : p.hs, 1) }}%</span>
-          <span class="mt-row-val" style="width:auto;color:#2980b9">{{ i + 1 }}</span>
+          <span class="mt-row-val" style="width:auto;color:var(--accent)">{{ i + 1 }}</span>
         </div>
       </section>
 
@@ -547,7 +548,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           <span class="mt-row-name">{{ p.name }}<span v-if="p.height || p.prev_pid" class="mt-strike-lv" style="margin-left:6px">{{ p.height || p.prev_pid }}板</span></span>
           <span v-if="p.bid_pct != null" class="mt-row-count">竞价 {{ p.bid_pct > 0 ? '+' : '' }}{{ fmt(p.bid_pct, 1) }}%</span>
           <span v-if="p.turnover != null || p.hs != null" class="mt-row-count">换手 {{ fmt(p.turnover != null ? p.turnover : p.hs, 1) }}%</span>
-          <span class="mt-row-val" style="width:auto;color:#2980b9">{{ i + 1 }}</span>
+          <span class="mt-row-val" style="width:auto;color:var(--accent)">{{ i + 1 }}</span>
         </div>
       </section>
 
@@ -703,18 +704,18 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           <div class="mt-sec-head"><h3>🐉 龙虎榜</h3><em>净买 TOP</em><button class="mt-more" @click="open('lhb')">全部 ›</button></div>
           <div v-for="(s2, i) in lhbTop3" :key="s2.code" class="mt-row" @click="goStock(s2)">
             <span class="mt-row-name">{{ s2.name }}</span>
-            <span class="mt-row-val" :style="{ color: s2.buyIn >= 0 ? '#c0392b' : '#27ae60' }">{{ fmtYi(s2.buyIn) }}</span>
+            <span class="mt-row-val" :style="{ color: s2.buyIn >= 0 ? 'var(--up)' : 'var(--down)' }">{{ fmtYi(s2.buyIn) }}</span>
           </div>
           <div v-if="!lhbTop3.length" class="mt-hold">—</div>
         </section>
         <section class="mt-sec">
           <div class="mt-sec-head"><h3>🏦 机构 / 🌍 外围</h3><button class="mt-more" @click="open('institution')">全部 ›</button></div>
           <div v-for="g in instTop3" :key="'i'+g.bkCode" class="mt-row" @click="open('institution')">
-            <span class="mt-row-name">{{ g.bkName }}</span><span class="mt-row-val" style="color:#c0392b">{{ fmt(g.addAmt, 1) }} 亿</span>
+            <span class="mt-row-name">{{ g.bkName }}</span><span class="mt-row-val" style="color:var(--up)">{{ fmt(g.addAmt, 1) }} 亿</span>
           </div>
           <div v-for="g in globalTop3" :key="'g'+g.code" class="mt-row" @click="open('global')">
             <span class="mt-row-name">{{ g.name }}</span>
-            <span class="mt-row-chg" :style="{ color: g.chgPct >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(g.chgPct) }}</span>
+            <span class="mt-row-chg" :style="{ color: g.chgPct >= 0 ? 'var(--up)' : 'var(--down)' }">{{ pct(g.chgPct) }}</span>
           </div>
           <div v-if="!instTop3.length && !globalTop3.length" class="mt-hold">—</div>
         </section>
@@ -727,97 +728,97 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .mt-page { padding: 4px 14px 12px; overflow-x: clip; }
 
 /* ── 决策日 ── */
-.pk-day { font-size: 10px; color: #a6afbd; margin-bottom: 6px; }
+.pk-day { font-size: 10px; color: var(--ink-3); margin-bottom: 6px; }
 
 /* ── 区块通用 ── */
 .section { margin-bottom: 12px; }
-.mt-sec { background: #fff; border: 1px solid #eef1f5; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
+.mt-sec { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
 .mt-sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.mt-sec-head h3 { font-size: 13px; font-weight: 600; color: #111; margin: 0; }
-.mt-sec-head em { font-size: 11px; color: #999; font-style: normal; }
-.mt-more { margin-left: auto; font-size: 11px; color: #2980b9; background: none; border: none; padding: 0; cursor: pointer; flex-shrink: 0; }
+.mt-sec-head h3 { font-size: 13px; font-weight: 600; color: var(--ink); margin: 0; }
+.mt-sec-head em { font-size: 11px; color: var(--ink-3); font-style: normal; }
+.mt-more { margin-left: auto; font-size: 11px; color: var(--accent); background: none; border: none; padding: 0; cursor: pointer; flex-shrink: 0; }
 
 /* 通用行 */
-.mt-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.mt-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 .mt-row:last-child { border-bottom: none; }
-.mt-row-name { flex: 1; min-width: 0; font-size: 13px; color: #333; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-row-name { flex: 1; min-width: 0; font-size: 13px; color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mt-row-chg { width: 56px; flex: none; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
-.mt-row-val { width: 64px; flex: none; text-align: right; font-size: 12px; color: #666; font-variant-numeric: tabular-nums; }
-.mt-row-count { font-size: 11px; color: #999; flex: none; }
-.mt-hold { font-size: 11px; color: #bbb; padding: 8px 0; }
+.mt-row-val { width: 64px; flex: none; text-align: right; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.mt-row-count { font-size: 11px; color: var(--ink-3); flex: none; }
+.mt-hold { font-size: 11px; color: var(--ink-3); padding: 8px 0; }
 
 /* ── 结论头 ── */
-.pk-verdict { --sc: #8a97a8; background: #fff; background-image: linear-gradient(135deg, color-mix(in srgb, var(--sc) 11%, #fff) 0%, #fff 60%); border: 1px solid color-mix(in srgb, var(--sc) 26%, #e9edf3); border-radius: 14px; padding: 11px 13px; margin-bottom: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(17,24,39,.05); }
+.pk-verdict { --sc: var(--ink-3); background: var(--bg-2); background-image: linear-gradient(135deg, color-mix(in srgb, var(--sc) 11%, var(--bg-2)) 0%, var(--bg-2) 60%); border: 1px solid color-mix(in srgb, var(--sc) 26%, var(--line)); border-radius: 14px; padding: 11px 13px; margin-bottom: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(17,24,39,.05); }
 .pk-verdict .pk-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.pk-badge { font-size: 15px; font-weight: 900; color: #fff; border-radius: 9px; padding: 3px 12px; letter-spacing: 1px; flex: none; }
-.v-go .pk-badge { background: #c0392b; }
-.v-ban .pk-badge { background: #9b6bde; }
-.v-warn .pk-badge { background: #f5a623; }
-.v-plain .pk-badge, .pk-load .pk-badge { background: #8a97a8; }
-.pk-chip { font-size: 10.5px; padding: 3px 9px; border-radius: 20px; background: #fff; border: 1px solid #e9edf3; color: #5a6472; white-space: nowrap; }
-.pk-chip.pk-cap { background: #f0f3fa; border-color: #d8dff0; color: #5b6daa; font-weight: 700; }
-.pk-more { margin-left: auto; font-size: 11px; color: #b7c0cc; flex: none; }
-.pk-sub { margin-top: 7px; font-size: 11.5px; color: #43505e; line-height: 1.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pk-sub.muted { color: #a6afbd; }
-.pk-touch { font-size: 12px; font-weight: 700; color: #fff; background: #e67e22; border-radius: 10px; padding: 7px 13px; margin-bottom: 8px; cursor: pointer; }
-.pk-stale { font-size: 11px; color: #8a6d1a; background: #fdf6e0; border: 1px solid #eee0b0; border-radius: 8px; padding: 5px 10px; margin-bottom: 8px; }
-.pk-touch-panel { background: #fff7f2; border: 1px solid #f2ddce; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.pk-badge { font-size: 15px; font-weight: 900; color: var(--ink); border-radius: 9px; padding: 3px 12px; letter-spacing: 1px; flex: none; }
+.v-go .pk-badge { background: var(--accent); color: #16181d; }
+.v-ban .pk-badge { background: var(--bg-4); color: var(--ink-2); border: 1px solid var(--line-3); }
+.v-warn .pk-badge { background: var(--gold); color: #16181d; }
+.v-plain .pk-badge, .pk-load .pk-badge { background: var(--bg-4); color: var(--ink-3); border: 1px solid var(--line-2); }
+.pk-chip { font-size: 10.5px; padding: 3px 9px; border-radius: 20px; background: var(--bg-2); border: 1px solid var(--line); color: var(--ink-3); white-space: nowrap; }
+.pk-chip.pk-cap { background: var(--bg-3); border-color: var(--line-2); color: var(--accent); font-weight: 700; }
+.pk-more { margin-left: auto; font-size: 11px; color: var(--ink-3); flex: none; }
+.pk-sub { margin-top: 7px; font-size: 11.5px; color: var(--ink-2); line-height: 1.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-sub.muted { color: var(--ink-3); }
+.pk-touch { font-size: 12px; font-weight: 700; color: var(--ink); background: var(--accent); border-radius: 10px; padding: 7px 13px; margin-bottom: 8px; cursor: pointer; }
+.pk-stale { font-size: 11px; color: var(--gold); background: var(--bg-3); border: 1px solid rgba(224,177,92,.30); border-radius: 8px; padding: 5px 10px; margin-bottom: 8px; }
+.pk-touch-panel { background: var(--bg-3); border: 1px solid #f2ddce; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
 .pk-touch-row { padding: 5px 0; border-bottom: 1px solid #f5e8dd; cursor: pointer; line-height: 1.5; }
 .pk-touch-row:last-of-type { border-bottom: none; }
-.pk-touch-row b { font-size: 12.5px; color: #333; margin-right: 6px; }
+.pk-touch-row b { font-size: 12.5px; color: var(--ink); margin-right: 6px; }
 .pk-touch-row.exited { opacity: .62; }
-.tk-line { display: inline; font-size: 11px; color: #b06020; }
-.tk-note { display: block; font-size: 10.5px; color: #8a97a8; }
-.pk-touch-toggle { font-size: 10.5px; color: #2980b9; padding: 4px 0 0; cursor: pointer; }
-.pk-risk { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; font-size: 11px; color: #b9770e; background: #fff7e8; border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
-.pk-warn { margin-top: 7px; font-size: 11px; color: #b06020; background: #fff7e8; border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
-.pk-empty { border: 1px dashed #cbd5e0; border-radius: 12px; background: #f7f9fc; padding: 14px 12px; text-align: center; margin-bottom: 6px; }
-.pk-empty b { font-size: 13.5px; color: #5b6daa; }
-.pk-empty p { font-size: 11px; color: #8a97a8; margin-top: 4px; }
+.tk-line { display: inline; font-size: 11px; color: var(--gold); }
+.tk-note { display: block; font-size: 10.5px; color: var(--ink-3); }
+.pk-touch-toggle { font-size: 10.5px; color: var(--accent); padding: 4px 0 0; cursor: pointer; }
+.pk-risk { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 7px; font-size: 11px; color: var(--gold); background: rgba(224,177,92,.08); border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
+.pk-warn { margin-top: 7px; font-size: 11px; color: var(--gold); background: rgba(224,177,92,.08); border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
+.pk-empty { border: 1px dashed #cbd5e0; border-radius: 12px; background: var(--bg-3); padding: 14px 12px; text-align: center; margin-bottom: 6px; }
+.pk-empty b { font-size: 13.5px; color: var(--accent); }
+.pk-empty p { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 
 /* ── 已持仓标 ── */
-.pk-held { font-size: 9.5px; font-weight: 800; color: #fff; background: #f5a623; border-radius: 5px; padding: 1px 6px; flex: none; white-space: nowrap; }
+.pk-held { font-size: 9.5px; font-weight: 800; color: var(--ink); background: var(--gold); border-radius: 5px; padding: 1px 6px; flex: none; white-space: nowrap; }
 
 /* ── 今日出击 ── */
-.mt-strike-banner { font-size: 12px; color: #556; background: #f8fafc; border: 1px solid #e8edf3; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; line-height: 1.6; }
-.mt-defense { color: #c0392b; font-weight: 520; }
-.sb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed #dfe6ee; color: #2b6cb0; }
-.mt-strike { border: 1px solid #e9edf3; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: #fbfcfe; }
-.mt-strike.st-go { border-left-color: #ff5a5a; background: #fff5f5; }
-.mt-strike.st-alt { border-left-color: #f5a623; background: #fffbf0; }
+.mt-strike-banner { font-size: 12px; color: var(--ink-3); background: var(--bg-3); border: 1px solid #e8edf3; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; line-height: 1.6; }
+.mt-defense { color: var(--up); font-weight: 520; }
+.sb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed var(--line); color: #2b6cb0; }
+.mt-strike { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: var(--bg-3); }
+.mt-strike.st-go { border-left-color: var(--up); background: rgba(255,77,90,.08); }
+.mt-strike.st-alt { border-left-color: var(--gold); background: rgba(224,177,92,.06); }
 .mt-strike-top { display: flex; align-items: center; gap: 6px; }
 .mt-strike-top b { font-size: 14px; }
-.mt-strike-lv { font-size: 11px; color: #b8860b; font-weight: 700; }
-.mt-strike-plates { font-size: 11px; color: #778; }
-.mt-strike-score { margin-left: auto; font-size: 17px; font-weight: 800; color: #8a97a8; }
-.mt-strike-score.hi { color: #ff5a5a; }
-.mt-strike-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: #667; }
-.st-go .mt-strike-status { background: #ff5a5a; color: #fff; }
-.st-alt .mt-strike-status { background: #f5a623; color: #fff; }
-.mt-strike-mid { display: flex; gap: 8px; font-size: 11px; color: #778; margin: 3px 0; flex-wrap: wrap; align-items: center; }
-.lb-role { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: #fdf3e7; color: #b06020; flex: none; }
-.lb-role.feng { background: #f0f0f2; color: #999; }
-.lb-role.huo { background: #fdeaea; color: #c04848; }
-.lb-bidtop { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: #fff1f0; color: #d4380d; flex: none; cursor: help; }
+.mt-strike-lv { font-size: 11px; color: var(--gold); font-weight: 700; }
+.mt-strike-plates { font-size: 11px; color: var(--ink-4); }
+.mt-strike-score { margin-left: auto; font-size: 17px; font-weight: 800; color: var(--ink-2); }
+.mt-strike-score.hi { color: var(--up); }
+.mt-strike-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--line); color: var(--ink-3); }
+.st-go .mt-strike-status { background: var(--up); color: var(--ink); }
+.st-alt .mt-strike-status { background: var(--gold); color: var(--ink); }
+.mt-strike-mid { display: flex; gap: 8px; font-size: 11px; color: var(--ink-4); margin: 3px 0; flex-wrap: wrap; align-items: center; }
+.lb-role { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: rgba(224,177,92,.08); color: var(--gold); flex: none; }
+.lb-role.feng { background: var(--bg-3); color: var(--ink-3); }
+.lb-role.huo { background: rgba(255,77,90,.08); color: var(--up); }
+.lb-bidtop { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: var(--bg-3); color: #d4380d; flex: none; cursor: help; }
 .mt-strike-mode { color: #2bc4a8; font-weight: 700; }
-.mt-strike-logic { font-size: 12px; color: #556; }
-.mt-strike-tip { font-size: 11px; color: #8a6d3b; background: #faf6ec; border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
-.mt-strike-risk { font-size: 11px; color: #ff5a5a; margin-top: 2px; }
-.mt-strike-why { font-size: 10.5px; color: #8a6d3b; background: #faf6ec; border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
-.mt-now { font-size: 11px; color: #2c3e50; background: #eef6fb; border-radius: 6px; padding: 4px 8px; margin: 5px 0 0; line-height: 1.5; }
-.mt-slim { display: flex; align-items: center; gap: 7px; background: #fff; border: 1px solid #e9edf3; border-radius: 9px; padding: 6px 10px; margin-bottom: 4px; font-size: 12px; cursor: pointer; }
-.mt-slim .st { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 5px; background: #eef1f5; color: #667; flex: none; }
-.mt-slim .st.go { background: #c0392b; color: #fff; }
-.mt-slim .st.alt { background: #f5a623; color: #fff; }
-.mt-slim .nm { font-weight: 600; color: #333; flex: none; }
-.mt-slim .lv { font-size: 10px; color: #b8860b; font-weight: 800; flex: none; }
-.mt-slim .nt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8a97a8; font-size: 11px; }
-.mt-slim .hd { font-size: 9.5px; font-weight: 800; color: #fff; background: #f5a623; border-radius: 5px; padding: 1px 6px; flex: none; }
-.mt-slim i { font-style: normal; color: #8a97a8; font-size: 11px; }
-.mt-strike-toggle { text-align: center; font-size: 12px; color: #667; padding: 8px 0 2px; cursor: pointer; user-select: none; }
+.mt-strike-logic { font-size: 12px; color: var(--ink-3); }
+.mt-strike-tip { font-size: 11px; color: var(--gold); background: rgba(224,177,92,.06); border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
+.mt-strike-risk { font-size: 11px; color: var(--up); margin-top: 2px; }
+.mt-strike-why { font-size: 10.5px; color: var(--gold); background: rgba(224,177,92,.06); border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
+.mt-now { font-size: 11px; color: var(--ink); background: var(--bg-3); border-radius: 6px; padding: 4px 8px; margin: 5px 0 0; line-height: 1.5; }
+.mt-slim { display: flex; align-items: center; gap: 7px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; margin-bottom: 4px; font-size: 12px; cursor: pointer; }
+.mt-slim .st { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 5px; background: var(--line); color: var(--ink-3); flex: none; }
+.mt-slim .st.go { background: var(--up); color: var(--ink); }
+.mt-slim .st.alt { background: var(--gold); color: var(--ink); }
+.mt-slim .nm { font-weight: 600; color: var(--ink); flex: none; }
+.mt-slim .lv { font-size: 10px; color: var(--gold); font-weight: 800; flex: none; }
+.mt-slim .nt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 11px; }
+.mt-slim .hd { font-size: 9.5px; font-weight: 800; color: var(--ink); background: var(--gold); border-radius: 5px; padding: 1px 6px; flex: none; }
+.mt-slim i { font-style: normal; color: var(--ink-3); font-size: 11px; }
+.mt-strike-toggle { text-align: center; font-size: 12px; color: var(--ink-3); padding: 8px 0 2px; cursor: pointer; user-select: none; }
 .mt-strike-toggle:active { opacity: .6; }
-.mt-strike-note { font-size: 10px; color: #a0aab8; margin-top: 4px; }
-.mt-mini { margin-left: auto; font-size: 10px; color: #2980b9; background: none; border: none; padding: 0; cursor: pointer; flex: none; }
+.mt-strike-note { font-size: 10px; color: var(--ink-3); margin-top: 4px; }
+.mt-mini { margin-left: auto; font-size: 10px; color: var(--accent); background: none; border: none; padding: 0; cursor: pointer; flex: none; }
 
 /* ── 弱转强/复核(移动端两行布局: 首行 名称+状态+结果徽标, 次行数据整行不挤压) ── */
 .wzq-top { flex-wrap: wrap; row-gap: 4px; }
@@ -829,9 +830,9 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .llm-regime { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 10px; flex: none; white-space: nowrap; }
 .llm-regime.go { color: #0a7d34; background: rgba(42,168,92,.12); }
 .llm-regime.warn { color: #b06a00; background: rgba(230,146,26,.14); }
-.llm-regime.watch { color: #2980b9; background: rgba(41,128,185,.1); }
-.llm-regime.ban { color: #c0392b; background: rgba(192,57,43,.1); }
-.llm-regime.plain { color: #8e8e9a; background: rgba(0,0,0,.05); }
+.llm-regime.watch { color: var(--accent); background: rgba(41,128,185,.1); }
+.llm-regime.ban { color: var(--up); background: rgba(192,57,43,.1); }
+.llm-regime.plain { color: var(--ink-3); background: rgba(0,0,0,.05); }
 .llm-pos { font-size: 11px; color: #78839a; flex: 1 1 auto; min-width: 0; }
 /* 中文无空格, flex 收缩会压成一字一列, 不可买标签禁止收缩 */
 .mt-llm-head .rv-tag { margin-left: 0; }
@@ -840,33 +841,33 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 /* 文本密度: 默认截断(依据/回避两行, 候选理由一行), 点击文本或下方小字放全文 */
 .clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .mt-review .wzq-sub.clamped { -webkit-line-clamp: 1; }
-.clamp-line { font-size: 10px; color: #2980b9; text-align: right; padding: 2px 2px 6px; cursor: pointer; }
+.clamp-line { font-size: 10px; color: var(--accent); text-align: right; padding: 2px 2px 6px; cursor: pointer; }
 .mt-llm-avoid + .clamp-line { padding-top: 0; }
-.llm-action { font-size: 11px; color: #5b6daa; font-weight: 600; }
-.llm-pos-tag { font-size: 10px; color: #8e8e9a; margin-left: auto; }
+.llm-action { font-size: 11px; color: var(--accent); font-weight: 600; }
+.llm-pos-tag { font-size: 10px; color: var(--ink-3); margin-left: auto; }
 .mt-strike-top { flex-wrap: wrap; row-gap: 4px; }
 .mt-strike-top .mt-strike-score { margin-left: auto; }
 
 /* ── 弱转强/复核 ── */
-.mt-review { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
-.mt-review-guide { font-size: 11px; color: #667; background: #f7f8fa; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; line-height: 1.6; }
+.mt-review { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
+.mt-review-guide { font-size: 11px; color: var(--ink-3); background: var(--bg-3); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; line-height: 1.6; }
 .rv-tag { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 9px; margin-left: auto; flex: none; }
-.rv-tag.hold { background: #fdecea; color: #c0392b; }
-.rv-tag.warn { background: #fdf3e7; color: #b06020; }
-.rv-tag.sell { background: #e8f6ee; color: #1e7e46; }
-.rv-tag.watch { background: #eef1f5; color: #8a97a8; }
+.rv-tag.hold { background: rgba(255,77,90,.10); color: var(--up); }
+.rv-tag.warn { background: rgba(224,177,92,.08); color: var(--gold); }
+.rv-tag.sell { background: var(--bg-3); color: #1e7e46; }
+.rv-tag.watch { background: var(--line); color: var(--ink-3); }
 .mt-review-today { font-size: 12px; margin-top: 2px; font-weight: 600; }
-.mt-review-today.rv-hold { color: #c0392b; }
-.mt-review-today.rv-warn { color: #b06020; }
+.mt-review-today.rv-hold { color: var(--up); }
+.mt-review-today.rv-warn { color: var(--gold); }
 .mt-review-today.rv-sell { color: #1e7e46; }
 
 /* ── 天梯 ── */
-.mt-group-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.mt-group-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 .mt-group-row:last-child { border-bottom: none; }
-.mt-group-tag { flex: none; border-radius: 16px; padding: 3px 10px; background: #f0f2f5; color: #666; font-size: 12px; font-weight: 600; }
-.mt-group-tag.hot { background: #fdecea; color: #c0392b; }
-.mt-group-count { flex: none; font-size: 11px; color: #999; }
-.mt-group-stocks { flex: 1; min-width: 0; font-size: 11px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-group-tag { flex: none; border-radius: 16px; padding: 3px 10px; background: var(--bg-3); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.mt-group-tag.hot { background: rgba(255,77,90,.10); color: var(--up); }
+.mt-group-count { flex: none; font-size: 11px; color: var(--ink-3); }
+.mt-group-stocks { flex: 1; min-width: 0; font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 480px) {
   .mt-page { padding-left: 10px; padding-right: 10px; }

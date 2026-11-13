@@ -12,8 +12,8 @@ const props = defineProps({
 })
 
 const rows = computed(() => (Array.isArray(props.history) ? props.history.slice(0, 6) : []))
-const UP = '#e74c3c'
-const DOWN = '#27ae60'
+const UP = 'var(--up)'
+const DOWN = 'var(--down)'
 </script>
 
 <template>
@@ -36,10 +36,10 @@ const DOWN = '#27ae60'
 
 <style scoped>
 .lh-list { display: flex; flex-direction: column; gap: 2px; max-height: 148px; overflow-y: auto; }
-.lh-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 4px; align-items: center; font-size: 10px; padding: 2px 0; border-bottom: 1px solid #f7f8fa; }
+.lh-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 4px; align-items: center; font-size: 10px; padding: 2px 0; border-bottom: 1px solid var(--bg-3); }
 .lh-row:last-child { border-bottom: none; }
-.lh-date { color: #999; }
+.lh-date { color: var(--ink-3); }
 .lh-chg { font-weight: 600; text-align: right; }
-.lh-buy { color: #555; text-align: right; font-weight: 500; }
-.lh-join { color: #999; }
+.lh-buy { color: var(--ink-2); text-align: right; font-weight: 500; }
+.lh-join { color: var(--ink-3); }
 </style>

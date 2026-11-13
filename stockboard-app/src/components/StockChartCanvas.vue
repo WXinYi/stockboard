@@ -46,10 +46,10 @@ const HIDE_MS = 2500        // 无操作自动隐藏延迟
 
 // 颜色 token (spec §7.2, 唯一来源)
 const C = {
-  up: '#e74c3c', down: '#27ae60', accent: '#2980b9',
-  avg: '#f2a900', signal: '#9b59b6', chan: '#7d3c98', wave: '#d35400',
-  ma20: '#27ae60', ma60: '#2980b9', bollUp: '#e74c3c', bollMid: '#f39c12', bollLo: '#27ae60',
-  grid: '#f2f4f7', preClose: '#b9c2cc', border: '#eef1f5',
+  up: 'var(--up)', down: 'var(--down)', accent: 'var(--accent)',
+  avg: '#f2a900', signal: '#9b59b6', chan: '#7d3c98', wave: 'var(--accent)',
+  ma20: 'var(--down)', ma60: 'var(--accent)', bollUp: 'var(--up)', bollMid: '#f39c12', bollLo: 'var(--down)',
+  grid: '#f2f4f7', preClose: '#b9c2cc', border: 'var(--line)',
   axisText: '#9aa2ac', timeText: '#b3bac3',
   volUp: 'rgba(231,76,60,.6)', volDown: 'rgba(39,174,96,.6)',
   histUp: 'rgba(231,76,60,.5)', histDown: 'rgba(39,174,96,.5)',
@@ -283,7 +283,7 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   const lastTrade = [...t].reverse().find(p => trendMinute(p.time) >= 30)
   const parts = []
   if (Number.isFinite(total)) parts.push([`${fmtHand(total)}`, C.axisText])
-  if (aTicks.length) parts.push([`竞价量:${fmtHand(lastCum)}`, '#27ae60'])
+  if (aTicks.length) parts.push([`竞价量:${fmtHand(lastCum)}`, 'var(--down)'])
   if (lastTrade) parts.push([`现量:${fmtHand(lastTrade.vol || 0)}`, C.axisText])
   ctx.font = FONT_SM
   for (const [text, color] of parts) {
@@ -298,9 +298,9 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
 // 量能头部左侧"成交量"芯片(东财深色块 → 浅色主题灰底), 返回后续文本起始 x
 function volHeaderChip(vol) {
   ctx.font = FONT_SM
-  ctx.fillStyle = '#f0f2f5'
+  ctx.fillStyle = 'var(--bg-3)'
   ctx.fillRect(vol.x + 2, vol.y + 2, 42, 12)
-  ctx.fillStyle = '#666'
+  ctx.fillStyle = 'var(--ink-2)'
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.fillText('成交量', vol.x + 6, vol.y + 3)
@@ -498,7 +498,7 @@ function drawChan(main, win, yMin, yMax, w) {
     ctx.closePath()
     ctx.fill()
     if (dv) {
-      ctx.fillStyle = dv.type === 'top' ? '#e67e22' : '#5b2c8f'
+      ctx.fillStyle = dv.type === 'top' ? 'var(--accent)' : '#5b2c8f'
       ctx.textAlign = 'left'
       ctx.fillText(dv.type === 'top' ? '顶背驰' : '底背驰', x + 5, isTop ? y - 4 : y + 4)
     } else if (sig) {
@@ -742,7 +742,7 @@ function drawSubMacdHeader(sub, m, lastIdx) {
 function drawSubOscHeader(sub, lines, lastIdx) {
   if (!ctx) return
   const f2 = v => Number.isFinite(v) ? v.toFixed(2) : '—'
-  const colors = [C.avg, C.signal, '#27ae60']
+  const colors = [C.avg, C.signal, 'var(--down)']
   drawSubHeaderParts(sub, lines.map(([name, vals], i) =>
     [`${name}:${f2(vals?.[lastIdx])}${subHeaderArrow(vals, lastIdx)}`, colors[i % colors.length]],
   ))
@@ -789,7 +789,7 @@ function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0, isIntraday = false) {
 
 function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0, isIntraday = false) {
   const entries = Object.entries(lines)
-  const colors = [C.avg, C.signal, '#27ae60']
+  const colors = [C.avg, C.signal, 'var(--down)']
   entries.forEach(([_, vals], idx) => {
     if (!vals) return
     ctx.strokeStyle = colors[idx % colors.length]

@@ -46,8 +46,8 @@ const hasData = computed(() => items.value.some(it => !String(it.value).startsWi
 <style scoped>
 .lg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
 .lg-cell { display: flex; flex-direction: column; gap: 2px; }
-.lg-lbl { font-size: 9px; color: #999; white-space: nowrap; }
-.lg-val { font-size: 13px; color: #333; font-weight: 600; }
-.lg-val.c-up { color: #e74c3c; }
-.lg-val.c-dn { color: #27ae60; }
+.lg-lbl { font-size: 9px; color: var(--ink-3); white-space: nowrap; }
+.lg-val { font-size: 13px; color: var(--ink); font-weight: 600; }
+.lg-val.c-up { color: var(--up); }
+.lg-val.c-dn { color: var(--down); }
 </style>

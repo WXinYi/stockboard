@@ -73,26 +73,26 @@ function go(s) {
 .ss-mask { position: fixed; inset: 0; z-index: 200; background: rgba(30, 35, 50, .3); }
 .ss-panel {
   position: absolute; top: 0; left: 0; right: 0;
-  background: #fff; border-radius: 0 0 14px 14px;
+  background: var(--bg-2); border-radius: 0 0 14px 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, .12); padding-bottom: 8px;
 }
 .ss-bar { display: flex; gap: 8px; padding: 10px 12px; }
 .ss-input {
-  flex: 1; min-width: 0; border: 1px solid #e0e3e8; border-radius: 9px;
-  padding: 8px 12px; font-size: 14px; outline: none; background: #f7f8fa;
+  flex: 1; min-width: 0; border: 1px solid var(--line-2); border-radius: 9px;
+  padding: 8px 12px; font-size: 14px; outline: none; background: var(--bg-3);
   font-family: inherit; -webkit-appearance: none;
 }
-.ss-input:focus { border-color: #2980b9; background: #fff; }
-.ss-cancel { border: none; background: none; color: #2980b9; font-size: 14px; cursor: pointer; flex: none; padding: 0 2px; }
+.ss-input:focus { border-color: var(--accent); background: var(--bg-2); }
+.ss-cancel { border: none; background: none; color: var(--accent); font-size: 14px; cursor: pointer; flex: none; padding: 0 2px; }
 .ss-body { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.ss-tip { padding: 22px 0; text-align: center; color: #999; font-size: 13px; }
-.ss-err { color: #c0392b; }
+.ss-tip { padding: 22px 0; text-align: center; color: var(--ink-3); font-size: 13px; }
+.ss-err { color: var(--up); }
 .ss-list { list-style: none; margin: 0; padding: 0 4px; }
 .ss-item { display: flex; align-items: baseline; gap: 8px; padding: 11px 10px; border-bottom: 1px solid #f2f4f7; cursor: pointer; }
 .ss-item:last-child { border-bottom: none; }
-.ss-item:active { background: #f5f7fa; }
-.ss-name { font-size: 14px; color: #333; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ss-code { font-size: 12px; color: #888; flex: none; font-variant-numeric: tabular-nums; }
-.ss-market { font-size: 10px; color: #2980b9; background: #eef4fa; border-radius: 4px; padding: 1px 5px; flex: none; }
-.ss-go { color: #ccc; flex: none; }
+.ss-item:active { background: var(--bg-3); }
+.ss-name { font-size: 14px; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-code { font-size: 12px; color: var(--ink-3); flex: none; font-variant-numeric: tabular-nums; }
+.ss-market { font-size: 10px; color: var(--accent); background: var(--bg-3); border-radius: 4px; padding: 1px 5px; flex: none; }
+.ss-go { color: var(--ink-4); flex: none; }
 </style>

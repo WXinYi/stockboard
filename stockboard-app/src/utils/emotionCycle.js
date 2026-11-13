@@ -71,8 +71,9 @@ export const STAGE_RULES = {
 }
 
 export const STAGE_COLORS = {
-  冰点: '#5b8def', 启动: '#4cd964', 发酵: '#2bc4a8',
-  高潮: '#ff5a5a', 分歧: '#f5a623', 退潮: '#9b6bde',
+  // 暗色终端下调饱和：作为 --sc 只做低比例混色，避免高纯度色块刺眼
+  冰点: '#5b9bd5', 启动: '#3fb96a', 发酵: '#2aa88f',
+  高潮: '#e04b52', 分歧: '#d9a441', 退潮: '#8b93a3',
 }
 
 const mean = arr => {

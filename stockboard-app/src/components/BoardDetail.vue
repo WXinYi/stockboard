@@ -165,12 +165,12 @@ const turnoverW = r => (Math.max(0, r.turnover || 0) / turnoverMax.value * 100).
             <span v-if="r.tags" class="bd-tags">{{ r.tags }}</span>
           </span>
           <span class="bd-price">{{ fmt(r.price) }}</span>
-          <span class="bd-chg" :style="{ color: isUp(r) ? '#e74c3c' : '#27ae60', fontWeight: (r.chgPct >= 9.8 ? 700 : 400) }">{{ pct(r.chgPct) }}</span>
+          <span class="bd-chg" :style="{ color: isUp(r) ? 'var(--up)' : 'var(--down)', fontWeight: (r.chgPct >= 9.8 ? 700 : 400) }">{{ pct(r.chgPct) }}</span>
           <span class="bd-tr">
             <span class="bd-tr-track"><span class="bd-tr-fill" :style="{ width: turnoverW(r) }"></span></span>
             <span class="bd-tr-num">{{ fmt(r.turnover, 1) }}%</span>
           </span>
-          <span class="bd-net" :style="{ color: (r.bigNet || 0) >= 0 ? '#c0392b' : '#27ae60' }">{{ fmtNet(r.bigNet) }}</span>
+          <span class="bd-net" :style="{ color: (r.bigNet || 0) >= 0 ? 'var(--up)' : 'var(--down)' }">{{ fmtNet(r.bigNet) }}</span>
         </div>
         <div v-if="!rows.length" class="sd-error">
           <template v-if="loadFailed">⚠️ 成分数据加载失败（与"该板块今日无成分"不同）— 请刷新重试</template>
@@ -183,26 +183,26 @@ const turnoverW = r => (Math.max(0, r.turnover || 0) / turnoverMax.value * 100).
 
 <style scoped>
 .bd-page { padding: 4px 14px 12px; }
-.bd-bar { font-size: 13px; color: #333; font-weight: 600; margin-bottom: 8px; }
-.bd-sub { font-size: 11px; color: #999; margin-bottom: 8px; }
-.bd-table { border: 1px solid #eceff3; border-radius: 10px; overflow: hidden; }
-.bd-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.bd-bar { font-size: 13px; color: var(--ink); font-weight: 600; margin-bottom: 8px; }
+.bd-sub { font-size: 11px; color: var(--ink-3); margin-bottom: 8px; }
+.bd-table { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.bd-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 /* 表头: 灰底小字, 与数据行同列宽布局 */
-.bd-row.bd-head { background: #f6f8fa; font-size: 11px; color: #8e8e9a; cursor: default; }
+.bd-row.bd-head { background: var(--bg-3); font-size: 11px; color: var(--ink-3); cursor: default; }
 .bd-row:last-child { border-bottom: none; }
-.bd-row:active { background: #f7f9fc; }
-.bd-rank { width: 22px; color: #999; font-size: 12px; flex: none; }
-.bd-name { flex: 1; font-size: 13px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bd-tags { color: #999; font-size: 11px; margin-left: 6px; }
-.bd-lb { background: #e74c3c; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; flex: none; }
-.bd-price { font-size: 13px; color: #333; width: 64px; text-align: right; flex: none; }
+.bd-row:active { background: var(--bg-3); }
+.bd-rank { width: 22px; color: var(--ink-3); font-size: 12px; flex: none; }
+.bd-name { flex: 1; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-tags { color: var(--ink-3); font-size: 11px; margin-left: 6px; }
+.bd-lb { background: var(--up); color: var(--ink); font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; flex: none; }
+.bd-price { font-size: 13px; color: var(--ink); width: 64px; text-align: right; flex: none; }
 .bd-chg { font-size: 13px; width: 64px; text-align: right; flex: none; }
 .bd-sortable { font-size: 11px; width: 64px; text-align: right; flex: none; cursor: pointer; }
-.bd-sortable.on { color: #2980b9; font-weight: 600; }
+.bd-sortable.on { color: var(--accent); font-weight: 600; }
 .bd-tr { width: 74px; flex: none; display: flex; align-items: center; gap: 4px; }
-.bd-tr-track { flex: 1; min-width: 0; height: 5px; background: #f0f2f5; border-radius: 3px; overflow: hidden; }
+.bd-tr-track { flex: 1; min-width: 0; height: 5px; background: var(--bg-3); border-radius: 3px; overflow: hidden; }
 .bd-tr-fill { display: block; height: 100%; background: linear-gradient(90deg, #8899c8, #a8b8e0); border-radius: 3px; }
-.bd-tr-num { font-size: 11px; color: #666; flex: none; font-variant-numeric: tabular-nums; }
+.bd-tr-num { font-size: 11px; color: var(--ink-2); flex: none; font-variant-numeric: tabular-nums; }
 .bd-net { width: 72px; flex: none; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 480px) {

@@ -14,7 +14,7 @@ import {
 import { loadCycleData, STAGES, STAGE_COLORS, STAGE_RULES } from '../utils/emotionCycle.js'
 import { MARKET_SECTION_TITLES } from '../utils/sectionTitles.js'
 import { loadBattleData } from '../utils/leaderBattle.js'
-import { fetchStrikeReview, fetchSixHistory, fetchAuction } from '../data/loader.js'
+import { fetchAuction } from '../data/loader.js'
 import { normHistory, buildLiveRow, computeSixLive, fetchIndexTrend, parseBidYi } from '../utils/sixEmotion.js'
 import { sameDataDay, divergenceNote, statusWord } from '../utils/stockPicks.js'
 import { mergeSection } from '../utils/sectionMerge.js'
@@ -47,7 +47,7 @@ const openIdx = ref(null)
 const cycle = computed(() => data.value?.cycle || null)
 // 龙头博弈+今日出击: 纯规则引擎(utils/leaderBattle.js), 出击规则与 stage_candidates.py 成对维护
 const battle = computed(() => data.value?.battle || null)
-const cyColor = computed(() => STAGE_COLORS[cycle.value?.stage] || '#8a97a8')
+const cyColor = computed(() => STAGE_COLORS[cycle.value?.stage] || 'var(--ink-3)')
 const cycleStages = STAGES
 const cycleFetchedAt = ref('')
 const pctTxt = v => (v === null || v === undefined) ? '无数据' : Math.round(v * 100) + '%'
@@ -102,7 +102,7 @@ function saveTrail(stage) {
 async function refreshSixLive(cdCycle, battleObj) {
   try {
     const [hist, au] = await Promise.all([
-      fetchSixHistory(),
+      Promise.resolve([]),
       fetchAuction().catch(() => null),
     ])
     const rows = normHistory(hist)
@@ -170,7 +170,7 @@ async function load(silent = false) {
       const cd = await loadCycleData({ fetchTianTi, fetchLimitPool, fetchRiseFall, fetchMarketMood }, dayDash)
       const [battle] = await Promise.all([
         loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd).catch(() => null),
-        fetchStrikeReview().then(r => { sixInfo.value = r?.six || null }).catch(() => null),
+        Promise.resolve(null),
       ])
       res = { cycle: cd.cycle, battle }
       saveTrail(cd.cycle?.stage)
@@ -276,10 +276,10 @@ const moodPrev = computed(() => (data.value?.mood || [])[1] || null)
 const moodDelta = computed(() => moodToday.value && moodPrev.value ? moodToday.value.strong - moodPrev.value.strong : null)
 // 强度分级色(0-100 评分): 亢奋/活跃/中性/偏弱/冰点
 function moodColor(v) {
-  if (v >= 75) return '#c0392b'
-  if (v >= 60) return '#e74c3c'
-  if (v >= 45) return '#e67e22'
-  if (v >= 30) return '#27ae60'
+  if (v >= 75) return 'var(--up)'
+  if (v >= 60) return 'var(--up)'
+  if (v >= 45) return 'var(--accent)'
+  if (v >= 30) return 'var(--down)'
   return '#1e8449'
 }
 // 情绪形容词 + 档位
@@ -288,8 +288,8 @@ const MOOD_LABELS = { hot: '亢奋', warm: '活跃', mid: '中性', cool: '偏�
 function moodLabel(v) { return MOOD_LABELS[moodLevel(v)] }
 // 半圆仪表盘: 5 档色弧(左冰点→右亢奋) + 指针圆点(位置=强度 0-100)
 const GAUGE_SEGS = [
-  { c: '#1e8449', lo: 0, hi: 20 }, { c: '#27ae60', lo: 20, hi: 40 }, { c: '#e67e22', lo: 40, hi: 60 },
-  { c: '#e74c3c', lo: 60, hi: 80 }, { c: '#c0392b', lo: 80, hi: 100 },
+  { c: '#1e8449', lo: 0, hi: 20 }, { c: 'var(--down)', lo: 20, hi: 40 }, { c: 'var(--accent)', lo: 40, hi: 60 },
+  { c: 'var(--up)', lo: 60, hi: 80 }, { c: 'var(--up)', lo: 80, hi: 100 },
 ]
 function gaugeArc(a1, a2) {
   const r = 80, cx = 100, cy = 100
@@ -364,7 +364,7 @@ const lhbBarMax = computed(() => {
 })
 const lhbBarW = v => (Math.abs(v) / lhbBarMax.value * 100).toFixed(1) + '%'
 // 标注情绪色: 1=利多红 / -1=利空绿 / 0=中性灰(接口 Color 字段)
-function annColor(c) { return c === '1' ? '#e74c3c' : c === '-1' ? '#27ae60' : '#d5dbe3' }
+function annColor(c) { return c === '1' ? 'var(--up)' : c === '-1' ? 'var(--down)' : 'var(--line-2)' }
 const fmtAmt = v => (typeof v === 'number' && isFinite(v) && v > 0) ? (v / 1e8).toFixed(1) + '亿' : ''
 // 龙虎榜排序切换: 净买(默认)/机构家数/振幅/换手率
 const lhbSort = ref('buyIn')
@@ -381,6 +381,7 @@ const lhbSorted = computed(() => {
 </script>
 
 <template>
+  <div class="summary-bar">N6 已接受退化：六情绪历史 / 出击复盘历史切片生产者已下线，本页仅展示当日可计算部分。</div>
   <div class="md-page">
     <!-- 顶部导航由 App header 统一提供(返回+标题), 此处仅显示数据日期 -->
     <p v-if="dayLabel" class="md-dayline">数据日期 {{ dayLabel }}</p>
@@ -388,7 +389,7 @@ const lhbSorted = computed(() => {
     <!-- 部分字段没取到、页面仍在显示上一次的数(2026-09-15 审计 G5): 明示而不是静默留旧值。
          注意必须放在下方 v-if/v-else-if 链之外 —— 插进链里会把 loading/内容互斥关系打断
          (初次加载闪"暂无数据"、部分失败时整块内容被隐藏, 与横幅文案"显示上一次的数值"矛盾)。 -->
-    <div v-if="sectionFailed && !loading && !error && section !== 'auction'" class="md-dayline" style="color:#a94442;">
+    <div v-if="sectionFailed && !loading && !error && section !== 'auction'" class="md-dayline" style="color:var(--up);">
       ⚠️ 部分数据本次未取到，页面显示的是上一次的数值（非最新）
     </div>
 
@@ -415,7 +416,7 @@ const lhbSorted = computed(() => {
         <div v-for="w in data" :key="w.code" class="md-row" @click="goStock(w)">
           <span class="md-row-name">{{ w.name }}</span>
           <span v-if="w.tags && w.tags.length" class="md-tags">{{ w.tags.slice(0, 2).join('/') }}</span>
-          <span class="md-row-chg" :style="{ color: up(w.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(w.chgPct) }}</span>
+          <span class="md-row-chg" :style="{ color: up(w.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(w.chgPct) }}</span>
         </div>
         <div v-if="!data || !data.length" class="md-empty">暂无数据</div>
       </div>
@@ -425,7 +426,7 @@ const lhbSorted = computed(() => {
     <template v-else-if="section === 'ladder'">
       <div v-for="g in data" :key="g.key" class="md-group">
         <div class="md-group-head">
-          <span class="md-group-tag" :style="{ background: g.level >= 3 ? '#fdecea' : '#f0f2f5', color: g.level >= 3 ? '#c0392b' : '#666' }">{{ g.title }}</span>
+          <span class="md-group-tag" :style="{ background: g.level >= 3 ? 'rgba(255,77,90,.10)' : 'var(--bg-3)', color: g.level >= 3 ? 'var(--up)' : 'var(--ink-2)' }">{{ g.title }}</span>
           <span class="md-group-count">{{ g.rows.length }} 只</span>
         </div>
         <div class="md-group-body">
@@ -452,7 +453,7 @@ const lhbSorted = computed(() => {
             <div class="md-stock-main">
               <div class="md-stock-line1">
                 <span class="md-stock-name">{{ r.name }}</span>
-                <span class="md-stock-chg" :style="{ color: up(r.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(r.chgPct) }}</span>
+                <span class="md-stock-chg" :style="{ color: up(r.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(r.chgPct) }}</span>
                 <span v-if="r.level" class="md-level">{{ r.level }}</span>
                 <span class="md-stock-toggle" @click.stop="openIdx = openIdx === (gi + '-' + i) ? null : (gi + '-' + i)">{{ openIdx === gi + '-' + i ? '收起' : '原因' }}</span>
               </div>
@@ -468,8 +469,8 @@ const lhbSorted = computed(() => {
       <div class="md-summary">今日新高 <b class="md-hot">{{ nhToday }}</b> 家</div>
       <div class="md-svg-block">
         <svg viewBox="0 0 340 120" preserveAspectRatio="none" class="md-svg">
-          <line v-for="y in [30, 60, 90]" :key="y" x1="0" :x2="340" :y1="y" :y2="y" stroke="#f0f0f0" stroke-width="1"/>
-          <polyline :points="nhTrendPoints" fill="none" stroke="#e67e22" stroke-width="1.5"/>
+          <line v-for="y in [30, 60, 90]" :key="y" x1="0" :x2="340" :y1="y" :y2="y" stroke="var(--bg-3)" stroke-width="1"/>
+          <polyline :points="nhTrendPoints" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
         </svg>
         <div class="md-svg-scale"><span>近 60 天每日新高数</span><span>今日 {{ nhToday }}</span></div>
       </div>
@@ -487,7 +488,7 @@ const lhbSorted = computed(() => {
         <div v-for="r in data.stocks" :key="r.code" class="md-row" @click="goStock(r)">
           <span class="md-row-name">{{ r.name }}</span>
           <span v-if="r.tags && r.tags.length" class="md-tags">{{ r.tags.slice(0, 2).join('/') }}</span>
-          <span class="md-row-chg" :style="{ color: up(r.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(r.chgPct) }}</span>
+          <span class="md-row-chg" :style="{ color: up(r.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(r.chgPct) }}</span>
         </div>
         <div v-if="!data.stocks.length" class="md-empty">暂无数据</div>
       </div>
@@ -499,7 +500,7 @@ const lhbSorted = computed(() => {
         </div>
         <div v-for="r in data.boards" :key="r.bkCode" class="md-row" @click="goNewHighBoard(r)">
           <span class="md-row-name">{{ r.bkName }}</span>
-          <span class="md-row-str" style="color:#e67e22">{{ r.count }} 家新高</span>
+          <span class="md-row-str" style="color:var(--accent)">{{ r.count }} 家新高</span>
         </div>
         <div v-if="!data.boards.length" class="md-empty">暂无数据</div>
       </div>
@@ -518,7 +519,7 @@ const lhbSorted = computed(() => {
           <div v-for="g in data.indexes" :key="g.code" class="md-stock-row">
             <span class="md-stock-name">{{ g.name }}</span>
             <span class="md-stock-val">{{ fmt(g.last) }}</span>
-            <span class="md-stock-chg" :style="{ color: up(g.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(g.chgPct) }}</span>
+            <span class="md-stock-chg" :style="{ color: up(g.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(g.chgPct) }}</span>
           </div>
         </div>
       </div>
@@ -533,7 +534,7 @@ const lhbSorted = computed(() => {
           <div v-for="g in data.futures" :key="g.code" class="md-stock-row">
             <span class="md-stock-name">{{ g.name }}</span>
             <span class="md-stock-val">{{ fmt(g.last) }}</span>
-            <span class="md-stock-chg" :style="{ color: up(g.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(g.chgPct) }}</span>
+            <span class="md-stock-chg" :style="{ color: up(g.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(g.chgPct) }}</span>
           </div>
         </div>
       </div>
@@ -548,7 +549,7 @@ const lhbSorted = computed(() => {
           <div v-for="g in data.movers" :key="g.code" class="md-stock-row">
             <span class="md-stock-name">{{ g.name }}</span>
             <span class="md-stock-val">{{ fmt(g.last) }}</span>
-            <span class="md-stock-chg" :style="{ color: up(g.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(g.chgPct) }}</span>
+            <span class="md-stock-chg" :style="{ color: up(g.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(g.chgPct) }}</span>
           </div>
         </div>
       </div>
@@ -573,7 +574,7 @@ const lhbSorted = computed(() => {
         <div v-for="g in data" :key="g.bkCode" class="md-row" @click="goBoard(g)">
           <span class="md-row-name">{{ g.bkName }}</span>
           <span v-if="g.ratio" class="md-tags">{{ fmt(g.ratio, 1) }}%</span>
-          <span class="md-row-str" style="color:#c0392b">{{ fmt(g.addAmt, 1) }}亿</span>
+          <span class="md-row-str" style="color:var(--up)">{{ fmt(g.addAmt, 1) }}亿</span>
         </div>
         <div v-if="!data || !data.length" class="md-empty">暂无数据</div>
       </div>
@@ -581,18 +582,18 @@ const lhbSorted = computed(() => {
 
     <!-- 市场情绪: 强度折线 + 赚钱效应分布 + 近10日情绪表 -->
     <template v-else-if="section === 'mood'">
-      <div class="md-summary" v-if="moodToday">今日涨停 <b style="color:#c0392b">{{ moodToday.zt }}</b> 家 · 连板 {{ moodToday.lbgd }} · 跌停 {{ moodToday.df }}</div>
+      <div class="md-summary" v-if="moodToday">今日涨停 <b style="color:var(--up)">{{ moodToday.zt }}</b> 家 · 连板 {{ moodToday.lbgd }} · 跌停 {{ moodToday.df }}</div>
       <!-- 情绪仪表盘: 半圆档位弧 + 指针 + 中央数值 -->
       <div class="md-gauge-block">
         <svg viewBox="0 0 200 118" class="md-gauge">
           <path v-for="seg in gaugeSegs" :key="seg.color" :d="seg.d" :stroke="seg.color" fill="none" stroke-width="14"/>
-          <circle :cx="gaugeDot.x" :cy="gaugeDot.y" r="7" fill="#fff" stroke="#333" stroke-width="2.5"/>
-          <text v-for="l in GAUGE_LABELS" :key="l.t" :x="l.x" y="113" text-anchor="middle" font-size="9" fill="#999">{{ l.t }}</text>
+          <circle :cx="gaugeDot.x" :cy="gaugeDot.y" r="7" fill="var(--bg-2)" stroke="var(--ink)" stroke-width="2.5"/>
+          <text v-for="l in GAUGE_LABELS" :key="l.t" :x="l.x" y="113" text-anchor="middle" font-size="9" fill="var(--ink-3)">{{ l.t }}</text>
           <text x="100" y="64" text-anchor="middle" font-size="30" font-weight="700" :fill="moodColor(moodToday.strong)">{{ moodToday.strong }}</text>
           <text x="100" y="82" text-anchor="middle" font-size="12" :fill="moodColor(moodToday.strong)">
-            {{ moodLabel(moodToday.strong) }}<tspan v-if="moodDelta !== null" :fill="moodDelta >= 0 ? '#e74c3c' : '#27ae60'">{{ moodDelta >= 0 ? ' ↗' : ' ↘' }} {{ Math.abs(moodDelta) }} 较昨日</tspan>
+            {{ moodLabel(moodToday.strong) }}<tspan v-if="moodDelta !== null" :fill="moodDelta >= 0 ? 'var(--up)' : 'var(--down)'">{{ moodDelta >= 0 ? ' ↗' : ' ↘' }} {{ Math.abs(moodDelta) }} 较昨日</tspan>
           </text>
-          <text x="100" y="97" text-anchor="middle" font-size="8" fill="#bbb">0-100 综合评分</text>
+          <text x="100" y="97" text-anchor="middle" font-size="8" fill="var(--ink-4)">0-100 综合评分</text>
         </svg>
       </div>
 
@@ -638,13 +639,13 @@ const lhbSorted = computed(() => {
               </linearGradient>
             </defs>
             <!-- 中性参考线(50 分) -->
-            <line x1="0" :y1="heatY(50)" x2="360" :y2="heatY(50)" stroke="#eef1f5" stroke-dasharray="4,4"/>
+            <line x1="0" :y1="heatY(50)" x2="360" :y2="heatY(50)" stroke="var(--line)" stroke-dasharray="4,4"/>
             <polygon :points="heatArea" fill="url(#heatFill)"/>
             <polyline :points="heatLine" fill="none" :stroke="heatTodayColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
             <circle v-for="(d, i) in heatDays" :key="d.day" :cx="heatX(i).toFixed(1)" :cy="heatY(d.strong).toFixed(1)" r="2.2" :fill="moodColor(d.strong)"
               :title="`${d.day} 强度 ${d.strong} · 涨停${d.zt} 连板${d.lbgd} 跌停${d.df}`"/>
             <!-- 今日点高亮 + 数值 -->
-            <circle :cx="heatX(heatDays.length - 1).toFixed(1)" :cy="heatY(heatDays[heatDays.length - 1].strong).toFixed(1)" r="5" fill="#fff" :stroke="heatTodayColor" stroke-width="2.5"/>
+            <circle :cx="heatX(heatDays.length - 1).toFixed(1)" :cy="heatY(heatDays[heatDays.length - 1].strong).toFixed(1)" r="5" fill="var(--bg-2)" :stroke="heatTodayColor" stroke-width="2.5"/>
             <text :x="heatX(heatDays.length - 1).toFixed(1)" y="10" text-anchor="middle" font-size="11" font-weight="700" :fill="heatTodayColor">{{ moodToday?.strong }}</text>
           </svg>
           <div v-else class="md-heat-empty">数据不足</div>
@@ -814,7 +815,7 @@ const lhbSorted = computed(() => {
         </div>
 
         <div class="md-summary">⚡ 打开页面时经 KPL 实时数据计算 · {{ cycleFetchedAt || '计算中' }} · 交易时段 30s 自动刷新</div>
-        <div v-if="data.cycle?.inputsEmpty" class="md-summary" style="color:#a94442;">⚠️ 行情输入为空（接口可能失败，或今日非交易日）—— 以上阶段结论不可作为依据</div>
+        <div v-if="data.cycle?.inputsEmpty" class="md-summary" style="color:var(--up);">⚠️ 行情输入为空（接口可能失败，或今日非交易日）—— 以上阶段结论不可作为依据</div>
       </div>
     </template>
 
@@ -835,7 +836,7 @@ const lhbSorted = computed(() => {
               <span class="tl-text">{{ a.text }}</span>
               <span v-if="a.bkName" class="md-badge-bk">{{ a.bkName }}</span>
               <span v-if="fmtAmt(a.je)" class="md-badge-je">{{ fmtAmt(a.je) }}</span>
-              <span v-if="isFinite(a.zdf)" class="tl-chg" :style="{ color: a.zdf >= 0 ? '#e74c3c' : '#27ae60' }">{{ pct(a.zdf) }}</span>
+              <span v-if="isFinite(a.zdf)" class="tl-chg" :style="{ color: a.zdf >= 0 ? 'var(--up)' : 'var(--down)' }">{{ pct(a.zdf) }}</span>
             </div>
           </div>
         </div>
@@ -881,9 +882,9 @@ const lhbSorted = computed(() => {
             <span class="md-lhb-name-line">{{ s.name }}<span v-if="s.joinNum" class="md-badge-jg" title="有机构席位">机构×{{ s.joinNum }}</span><span v-if="s.buyIn >= 3e8" class="md-badge-key" title="净买≥3亿">重点</span></span>
             <span class="md-lhb-sub">振幅 {{ fmt(s.amplitude) }}% · 换手 {{ fmt(s.turnoverRatio) }}%</span>
           </span>
-          <div class="md-bar-wrap"><div class="md-bar" :style="{ width: lhbBarW(s.buyIn), background: s.buyIn >= 0 ? '#e74c3c' : '#27ae60' }"></div></div>
-          <span class="md-tags mini" :style="{ color: s.buyIn >= 0 ? '#c0392b' : '#27ae60' }">{{ fmtYi(s.buyIn) }}</span>
-          <span class="md-tags mini" :style="{ color: up(s.chgPct) ? '#e74c3c' : '#27ae60' }">{{ pct(s.chgPct) }}</span>
+          <div class="md-bar-wrap"><div class="md-bar" :style="{ width: lhbBarW(s.buyIn), background: s.buyIn >= 0 ? 'var(--up)' : 'var(--down)' }"></div></div>
+          <span class="md-tags mini" :style="{ color: s.buyIn >= 0 ? 'var(--up)' : 'var(--down)' }">{{ fmtYi(s.buyIn) }}</span>
+          <span class="md-tags mini" :style="{ color: up(s.chgPct) ? 'var(--up)' : 'var(--down)' }">{{ pct(s.chgPct) }}</span>
         </div>
         <div v-if="!lhbSorted.length" class="md-empty">暂无数据</div>
       </div>
@@ -893,179 +894,179 @@ const lhbSorted = computed(() => {
 
 <style scoped>
 .md-page { padding: 4px 14px 12px; }
-.md-dayline { font-size: 11px; color: #999; margin: 0 0 10px; }
+.md-dayline { font-size: 11px; color: var(--ink-3); margin: 0 0 10px; }
 
-.md-summary { font-size: 13px; color: #333; margin: 4px 0 10px; }
-.md-hot { color: #c0392b; font-weight: 600; }
+.md-summary { font-size: 13px; color: var(--ink); margin: 4px 0 10px; }
+.md-hot { color: var(--up); font-weight: 600; }
 
 /* 紧凑行列表(风口/新高/机构) — 替代卡片, 提高信息密度 */
-.md-list { border: 1px solid #eceff3; border-radius: 10px; overflow: hidden; background: #fff; }
+.md-list { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg-2); }
 /* 列表表头: 灰底小字, 列宽与数据行对齐; 悬停显示字段含义(tooltip 由 title 提供) */
-.md-list-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 11px; color: #8e8e9a; background: #f6f8fa; border-bottom: 1px solid #eceff3; }
-.md-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.md-list-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 11px; color: var(--ink-3); background: var(--bg-3); border-bottom: 1px solid var(--line); }
+.md-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 .md-row:last-child { border-bottom: none; }
-.md-row:active { background: #f7f9fc; }
-.md-row-name { flex: 1; min-width: 0; font-size: 13px; color: #333; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-row:active { background: var(--bg-3); }
+.md-row-name { flex: 1; min-width: 0; font-size: 13px; color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .md-row-str { font-size: 12px; font-weight: 600; flex: none; }
 .md-row-chg { font-size: 12px; width: 64px; text-align: right; flex: none; }
-.md-tags { font-size: 11px; color: #999; flex: none; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.md-empty { padding: 16px 0; text-align: center; color: #999; font-size: 12px; }
+.md-tags { font-size: 11px; color: var(--ink-3); flex: none; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-empty { padding: 16px 0; text-align: center; color: var(--ink-3); font-size: 12px; }
 
 /* 含北向 switch 开关 */
 .md-switch-row { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
-.md-switch-label { font-size: 13px; font-weight: 600; color: #333; }
+.md-switch-label { font-size: 13px; font-weight: 600; color: var(--ink); }
 .md-switch { position: relative; display: inline-block; width: 38px; height: 22px; cursor: pointer; }
 .md-switch input { opacity: 0; width: 0; height: 0; }
-.md-switch-track { position: absolute; inset: 0; background: #d5dbe3; border-radius: 22px; transition: background .2s; }
-.md-switch-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: left .2s; }
-.md-switch input:checked + .md-switch-track { background: #2980b9; }
+.md-switch-track { position: absolute; inset: 0; background: var(--line-2); border-radius: 22px; transition: background .2s; }
+.md-switch-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg-2); box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: left .2s; }
+.md-switch input:checked + .md-switch-track { background: var(--accent); }
 .md-switch input:checked + .md-switch-track .md-switch-knob { left: 18px; }
-.md-switch-text { font-size: 11px; color: #999; }
+.md-switch-text { font-size: 11px; color: var(--ink-3); }
 
 /* 分组(天梯/原因/外围) */
 .md-group { margin-bottom: 12px; }
 .md-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.md-group-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 16px; background: #f0f2f5; color: #666; }
-.md-group-count { font-size: 11px; color: #999; }
-.md-group-count.md-lag { color: #e67e22; }   /* 数据滞后提示(非当天数据) */
-.md-group-body { background: #fff; border: 1px solid #eceff3; border-radius: 10px; overflow: hidden; }
-.md-stock-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
+.md-group-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 16px; background: var(--bg-3); color: var(--ink-2); }
+.md-group-count { font-size: 11px; color: var(--ink-3); }
+.md-group-count.md-lag { color: var(--accent); }   /* 数据滞后提示(非当天数据) */
+.md-group-body { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.md-stock-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--bg-3); cursor: pointer; }
 .md-stock-row:last-child { border-bottom: none; }
-.md-stock-row:active { background: #f7f9fc; }
-.md-stock-name { flex: 1; font-size: 13px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.md-stock-bk { font-size: 11px; color: #999; flex: none; }
-.md-stock-val { font-size: 12px; color: #333; width: 64px; text-align: right; flex: none; }
+.md-stock-row:active { background: var(--bg-3); }
+.md-stock-name { flex: 1; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-stock-bk { font-size: 11px; color: var(--ink-3); flex: none; }
+.md-stock-val { font-size: 12px; color: var(--ink); width: 64px; text-align: right; flex: none; }
 .md-stock-chg { font-size: 12px; width: 64px; text-align: right; flex: none; }
-.md-stock-go { color: #ccc; font-size: 14px; flex: none; }
+.md-stock-go { color: var(--ink-4); font-size: 14px; flex: none; }
 .md-stock-line1 { display: flex; align-items: center; gap: 8px; }
 .md-stock-main { flex: 1; min-width: 0; }
-.md-level { font-size: 10px; color: #c0392b; background: #fdecea; padding: 1px 6px; border-radius: 10px; flex: none; }
-.md-stock-toggle { font-size: 11px; color: #2980b9; flex: none; }
-.md-reason { font-size: 12px; color: #555; line-height: 1.7; margin: 6px 0 2px; word-break: break-word; }
+.md-level { font-size: 10px; color: var(--up); background: rgba(255,77,90,.10); padding: 1px 6px; border-radius: 10px; flex: none; }
+.md-stock-toggle { font-size: 11px; color: var(--accent); flex: none; }
+.md-reason { font-size: 12px; color: var(--ink-2); line-height: 1.7; margin: 6px 0 2px; word-break: break-word; }
 
 /* 趋势折线 */
-.md-svg-block { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.md-svg-block { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
 .md-svg { width: 100%; height: 120px; display: block; }
-.md-svg-scale { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+.md-svg-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 .md-subtabs { margin: 0 0 10px; }
 
 /* 盘面动态: 板块/标签徽标 */
-.md-badge-bk { font-size: 10px; color: #2980b9; background: #eaf6fb; padding: 1px 6px; border-radius: 10px; flex: none; }
-.md-badge-je { font-size: 10px; color: #666; background: #f0f2f5; padding: 1px 6px; border-radius: 10px; flex: none; font-variant-numeric: tabular-nums; }
+.md-badge-bk { font-size: 10px; color: var(--accent); background: var(--bg-3); padding: 1px 6px; border-radius: 10px; flex: none; }
+.md-badge-je { font-size: 10px; color: var(--ink-2); background: var(--bg-3); padding: 1px 6px; border-radius: 10px; flex: none; font-variant-numeric: tabular-nums; }
 /* 龙虎榜: 排序切换 + 机构徽标 + 振幅/换手副行 */
 .md-lhb-tools { display: flex; gap: 6px; margin: 0 0 8px; }
-.md-chip { font-size: 11px; padding: 3px 12px; border-radius: 14px; border: 1px solid #e0e4ea; background: #fff; color: #666; cursor: pointer; }
-.md-chip.on { background: #2980b9; border-color: #2980b9; color: #fff; font-weight: 600; }
+.md-chip { font-size: 11px; padding: 3px 12px; border-radius: 14px; border: 1px solid #e0e4ea; background: var(--bg-2); color: var(--ink-2); cursor: pointer; }
+.md-chip.on { background: var(--accent); border-color: var(--accent); color: var(--ink); font-weight: 600; }
 .md-row-name.stacked { display: flex; flex-direction: column; align-items: stretch; white-space: normal; overflow: visible; }
 .md-lhb-name-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.md-lhb-sub { font-size: 10px; color: #999; font-weight: 400; margin-top: 1px; font-variant-numeric: tabular-nums; }
+.md-lhb-sub { font-size: 10px; color: var(--ink-3); font-weight: 400; margin-top: 1px; font-variant-numeric: tabular-nums; }
 
 /* 龙虎榜: 机构徽标 + 窄列(5列适配) + 折叠按钮 + 情绪对比 */
-.md-badge-jg { font-size: 9px; color: #c0392b; background: #fdecea; padding: 0 4px; border-radius: 8px; margin-left: 4px; vertical-align: 1px; }
+.md-badge-jg { font-size: 9px; color: var(--up); background: rgba(255,77,90,.10); padding: 0 4px; border-radius: 8px; margin-left: 4px; vertical-align: 1px; }
 .md-tags.mini, .md-row-str.mini { max-width: none; width: 56px; text-align: right; }
-.md-live-toggle { font-size: 11px; color: #2980b9; background: none; border: none; cursor: pointer; padding: 0; }
+.md-live-toggle { font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; }
 .md-delta { font-size: 12px; font-weight: 600; margin-left: 2px; }
 
 /* 情绪仪表盘 */
-.md-gauge-block { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 6px 12px 4px; margin-bottom: 10px; }
+.md-gauge-block { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px 4px; margin-bottom: 10px; }
 .md-gauge { width: 100%; height: 128px; display: block; }
 
 /* 情绪热力色带 */
-.md-heat { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 10px 12px 6px; }
+.md-heat { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 6px; }
 .md-heat-chart { width: 100%; height: auto; display: block; }
-.md-heat-empty { font-size: 12px; color: #999; text-align: center; padding: 14px 0; }
-.md-heat-scale { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 4px; }
+.md-heat-empty { font-size: 12px; color: var(--ink-3); text-align: center; padding: 14px 0; }
+.md-heat-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 .md-heat-legend { display: flex; align-items: center; gap: 2px; margin-top: 6px; }
 .md-heat-lg { width: 14px; height: 8px; border-radius: 2px; }
-.md-heat-lg-txt { font-size: 10px; color: #999; margin-left: 6px; }
+.md-heat-lg-txt { font-size: 10px; color: var(--ink-3); margin-left: 6px; }
 
 /* 赚钱效应分布条 */
-.md-effect { background: #fff; border: 1px solid #eceff3; border-radius: 10px; padding: 12px; }
+.md-effect { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .me-bar { display: flex; gap: 2px; height: 16px; margin-bottom: 6px; }
 .me-half { display: flex; flex: 1; gap: 2px; }
 .me-seg { height: 100%; min-width: 2px; border-radius: 2px; }
-.me-seg.loss { background: #27ae60; }
-.me-seg.gain { background: #e74c3c; }
-.me-mid { width: 2px; background: #d5dbe3; margin: 0 3px; border-radius: 1px; }
-.me-legend { display: flex; justify-content: space-between; font-size: 11px; color: #999; }
-.me-ttag { color: #c0392b; font-weight: 600; }
-.me-scale { display: flex; justify-content: space-between; font-size: 10px; color: #bbb; margin-top: 3px; }
+.me-seg.loss { background: var(--down); }
+.me-seg.gain { background: var(--up); }
+.me-mid { width: 2px; background: var(--line-2); margin: 0 3px; border-radius: 1px; }
+.me-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
+.me-ttag { color: var(--up); font-weight: 600; }
+.me-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-4); margin-top: 3px; }
 
 /* 时间线(盘面动态) */
-.md-timeline { margin-left: 6px; padding-left: 18px; border-left: 2px solid #f0f0f0; }
+.md-timeline { margin-left: 6px; padding-left: 18px; border-left: 2px solid var(--bg-3); }
 .tl-item { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 7px 0; cursor: pointer; }
-.tl-item:active { background: #f7f9fc; border-radius: 6px; }
-.tl-dot { position: absolute; left: -22.5px; top: 13px; width: 9px; height: 9px; border-radius: 50%; background: #2980b9; border: 2px solid #fff; box-shadow: 0 0 0 1px #2980b9; }
-.tl-time { font-size: 10px; color: #999; flex: none; width: 34px; text-align: right; }
+.tl-item:active { background: var(--bg-3); border-radius: 6px; }
+.tl-dot { position: absolute; left: -22.5px; top: 13px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg-2); box-shadow: 0 0 0 1px var(--accent); }
+.tl-time { font-size: 10px; color: var(--ink-3); flex: none; width: 34px; text-align: right; }
 .tl-body { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-.tl-text { font-size: 13px; color: #333; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-text { font-size: 13px; color: var(--ink); line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-chg { font-size: 12px; flex: none; }
-.tl-tag { font-size: 10px; color: #c0392b; background: #fdecea; padding: 1px 6px; border-radius: 10px; flex: none; }
-.tl-bk { font-size: 10px; color: #999; flex: none; }
+.tl-tag { font-size: 10px; color: var(--up); background: rgba(255,77,90,.10); padding: 1px 6px; border-radius: 10px; flex: none; }
+.tl-bk { font-size: 10px; color: var(--ink-3); flex: none; }
 
 /* 龙虎榜: 净买条形 + 重点标记 */
 .rank-row .md-row-name { flex: none; width: 96px; }
-.md-bar-wrap { flex: 1; min-width: 40px; height: 8px; background: #f5f5f5; border-radius: 4px; overflow: hidden; }
+.md-bar-wrap { flex: 1; min-width: 40px; height: 8px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
 .md-bar { height: 100%; border-radius: 4px; }
-.md-badge-key { font-size: 9px; color: #fff; background: #c0392b; padding: 0 4px; border-radius: 8px; margin-left: 4px; }
-.md-sum-sub { font-size: 11px; color: #999; font-weight: 400; margin-left: 6px; }
+.md-badge-key { font-size: 9px; color: var(--ink); background: var(--up); padding: 0 4px; border-radius: 8px; margin-left: 4px; }
+.md-sum-sub { font-size: 11px; color: var(--ink-3); font-weight: 400; margin-left: 6px; }
 
 /* ── 我的纪律卡已下线(2026-09-07), 旧样式已移除 ── */
 
 /* ── 操作点评 ── */
-.do-item { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; border-top: 1px solid #f0f1f4; font-size: 12px; }
+.do-item { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--bg-3); font-size: 12px; }
 .do-item:first-of-type { border-top: none; }
-.do-item.v-bad { background: #fdf0ef; border-radius: 6px; }
-.do-item.v-warn { background: #fdf6ec; border-radius: 6px; }
+.do-item.v-bad { background: rgba(255,77,90,.06); border-radius: 6px; }
+.do-item.v-warn { background: rgba(224,177,92,.06); border-radius: 6px; }
 .do-time { color: #b0b6bd; font-size: 11px; flex: none; }
 .do-bs { flex: none; font-weight: 800; }
-.do-bs.b { color: #e74c3c; }
-.do-bs.s { color: #27ae60; }
-.do-name { color: #333; cursor: pointer; flex: none; }
-.do-qty { color: #666; flex: none; }
+.do-bs.b { color: var(--up); }
+.do-bs.s { color: var(--down); }
+.do-name { color: var(--ink); cursor: pointer; flex: none; }
+.do-qty { color: var(--ink-2); flex: none; }
 .do-badge { flex: none; }
-.do-msg { color: #666; min-width: 0; }
+.do-msg { color: var(--ink-2); min-width: 0; }
 .dp-anchor { font-size: 11px; color: #b0b6bd; }
-.dp-shi { font-size: 11px; font-weight: 700; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 1px 7px; }
-.dp-shi.up { color: #e74c3c; background: #fdecea; }
-.dp-shi.down { color: #27ae60; background: #eef9f1; }
-.dp-hot { font-size: 11px; color: #e67e22; font-weight: 700; }
+.dp-shi { font-size: 11px; font-weight: 700; color: var(--ink-3); background: var(--bg-3); border-radius: 6px; padding: 1px 7px; }
+.dp-shi.up { color: var(--up); background: rgba(255,77,90,.10); }
+.dp-shi.down { color: var(--down); background: var(--bg-3); }
+.dp-hot { font-size: 11px; color: var(--accent); font-weight: 700; }
 .dp-hot i { font-style: normal; font-size: 10px; margin-left: 2px; }
-.dp-hot i.up { color: #e74c3c; }
-.dp-hot i.down { color: #27ae60; }
-.bp-rbr { margin: 6px 0 2px; font-size: 13px; color: #333; }
-.rbr-stars { color: #e67e22; font-weight: 800; letter-spacing: 2px; margin: 0 6px; }
-.rbr-txt { font-size: 12px; color: #8a97a8; }
-.yj-cand { border-top: 1px solid #f0f1f4; padding: 8px 2px; }
+.dp-hot i.up { color: var(--up); }
+.dp-hot i.down { color: var(--down); }
+.bp-rbr { margin: 6px 0 2px; font-size: 13px; color: var(--ink); }
+.rbr-stars { color: var(--accent); font-weight: 800; letter-spacing: 2px; margin: 0 6px; }
+.rbr-txt { font-size: 12px; color: var(--ink-3); }
+.yj-cand { border-top: 1px solid var(--bg-3); padding: 8px 2px; }
 .yj-cand:first-of-type { border-top: none; }
 .yc-main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.yc-level { font-size: 12px; font-weight: 700; color: #5b6daa; }
-.yc-score { font-size: 12px; color: #e67e22; font-weight: 700; }
-.yc-mode { font-size: 11px; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 1px 7px; }
-.yc-status { font-size: 11px; font-weight: 700; color: #8a97a8; background: #f0f1f4; border-radius: 6px; padding: 1px 7px; }
-.yc-status.go { color: #fff; background: #e74c3c; }
-.yc-tip { font-size: 12px; color: #5b6daa; margin-top: 4px; }
-.dv-yj { margin-top: 8px; font-size: 12px; color: #8a6d3b; background: #faf6ec; border-radius: 8px; padding: 6px 10px; }
-.cy-trail { margin-top: 7px; font-size: 11px; color: #5b6daa; background: #f0f3fa; border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
-.cy-warn { margin-top: 7px; font-size: 11px; color: #b06020; background: #fff7e8; border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
-.cy-six { margin-top: 8px; font-size: 12px; color: #4a6fa5; background: #f0f5fc; border-radius: 8px; padding: 6px 10px; }
+.yc-level { font-size: 12px; font-weight: 700; color: var(--accent); }
+.yc-score { font-size: 12px; color: var(--accent); font-weight: 700; }
+.yc-mode { font-size: 11px; color: var(--ink-3); background: var(--bg-3); border-radius: 6px; padding: 1px 7px; }
+.yc-status { font-size: 11px; font-weight: 700; color: var(--ink-3); background: var(--bg-3); border-radius: 6px; padding: 1px 7px; }
+.yc-status.go { color: var(--ink); background: var(--up); }
+.yc-tip { font-size: 12px; color: var(--accent); margin-top: 4px; }
+.dv-yj { margin-top: 8px; font-size: 12px; color: var(--gold); background: rgba(224,177,92,.06); border-radius: 8px; padding: 6px 10px; }
+.cy-trail { margin-top: 7px; font-size: 11px; color: var(--accent); background: var(--bg-3); border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
+.cy-warn { margin-top: 7px; font-size: 11px; color: var(--gold); background: rgba(224,177,92,.08); border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
+.cy-six { margin-top: 8px; font-size: 12px; color: #4a6fa5; background: var(--bg-3); border-radius: 8px; padding: 6px 10px; }
 .do-verdict { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-radius: 8px; padding: 9px 10px; margin: 8px 0 4px; font-size: 13px; }
 .do-verdict b { font-size: 15px; }
-.do-verdict.g-bad { background: #fdf0ef; color: #c0392b; }
-.do-verdict.g-bad b { color: #c0392b; }
-.do-verdict.g-warn { background: #fdf6ec; color: #e67e22; }
-.do-verdict.g-ok { background: #eef9f1; color: #27ae60; }
-.do-new { font-size: 11px; font-weight: 800; color: #fff; background: #e67e22; border-radius: 6px; padding: 1px 7px; }
+.do-verdict.g-bad { background: rgba(255,77,90,.06); color: var(--up); }
+.do-verdict.g-bad b { color: var(--up); }
+.do-verdict.g-warn { background: rgba(224,177,92,.06); color: var(--accent); }
+.do-verdict.g-ok { background: var(--bg-3); color: var(--down); }
+.do-new { font-size: 11px; font-weight: 800; color: var(--ink); background: var(--accent); border-radius: 6px; padding: 1px 7px; }
 
 /* ── 今日作战指引 ── */
-.bp-top { border-left: 4px solid #e67e22; padding-left: 12px; }
-.bp-line { margin: 6px 0 2px; font-size: 14px; font-weight: 700; color: #333; }
-.bp-act { margin: 2px 0; font-size: 12px; color: #8a97a8; }
+.bp-top { border-left: 4px solid var(--accent); padding-left: 12px; }
+.bp-line { margin: 6px 0 2px; font-size: 14px; font-weight: 700; color: var(--ink); }
+.bp-act { margin: 2px 0; font-size: 12px; color: var(--ink-3); }
 .bp-lamps { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
-.bp-orders-head { font-size: 12px; font-weight: 700; color: #5b6daa; margin: 8px 0 4px; }
-.bp-order { display: flex; gap: 8px; align-items: baseline; font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #f0f1f4; cursor: pointer; }
-.bp-order b { flex: none; color: #333; min-width: 62px; }
-.bp-order span { color: #666; }
+.bp-orders-head { font-size: 12px; font-weight: 700; color: var(--accent); margin: 8px 0 4px; }
+.bp-order { display: flex; gap: 8px; align-items: baseline; font-size: 13px; padding: 4px 0; border-bottom: 1px dashed var(--bg-3); cursor: pointer; }
+.bp-order b { flex: none; color: var(--ink); min-width: 62px; }
+.bp-order span { color: var(--ink-2); }
 .bp-watch-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
 @media (max-width: 480px) {
@@ -1077,86 +1078,86 @@ const lhbSorted = computed(() => {
 
 /* 情绪周期 /market/cycle */
 .md-cycle { margin-top: 4px; }
-.cy-hero { background: #fff; border: 2px solid #e5e9f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.cy-hero { background: var(--bg-2); border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
 .cy-stage { font-size: 34px; font-weight: 800; letter-spacing: 4px; line-height: 1.2; }
-.cy-conf { font-size: 11px; color: #999; margin: 2px 0 6px; }
+.cy-conf { font-size: 11px; color: var(--ink-3); margin: 2px 0 6px; }
 .cy-reasons { margin: 0 0 8px; padding-left: 16px; }
-.cy-reasons li { font-size: 12px; color: #555; line-height: 1.7; }
-.cy-playbook { font-size: 12px; color: #b8860b; background: #fdf6e3; border-radius: 6px; padding: 6px 8px; line-height: 1.6; }
+.cy-reasons li { font-size: 12px; color: var(--ink-2); line-height: 1.7; }
+.cy-playbook { font-size: 12px; color: var(--gold); background: var(--bg-3); border-radius: 6px; padding: 6px 8px; line-height: 1.6; }
 .cy-scale { display: flex; gap: 4px; margin: 10px 0; }
-.cy-seg { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid #e5e9f0; border-radius: 6px; color: #99a; background: #f7f8fa; }
-.cy-seg.on { color: #fff; font-weight: 700; }
+.cy-seg { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid var(--line); border-radius: 6px; color: #99a; background: var(--bg-3); }
+.cy-seg.on { color: var(--ink); font-weight: 700; }
 .cy-metrics { display: flex; gap: 8px; margin: 10px 0; }
-.cy-mi { flex: 1; background: #fff; border: 1px solid #e5e9f0; border-radius: 10px; padding: 8px 6px; text-align: center; }
-.cy-mi-v { display: block; font-size: 18px; font-weight: 800; color: #2c3e50; }
-.cy-mi-l { display: block; font-size: 10px; color: #999; margin-top: 2px; }
+.cy-mi { flex: 1; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 6px; text-align: center; }
+.cy-mi-v { display: block; font-size: 18px; font-weight: 800; color: var(--ink); }
+.cy-mi-l { display: block; font-size: 10px; color: var(--ink-3); margin-top: 2px; }
 .cy-promo { display: flex; flex-direction: column; gap: 6px; }
-.cy-pi { display: flex; justify-content: space-between; align-items: center; font-size: 13px; background: #f7f8fa; border-radius: 8px; padding: 7px 10px; }
-.cy-pi b { color: #2c3e50; }
+.cy-pi { display: flex; justify-content: space-between; align-items: center; font-size: 13px; background: var(--bg-3); border-radius: 8px; padding: 7px 10px; }
+.cy-pi b { color: var(--ink); }
 .cy-matrix { display: grid; grid-template-columns: 64px repeat(3, 1fr); gap: 4px; }
-.cy-cell { background: #f7f8fa; border-radius: 8px; padding: 6px 6px; font-size: 11px; color: #666; display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
-.cy-cell.head { background: transparent; font-weight: 700; color: #2c3e50; justify-content: center; min-height: 26px; }
-.cy-cell.on { background: #2c3e50; color: #fff; }
-.cy-cell.on .cy-cell-d { color: #dfe6ee; }
+.cy-cell { background: var(--bg-3); border-radius: 8px; padding: 6px 6px; font-size: 11px; color: var(--ink-2); display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
+.cy-cell.head { background: transparent; font-weight: 700; color: var(--ink); justify-content: center; min-height: 26px; }
+.cy-cell.on { background: var(--ink); color: var(--ink); }
+.cy-cell.on .cy-cell-d { color: var(--line); }
 .cy-cell-t { font-weight: 700; }
-.cy-cell-d { font-size: 10px; line-height: 1.4; color: #888; }
-.cy-cell.on .cy-cell-d { color: #dfe6ee; }
-.cy-line { font-size: 13px; line-height: 1.7; padding: 5px 0; border-bottom: 1px dashed #eef1f5; }
-.cy-line b { color: #2c3e50; }
-.cy-names { color: #999; font-size: 11px; display: block; }
-.cy-role { color: #b8860b; font-size: 11px; }
+.cy-cell-d { font-size: 10px; line-height: 1.4; color: var(--ink-3); }
+.cy-cell.on .cy-cell-d { color: var(--line); }
+.cy-line { font-size: 13px; line-height: 1.7; padding: 5px 0; border-bottom: 1px dashed var(--line); }
+.cy-line b { color: var(--ink); }
+.cy-names { color: var(--ink-3); font-size: 11px; display: block; }
+.cy-role { color: var(--gold); font-size: 11px; }
 /* cycle 页重排: 决策区 + 分析Tab */
 .cy-hero-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.cy-gate { margin-left: auto; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #ff5a5a; color: #fff; }
+.cy-gate { margin-left: auto; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--up); color: var(--ink); }
 .cy-gate.ban { background: #9b6bde; }
 .lb-toggle { text-align: center; font-size: 12px; color: #2a7fd4; padding: 6px 0 2px; cursor: pointer; }
 .cy-tabs { margin: 10px 0 2px; }
 /* Tab 内容卡片化: 行内容不再浮在页面渐变底上 */
-.cy-pane .md-group { background: #fff; border: 1px solid #eceff3; border-radius: 12px; padding: 8px 12px 6px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
+.cy-pane .md-group { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 6px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
 .cy-pane .md-group-head { margin: 4px 0 2px; }
 .cy-pane .cy-line:last-child, .cy-pane .lb-rel:last-child { border-bottom: none; }
 .cy-pane { min-height: 120px; }
 .mt-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; }
-.mt-tab { flex-shrink: 0; border: 1px solid #e5e9f0; background: #fff; border-radius: 14px; padding: 5px 14px; font-size: 13px; color: #667; }
-.mt-tab.on { background: #2c3e50; border-color: #2c3e50; color: #fff; font-weight: 700; }
+.mt-tab { flex-shrink: 0; border: 1px solid var(--line); background: var(--bg-2); border-radius: 14px; padding: 5px 14px; font-size: 13px; color: var(--ink-3); }
+.mt-tab.on { background: var(--ink); border-color: var(--ink); color: var(--ink); font-weight: 700; }
 /* 龙头博弈 + 今日出击 /market/cycle */
-.lb-banner { border: 1px solid #e5e9f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #556; line-height: 1.6; background: #f8fafc; margin-bottom: 8px; }
-.lb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed #dfe6ee; color: #2b6cb0; }
-.lb-banned { color: #ff5a5a; font-weight: 700; }
-.lb-cand { border: 1px solid #e9edf3; border-left: 3px solid #cfd8e3; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: #fbfcfe; }
-.lb-cand.st-go { border-left-color: #ff5a5a; background: #fff5f5; }
-.lb-cand.st-alt { border-left-color: #f5a623; background: #fffbf0; }
-.lb-cand.st-watch { border-left-color: #cfd8e3; }
+.lb-banner { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--ink-3); line-height: 1.6; background: var(--bg-3); margin-bottom: 8px; }
+.lb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed var(--line); color: #2b6cb0; }
+.lb-banned { color: var(--up); font-weight: 700; }
+.lb-cand { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: var(--bg-3); }
+.lb-cand.st-go { border-left-color: var(--up); background: rgba(255,77,90,.08); }
+.lb-cand.st-alt { border-left-color: var(--gold); background: rgba(224,177,92,.06); }
+.lb-cand.st-watch { border-left-color: var(--line-2); }
 .lb-cand-top { display: flex; align-items: center; gap: 6px; }
 .lb-cand-top b { font-size: 14px; }
-.lb-lv { font-size: 11px; color: #b8860b; font-weight: 700; }
-.lb-score { margin-left: auto; font-size: 18px; font-weight: 800; color: #8a97a8; }
-.lb-score.hi { color: #ff5a5a; }
-.lb-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: #667; }
-.st-go .lb-status { background: #ff5a5a; color: #fff; }
-.st-alt .lb-status { background: #f5a623; color: #fff; }
-.lb-cand-mid { display: flex; gap: 8px; font-size: 11px; color: #778; margin: 3px 0; align-items: center; flex-wrap: wrap; }
-.lb-role { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: #fdf3e7; color: #b06020; flex: none; }
-.lb-role.feng { background: #f0f0f2; color: #999; }
-.lb-role.huo { background: #fdeaea; color: #c04848; }
+.lb-lv { font-size: 11px; color: var(--gold); font-weight: 700; }
+.lb-score { margin-left: auto; font-size: 18px; font-weight: 800; color: var(--ink-3); }
+.lb-score.hi { color: var(--up); }
+.lb-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--line); color: var(--ink-3); }
+.st-go .lb-status { background: var(--up); color: var(--ink); }
+.st-alt .lb-status { background: var(--gold); color: var(--ink); }
+.lb-cand-mid { display: flex; gap: 8px; font-size: 11px; color: var(--ink-4); margin: 3px 0; align-items: center; flex-wrap: wrap; }
+.lb-role { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 9px; background: rgba(224,177,92,.08); color: var(--gold); flex: none; }
+.lb-role.feng { background: var(--bg-3); color: var(--ink-3); }
+.lb-role.huo { background: rgba(255,77,90,.08); color: var(--up); }
 .lb-mode { color: #2bc4a8; font-weight: 700; }
-.lb-cand-logic { font-size: 12px; color: #556; }
+.lb-cand-logic { font-size: 12px; color: var(--ink-3); }
 .lb-cand-str { font-size: 11px; color: #4cd964; margin-top: 2px; }
-.lb-cand-risk { font-size: 11px; color: #ff5a5a; margin-top: 2px; }
-.lb-note { font-size: 10px; color: #a0aab8; margin-top: 4px; }
-.lb-empty { font-size: 12px; color: #999; padding: 6px 0; }
+.lb-cand-risk { font-size: 11px; color: var(--up); margin-top: 2px; }
+.lb-note { font-size: 10px; color: var(--ink-3); margin-top: 4px; }
+.lb-empty { font-size: 12px; color: var(--ink-3); padding: 6px 0; }
 .lb-tag { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 4px; margin-right: 4px; vertical-align: 1px; }
-.lb-tag.hot { background: #ff5a5a; color: #fff; }
-.lb-tag.rise { background: #e6f7ef; color: #1a9e6e; }
-.lb-tag.up { background: #e8f4ff; color: #2a7fd4; }
-.lb-tag.fade { background: #fdeeee; color: #d4574f; }
-.lb-tag.plain { background: #eef1f5; color: #667; }
+.lb-tag.hot { background: var(--up); color: var(--ink); }
+.lb-tag.rise { background: var(--bg-3); color: #1a9e6e; }
+.lb-tag.up { background: var(--bg-3); color: #2a7fd4; }
+.lb-tag.fade { background: var(--bg-3); color: #d4574f; }
+.lb-tag.plain { background: var(--line); color: var(--ink-3); }
 .lb-delta { font-size: 11px; font-weight: 700; }
-.lb-delta.up { color: #ff5a5a; }
+.lb-delta.up { color: var(--up); }
 .lb-delta.dn { color: #4cd964; }
-.lb-rel { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #eef1f5; }
-.lb-rel b { color: #2c3e50; }
-.lb-switch { color: #f5a623; font-weight: 700; }
+.lb-rel { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.lb-rel b { color: var(--ink); }
+.lb-switch { color: var(--gold); font-weight: 700; }
 .lb-link { cursor: pointer; }
-.lb-tip { display: block; font-size: 11px; color: #f5a623; margin-top: 1px; }
+.lb-tip { display: block; font-size: 11px; color: var(--gold); margin-top: 1px; }
 </style>

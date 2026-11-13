@@ -11,14 +11,14 @@ const props = defineProps({
   code: { type: String, default: '' },
 })
 
-const UP = '#e74c3c'
-const DOWN = '#27ae60'
+const UP = 'var(--up)'
+const DOWN = 'var(--down)'
 const copied = ref(false)
 const copyFailed = ref(false)
 
 const color = computed(() => {
   const c = props.crossInfo || props.quote
-  if (!c) return '#666'
+  if (!c) return 'var(--ink-2)'
   const chg = props.crossInfo ? props.crossInfo.chg : props.quote?.change
   return chg >= 0 ? UP : DOWN
 })
@@ -61,7 +61,7 @@ const srcTag = computed(() => SRC_LABEL[props.quote?.quoteSrc] || '')
       <span class="sb-chg" :style="{ color }">{{ typeof chgPct === 'number' ? (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%' : '—' }}</span>
     </div>
     <span v-if="timeText" class="sb-time">{{ timeText }}</span>
-    <span v-if="srcTag" class="sb-time" style="color:#b06020;" :title="'行情降级来源: ' + srcTag">{{ srcTag }}</span>
+    <span v-if="srcTag" class="sb-time" style="color:var(--gold);" :title="'行情降级来源: ' + srcTag">{{ srcTag }}</span>
   </div>
 </template>
 
@@ -73,18 +73,18 @@ const srcTag = computed(() => SRC_LABEL[props.quote?.quoteSrc] || '')
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #fff;
+  background: var(--bg-2);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
   padding: 6px 12px;
   margin-bottom: 4px;
 }
 .sb-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex: 1; }
-.sb-title { font-size: 14px; font-weight: 600; color: #111; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-code { color: #999; font-size: 11px; flex: none; }
-.sb-copy { border: 1px solid #e0e3e8; background: #fff; color: #2980b9; font-size: 10px; padding: 1px 7px; border-radius: 6px; cursor: pointer; flex: none; }
-.sb-copy.on { border-color: #27ae60; color: #27ae60; }
+.sb-title { font-size: 14px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-code { color: var(--ink-3); font-size: 11px; flex: none; }
+.sb-copy { border: 1px solid var(--line-2); background: var(--bg-2); color: var(--accent); font-size: 10px; padding: 1px 7px; border-radius: 6px; cursor: pointer; flex: none; }
+.sb-copy.on { border-color: var(--down); color: var(--down); }
 .sb-quote { display: flex; align-items: baseline; gap: 8px; flex: none; }
 .sb-price { font-size: 16px; font-weight: 700; }
 .sb-chg { font-size: 12px; font-weight: 600; }
-.sb-time { color: #999; font-size: 11px; flex: none; }
+.sb-time { color: var(--ink-3); font-size: 11px; flex: none; }
 </style>

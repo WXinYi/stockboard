@@ -108,13 +108,13 @@ describe('KPL 新增接口', () => {
     expect(await getLatestTradingDay()).toBe('20260924')
   })
 
-  it('getLatestTradingDay 读 core.json 必须绕开 HTTP 缓存(no-store)', async () => {
-    // 回归(2026-09-15 实测): 此处曾用默认缓存策略, 浏览器缓存里是旧 core.json(采集日 09-12 周六)
+  it('getLatestTradingDay 读 today.json 必须绕开 HTTP 缓存(no-store)', async () => {
+    // 回归(2026-09-15 实测): 此处曾用默认缓存策略, 浏览器缓存里是旧 today.json(采集日 09-12 周六)
     // → 页脚"数据截至"算成 09-11, 与其它区块(loader 走 no-store)显示的 09-15 自相矛盾。
     // 时点披露只能有一个数据源, 故锁定 no-store。
     mockFetch({ date: '2026-09-15' })
     await getLatestTradingDay()
-    const c = calls.find(x => x.url.includes('data/latest/core.json'))
+    const c = calls.find(x => x.url.includes('data/latest/today.json'))
     expect(c).toBeTruthy()
     expect(c.opts.cache).toBe('no-store')
   })

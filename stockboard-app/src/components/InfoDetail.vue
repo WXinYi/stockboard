@@ -78,13 +78,13 @@ onMounted(load)
 
 <style scoped>
 .id-page { padding: 8px 14px 16px; }
-.id-card { background: #fff; border: 1px solid #eceff3; border-radius: 12px; padding: 16px; }
-.id-title { font-size: 16px; font-weight: 600; color: #111; line-height: 1.5; margin: 0 0 12px; }
-.id-tip { font-size: 12px; color: #999; margin: 8px 0; }
-.id-err { color: #c0392b; }
-.id-retry { border: 1px solid #2980b9; color: #2980b9; background: #fff; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; margin-left: 6px; }
-.id-content { font-size: 13px; color: #444; line-height: 1.9; margin: 0 0 14px; white-space: pre-wrap; word-break: break-word; }
-.id-src { font-size: 12px; color: #2980b9; text-decoration: none; }
+.id-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.id-title { font-size: 16px; font-weight: 600; color: var(--ink); line-height: 1.5; margin: 0 0 12px; }
+.id-tip { font-size: 12px; color: var(--ink-3); margin: 8px 0; }
+.id-err { color: var(--up); }
+.id-retry { border: 1px solid var(--accent); color: var(--accent); background: var(--bg-2); font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; margin-left: 6px; }
+.id-content { font-size: 13px; color: var(--ink-2); line-height: 1.9; margin: 0 0 14px; white-space: pre-wrap; word-break: break-word; }
+.id-src { font-size: 12px; color: var(--accent); text-decoration: none; }
 @media (min-width: 768px) {
   .id-page { padding: 12px 28px 24px; }
   .id-card { padding: 20px 24px; }

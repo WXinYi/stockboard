@@ -1,0 +1,85 @@
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { useEmPlayer, requestBlock, BLOCKS, REASON } from '../useEmPlayer.js'
+
+const ok = (data = { row: 1 }) => ({ ok: true, data })
+const fail = (kind, code = kind) => ({ ok: false, kind, detail: { code, message: '' } })
+
+afterEach(() => { vi.unstubAllGlobals() })
+
+describe('useEmPlayer · emContract 硬门槛', () => {
+  it('ok=false → 0 请求，三块全部 🟡 回退', async () => {
+    const e = useEmPlayer()
+    await e.load('u1', '900456476', { ok: false })
+    expect(e.requestCount.value).toBe(0)
+    for (const b of BLOCKS) {
+      expect(e.blocks.value[b].state).toBe('stale')
+      expect(e.blocks.value[b].reason).toBe(REASON.contract)
+    }
+  })
+
+  it('缺 userId → 0 请求', async () => {
+    const e = useEmPlayer()
+    await e.load('', '900456476', { ok: true })
+    expect(e.requestCount.value).toBe(0)
+  })
+})
+
+describe('useEmPlayer · 三态与六类失败原因', () => {
+  it('三块成功 → 🟢，带 HH:MM:SS 时点', async () => {
+    const e = useEmPlayer()
+    await e.load('u1', '900456476', { ok: true }, async () => ok())
+    expect(e.requestCount.value).toBe(3)
+    for (const b of BLOCKS) {
+      expect(e.blocks.value[b].state).toBe('live')
+      expect(e.blocks.value[b].at).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+    }
+  })
+
+  const cases = [
+    ['9035', '缺少该选手 userId'],
+    ['9061', '组合已被删除'],
+    ['-1', '需登录态'],
+    ['empty', '返回空数据'],
+    ['network', '不可达'],
+  ]
+  for (const [kind, text] of cases) {
+    it(`${kind} → 🔴 且原因可见`, async () => {
+      const e = useEmPlayer()
+      await e.load('u1', '900456476', { ok: true }, async () => fail(kind))
+      expect(e.blocks.value.position.state).toBe('error')
+      expect(e.blocks.value.position.reason).toContain(text)
+      expect(e.blocks.value.position.detail.code).toBe(kind)
+    })
+  }
+
+  it('单块失败不影响其它块（独立回退）', async () => {
+    const e = useEmPlayer()
+    await e.load('u1', '900456476', { ok: true }, async (_u, _z, b) => b === 'yield' ? fail('9061') : ok())
+    expect(e.blocks.value.yield.state).toBe('error')
+    expect(e.blocks.value.position.state).toBe('live')
+    expect(e.blocks.value.trades.state).toBe('live')
+  })
+})
+
+describe('useEmPlayer · 限流', () => {
+  it('并发不超过 3', async () => {
+    let active = 0, peak = 0
+    const impl = async () => {
+      active++; peak = Math.max(peak, active)
+      await new Promise(r => setTimeout(r, 5))
+      active--
+      return ok()
+    }
+    const e = useEmPlayer()
+    await e.load('u1', '900456476', { ok: true }, impl)
+    expect(peak).toBeLessThanOrEqual(3)
+  })
+
+  it('失败最多重试 1 次（合计 2 次请求）', async () => {
+    const spy = vi.fn().mockResolvedValue({ ok: false, status: 503 })
+    vi.stubGlobal('fetch', spy)
+    const r = await requestBlock('u1', '900456476', 'position')
+    expect(spy).toHaveBeenCalledTimes(2)
+    expect(r.kind).toBe('network')
+  })
+})

@@ -155,22 +155,22 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
       <input type="text" v-model="search" placeholder="🔍 搜索选手名称..." />
     </div>
     <div class="sort-row">
-      <span style="font-size:12px;color:#888;margin-right:6px;">排序:</span>
+      <span style="font-size:12px;color:var(--ink-3);margin-right:6px;">排序:</span>
       <button v-for="s in sortPeriods" :key="s.key"
         :class="['filter-btn', { active: activePeriod === s.key }]"
         @click="setPeriod(s.key)">{{ s.label }}</button>
       <button v-if="activePeriod" class="filter-btn" @click="activePeriod = null">全部</button>
     </div>
     <div class="filter-row">
-      <span style="font-size:12px;color:#888;">筛选:</span>
+      <span style="font-size:12px;color:var(--ink-3);">筛选:</span>
       <button :class="['filter-btn', { active: qualityOn }]" @click="qualityOn = !qualityOn">高质量</button>
       <button :class="['filter-btn', { active: todayOnly && hasTodayTrades }]" @click="todayOnly = !todayOnly">今日操作</button>
-      <span v-if="!hasTodayTrades" style="font-size:11px;color:#e67e22;">非交易日，已展示最近榜单</span>
-      <span style="font-size:12px;color:#888;">上榜≥</span>
+      <span v-if="!hasTodayTrades" style="font-size:11px;color:var(--accent);">非交易日，已展示最近榜单</span>
+      <span style="font-size:12px;color:var(--ink-3);">上榜≥</span>
       <button v-for="n in [1,3,5]" :key="n"
               :class="['filter-btn', { active: minRanks === n }]"
               @click="minRanks = minRanks === n ? 0 : n">{{ n }}榜</button>
-      <span style="font-size:11px;color:#888;margin-left:auto;">{{ filteredCount }} 人</span>
+      <span style="font-size:11px;color:var(--ink-3);margin-left:auto;">{{ filteredCount }} 人</span>
     </div>
     <div class="rank-wrap" ref="rankWrap">
       <div class="rank-hscroll">
@@ -195,7 +195,7 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
             <div class="rank-row" :class="{ pinned: WATCHED.has(item.zh_id) }" @click="navigateToPlayer(item.zh_id)">
               <span class="c-rank">{{ rankMap[item.zh_id] ?? '—' }}</span>
               <span class="c-name">
-                <strong :style="{ color: WATCHED.has(item.zh_id) ? '#e67e22' : '#2980b9' }">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template><template v-else-if="isQuality(item)"> 🏅</template></strong>
+                <strong :style="{ color: WATCHED.has(item.zh_id) ? 'var(--accent)' : 'var(--accent)' }">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template><template v-else-if="isQuality(item)"> 🏅</template></strong>
                 <span v-if="tradedPlayerIds.has(item.zh_id)" class="trade-dot" title="今日有调仓"></span>
               </span>
               <span v-for="h in sortHeaders" :key="'c'+h.key" class="c-num" v-html="rankCellHtml(h.key, item[h.key])"></span>
@@ -237,12 +237,12 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 }
 .rank-head {
   flex: 0 0 auto;
-  background: rgba(255,255,255,.92);
+  background: rgba(32, 36, 44, .92);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   font-size: 11px;
   font-weight: 450;
-  color: #8e8e9a;
+  color: var(--ink-3);
   padding: 8px 0;
   border-bottom: 0.5px solid rgba(0,0,0,.045);
   letter-spacing: .02em;
@@ -266,7 +266,7 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
   height: 40px;
   font-size: 13px;
   font-weight: 400;
-  color: #1C1C1E;
+  color: var(--ink);
   cursor: pointer;
   border-bottom: 0.5px solid rgba(0,0,0,.04);
   transition: background .15s;
@@ -274,7 +274,7 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 .rank-row:hover { background: rgba(107,125,179,.04); }
 .rank-row.pinned { background: rgba(107,125,179,.025); }
 /* 固定宽度列一律 min-width:0，防止内容（如进度条+百分比文字）把列撑宽导致列与表头错位 */
-.c-rank { flex: 0 0 34px; min-width: 0; text-align: center; color: #8e8e9a; }
+.c-rank { flex: 0 0 34px; min-width: 0; text-align: center; color: var(--ink-3); }
 .c-name {
   flex: 1 1 210px;
   min-width: 210px;

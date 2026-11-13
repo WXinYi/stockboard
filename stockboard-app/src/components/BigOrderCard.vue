@@ -13,8 +13,8 @@ const props = defineProps({
 })
 
 const rows = computed(() => (Array.isArray(props.orders) ? props.orders.slice(0, 8) : []))
-const UP = '#e74c3c'
-const DOWN = '#27ae60'
+const UP = 'var(--up)'
+const DOWN = 'var(--down)'
 </script>
 
 <template>
@@ -39,14 +39,14 @@ const DOWN = '#27ae60'
 
 <style scoped>
 .bo-list { display: flex; flex-direction: column; gap: 2px; max-height: 148px; overflow-y: auto; }
-.bo-row { display: grid; grid-template-columns: 38px 1fr 22px 1fr 1fr auto; gap: 4px; align-items: center; font-size: 10px; padding: 2px 0; border-bottom: 1px solid #f7f8fa; }
+.bo-row { display: grid; grid-template-columns: 38px 1fr 22px 1fr 1fr auto; gap: 4px; align-items: center; font-size: 10px; padding: 2px 0; border-bottom: 1px solid var(--bg-3); }
 .bo-row:last-child { border-bottom: none; }
-.bo-time { color: #999; }
-.bo-px { color: #333; font-weight: 500; text-align: right; }
+.bo-time { color: var(--ink-3); }
+.bo-px { color: var(--ink); font-weight: 500; text-align: right; }
 .bo-side { font-weight: 600; text-align: center; }
-.bo-vol { color: #666; text-align: right; }
-.bo-amt { color: #555; text-align: right; }
+.bo-vol { color: var(--ink-2); text-align: right; }
+.bo-amt { color: var(--ink-2); text-align: right; }
 .bo-tag { font-size: 8px; border-radius: 6px; padding: 0 4px; flex: none; }
-.bo-tag.xl { background: #fdecea; color: #c0392b; }
-.bo-tag.md { background: #eef3ff; color: #2980b9; }
+.bo-tag.xl { background: rgba(255,77,90,.10); color: var(--up); }
+.bo-tag.md { background: var(--bg-3); color: var(--accent); }
 </style>

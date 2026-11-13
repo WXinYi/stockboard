@@ -9,12 +9,11 @@ export function useDebounce(fn, delay = 300) {
   }
 }
 
-// 页面可见性 + 定时轮询检测新采集(2026-09-13 拍板①: 自动刷新) —
-// 检测到新 crawl_time 时置 updateAvailable 并回调 onNewData(App 传 refreshData 自动应用);
-// 轮询仅在页面可见时进行, 60s 一次, 避免后台烧请求
+// R5#8：刷新探测唯一真源改为 today.json.updatedAt（index.json.crawl_time 已随 P3 删除）；
+// 09:20–09:40 的 auction.json 探测保留（竞价班独立部署，不写 today.json）。
 const AUCTION_STAMP_KEY = '__last_auction_stamp'
+const TODAY_STAMP_KEY = '__last_today_updated_at'
 
-// 北京时间 HHMM(用 en-GB + h23 避免 12/24 小时制与 locale 差异)
 function beijingHHMM() {
   try {
     const s = new Intl.DateTimeFormat('en-GB', {
@@ -32,20 +31,16 @@ export function useDataRefresh(onNewData) {
   async function check() {
     let changed = false
     try {
-      const resp = await fetch(`${import.meta.env.BASE_URL}data/index.json`, { cache: 'no-cache' })
-      const idx = await resp.json()
-      const newTime = idx.crawl_time || ''
-      const last = localStorage.getItem('__last_crawl_time')
+      const resp = await fetch(`${import.meta.env.BASE_URL}data/latest/today.json`, { cache: 'no-cache' })
+      const today = await resp.json()
+      const newTime = today.updatedAt || today.date || ''
+      const last = localStorage.getItem(TODAY_STAMP_KEY)
       if (newTime && newTime !== last) {
         if (last) changed = true   // 首次加载只记基线, 不弹横幅
-        localStorage.setItem('__last_crawl_time', newTime)
+        localStorage.setItem(TODAY_STAMP_KEY, newTime)
       }
-    } catch { /* ignore */ }
+    } catch { /* 分片缺失：交由 sliceErrors 显性化，不在此静默重试 */ }
 
-    // 2026-11-11: 竞价班 09:25 独立部署 auction.json, 不跑 export_json、不写 index.json,
-    // 因此只靠 crawl_time 探测不到竞价数据上线; AuctionTab 又被 KeepAlive 保留、只在
-    // onMounted 拉一次 → 已打开页面会一直停在昨日快照。仅在盘前关键窗口(09:20-09:40)
-    // 额外探测竞价快照, 变化即触发全局刷新(清缓存 + refreshTick, AuctionTab watch 重拉)。
     const hhmm = beijingHHMM()
     if (hhmm >= 920 && hhmm <= 940) {
       try {
@@ -82,13 +77,8 @@ export function useDataRefresh(onNewData) {
     if (timer) clearInterval(timer)
   })
 
-  function dismiss() {
-    updateAvailable.value = false
-  }
-
-  async function initCheck() {
-    await check()
-  }
+  function dismiss() { updateAvailable.value = false }
+  async function initCheck() { await check() }
 
   return { updateAvailable, dismiss, initCheck }
 }
