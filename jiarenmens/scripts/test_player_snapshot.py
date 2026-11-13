@@ -272,7 +272,13 @@ class TestSnapshot(unittest.TestCase):
         self.assertEqual(mid["players"][0]["prevClose"], {})
         self._run(ps.SNAPSHOT_CLOSE)
         close = json.loads((self.tmp / "players.json").read_text(encoding="utf-8"))
-        self.assertIn("totalReturn", close["players"][0]["prevClose"])
+        pc = close["players"][0]["prevClose"]
+        self.assertIn("totalReturn", pc)
+        # B：prevClose 契约扩展为 5 字段；月/年来自 yield 映射，不是前端臆造的 0
+        self.assertEqual(set(pc), {"totalReturn", "dailyReturn", "monthlyReturn",
+                                  "yearlyReturn", "netValue"})
+        self.assertEqual(pc["monthlyReturn"], -0.24)
+        self.assertEqual(pc["yearlyReturn"], 215.77)
 
 
 class TestGuards(unittest.TestCase):

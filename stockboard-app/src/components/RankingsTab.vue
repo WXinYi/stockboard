@@ -2,34 +2,32 @@
 import { ref, computed, inject, watch, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
-import { rankCellHtml, drawdownColor } from '../utils/format.js'
+import { rankCellHtml } from '../utils/format.js'
 import { RecycleScroller } from 'vue3-virtual-scroller'
 import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 
 const router = useRouter()
-const { sortedPlayers: sorted, playerStyles: styles, tradedPlayerIds, isQuality, watchedIds: WATCHED } = inject('stockData')
+// P3 4 契约只提供 { totalReturn, dailyReturn, monthlyReturn, yearlyReturn, netValue }。
+// 周收益 / 回撤 / 风格 / 仓位 / 运行天数 / 关注数已无数据源：相关列、排序项与筛选一并下线。
+const { sortedPlayers: sorted, tradedPlayerIds, watchedIds: WATCHED } = inject('stockData')
 
 function navigateToPlayer(id) { router.push('/player/' + id) }
 
-const qualityOn = ref(false)
 const todayOnly = ref(true)
 const search = ref('')
-const minRanks = ref(0)
 
 // 当日是否有调仓数据（非交易日 tradedPlayerIds 为空 → todayOnly 过滤自动失效，展示上一交易日全量榜单）
 const hasTodayTrades = computed(() => tradedPlayerIds.value.size > 0)
 
 const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
 
-const { sorted: sortedList, toggle: tog, indicator: ind, sortKey, sortDir } = useTableSort(allPlayers, 'weekly_return')
+const { sorted: sortedList, toggle: tog, indicator: ind, sortKey, sortDir } = useTableSort(allPlayers, 'total_return')
 
 // 应用筛选
 const displayList = computed(() => {
-  let list = [...sortedList.value]
+  const list = [...sortedList.value]
   let filtered = list.filter(p => !WATCHED.value.has(p.zh_id))
-  if (qualityOn.value) filtered = filtered.filter(isQuality)
   if (todayOnly.value && hasTodayTrades.value) filtered = filtered.filter(p => tradedPlayerIds.value.has(p.zh_id))
-  if (minRanks.value > 0) filtered = filtered.filter(p => (p.ranks || []).length >= minRanks.value)
   // 置顶选手独立（渲染时放在最前）
   const pinned = list.filter(p => WATCHED.value.has(p.zh_id))
   return { pinned, rest: filtered }
@@ -52,29 +50,13 @@ const rankMap = computed(() => {
   return map
 })
 
-function pct(v) {
-  const n = parseFloat(v)
-  if (isNaN(n)) return '—'
-  return n >= 0 ? `+${n.toFixed(2)}%` : `${n.toFixed(2)}%`
-}
-function posLabel(total) {
-  if (!total || total === 0) return '空仓'
-  if (total < 10) return '1成以下'
-  if (total < 30) return '1-3成'
-  if (total < 50) return '3-5成'
-  if (total < 70) return '5-7成'
-  if (total < 90) return '7-9成'
-  return '9成以上'
-}
-
 const sortPeriods = [
   { key: 'daily_return', label: '日' },
-  { key: 'weekly_return', label: '周' },
   { key: 'monthly_return', label: '月' },
   { key: 'yearly_return', label: '年' },
   { key: 'total_return', label: '总' },
 ]
-const activePeriod = ref('weekly_return')
+const activePeriod = ref('total_return')
 function setPeriod(key) {
   if (activePeriod.value === key) { activePeriod.value = null }
   else { activePeriod.value = key; tog(key) }
@@ -83,7 +65,7 @@ const sortHeaders = computed(() => {
   const base = activePeriod.value
     ? [{ key: activePeriod.value, label: sortPeriods.find(s => s.key === activePeriod.value).label + '收益' }]
     : sortPeriods.map(s => ({ key: s.key, label: s.label + '收益' }))
-  base.push({ key: 'net_value', label: '净值' }, { key: 'followers', label: '关注' })
+  base.push({ key: 'net_value', label: '净值' })
   return base
 })
 
@@ -118,7 +100,7 @@ onActivated(() => {
 
 // 筛选/排序/搜索变化 → 回到顶部
 watch(
-  () => [search.value, qualityOn.value, todayOnly.value, minRanks.value, sortKey.value, sortDir.value],
+  () => [search.value, todayOnly.value, sortKey.value, sortDir.value],
   () => {
     rankScroller.value?.scrollToPosition(0)
   }
@@ -163,13 +145,8 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
     </div>
     <div class="filter-row">
       <span style="font-size:12px;color:var(--ink-3);">筛选:</span>
-      <button :class="['filter-btn', { active: qualityOn }]" @click="qualityOn = !qualityOn">高质量</button>
       <button :class="['filter-btn', { active: todayOnly && hasTodayTrades }]" @click="todayOnly = !todayOnly">今日操作</button>
       <span v-if="!hasTodayTrades" style="font-size:11px;color:var(--accent);">非交易日，已展示最近榜单</span>
-      <span style="font-size:12px;color:var(--ink-3);">上榜≥</span>
-      <button v-for="n in [1,3,5]" :key="n"
-              :class="['filter-btn', { active: minRanks === n }]"
-              @click="minRanks = minRanks === n ? 0 : n">{{ n }}榜</button>
       <span style="font-size:11px;color:var(--ink-3);margin-left:auto;">{{ filteredCount }} 人</span>
     </div>
     <div class="rank-wrap" ref="rankWrap">
@@ -179,10 +156,6 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
             <span class="c-rank">#</span>
             <span class="c-name">选手</span>
             <span v-for="h in sortHeaders" :key="'h'+h.key" class="c-num sortable" @click="tog(h.key)">{{ h.label }}{{ ind(h.key) }}</span>
-            <span class="c-num sortable" @click="tog('max_drawdown')">回撤{{ ind('max_drawdown') }}</span>
-            <span class="c-style">风格</span>
-            <span class="c-pos">仓位</span>
-            <span class="c-num sortable" @click="tog('days')">运行{{ ind('days') }}</span>
           </div>
           <RecycleScroller
             ref="rankScroller"
@@ -195,17 +168,10 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
             <div class="rank-row" :class="{ pinned: WATCHED.has(item.zh_id) }" @click="navigateToPlayer(item.zh_id)">
               <span class="c-rank">{{ rankMap[item.zh_id] ?? '—' }}</span>
               <span class="c-name">
-                <strong :style="{ color: WATCHED.has(item.zh_id) ? 'var(--accent)' : 'var(--accent)' }">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template><template v-else-if="isQuality(item)"> 🏅</template></strong>
+                <strong style="color:var(--accent)">{{ item.name || item.zh_id }}<template v-if="WATCHED.has(item.zh_id)"> ⭐</template></strong>
                 <span v-if="tradedPlayerIds.has(item.zh_id)" class="trade-dot" title="今日有调仓"></span>
               </span>
               <span v-for="h in sortHeaders" :key="'c'+h.key" class="c-num" v-html="rankCellHtml(h.key, item[h.key])"></span>
-              <span class="c-num" :style="{ color: drawdownColor(item.max_drawdown) }">{{ item.max_drawdown == null ? '—' : item.max_drawdown.toFixed(1) + '%' }}</span>
-              <span class="c-style">{{ styles[item.zh_id]?.emoji || '—' }}</span>
-              <span class="c-pos">
-                <span class="progress-bar"><span class="fill" :style="{ width: (item._total_position == null ? 0 : Math.min(100, item._total_position)) + '%' }"></span></span>
-                {{ item._total_position == null ? '—' : item._total_position.toFixed(0) + '%' }}
-              </span>
-              <span class="c-num">{{ item.days == null ? '—' : item.days + '天' }}</span>
             </div>
           </RecycleScroller>
         </div>
@@ -273,7 +239,7 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
 }
 .rank-row:hover { background: rgba(107,125,179,.04); }
 .rank-row.pinned { background: rgba(107,125,179,.025); }
-/* 固定宽度列一律 min-width:0，防止内容（如进度条+百分比文字）把列撑宽导致列与表头错位 */
+/* 固定宽度列一律 min-width:0，防止内容把列撑宽导致列与表头错位 */
 .c-rank { flex: 0 0 34px; min-width: 0; text-align: center; color: var(--ink-3); }
 .c-name {
   flex: 1 1 210px;
@@ -283,23 +249,6 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
   text-overflow: ellipsis;
 }
 .c-num { flex: 0 0 72px; min-width: 0; text-align: right; padding: 0 8px; }
-.c-style { flex: 0 0 44px; min-width: 0; text-align: center; }
-.c-pos {
-  flex: 0 0 108px;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 0 8px;
-}
-/* 进度条改为弹性：占满剩余空间但不超过 60px，避免“100%”文本把列撑宽 */
-.c-pos .progress-bar {
-  flex: 1 1 0;
-  min-width: 24px;
-  max-width: 60px;
-  margin-right: 0;
-}
 .sortable { cursor: pointer; user-select: none; }
 @media (min-width: 768px) {
   /* 桌面: 无底部导航大留白, 头部更矮 → 列表更高 */
@@ -311,7 +260,5 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
   .c-rank { flex-basis: 28px; }
   .c-name { flex-basis: 150px; min-width: 150px; }
   .c-num { flex-basis: 58px; padding: 0 4px; }
-  .c-style { flex-basis: 36px; }
-  .c-pos { flex-basis: 96px; padding: 0 4px; }
 }
 </style>

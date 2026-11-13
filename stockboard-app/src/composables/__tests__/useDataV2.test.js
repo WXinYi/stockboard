@@ -15,7 +15,8 @@ const PLAYERS = {
   players: [
     {
       id: '900456476', name: '狼之行一', userId: 'u-1', watched: true,
-      prevClose: { totalReturn: 100, dailyReturn: 1.5, netValue: 2 },
+      prevClose: { totalReturn: 100, dailyReturn: 1.5, monthlyReturn: -0.24,
+                   yearlyReturn: 215.77, netValue: 2 },
       today: { updatedAt: '15:15', tradeCount: 2 },
     },
     {
@@ -82,6 +83,38 @@ describe('useDataV2 · P3 4 契约数据层', () => {
     expect(pinned[0].net_value).toBe(2)
     expect(d.playerLookup.value['900456476'].userId).toBe('u-1')
     expect([...d.watchedIds.value]).toEqual(['900456476'])
+  })
+
+  it('B: 月/年收益映射自 prevClose；周收益字段已下线', async () => {
+    const d = useDataV2()
+    await d.ensureSlices(['players'])
+    const p = d.sortedPlayers.value.pinned[0]
+    expect(p.monthly_return).toBe(-0.24)
+    expect(p.yearly_return).toBe(215.77)
+    expect('weekly_return' in p).toBe(false)
+  })
+
+  it('A: 无来源字段一律 null，禁止用 0 冒充缺失', async () => {
+    const d = useDataV2()
+    await d.ensureSlices(['players'])
+    const p = d.sortedPlayers.value.pinned[0]
+    for (const k of ['followers', 'max_drawdown', 'win_rate', 'days', 'labels',
+                     'total_position', '_total_position']) {
+      expect(p[k]).toBeNull()
+    }
+  })
+
+  it('B: prevClose 缺月/年时为 null，不臆造 0', async () => {
+    fetchPlayers.mockResolvedValue({ ...PLAYERS, players: [
+      { id: 'x', name: 'x', userId: 'u', watched: false, prevClose: {}, today: null },
+    ] })
+    const d = useDataV2()
+    await d.ensureSlices(['players'])
+    const p = d.sortedPlayers.value.rest[0]
+    expect(p.total_return).toBeNull()
+    expect(p.monthly_return).toBeNull()
+    expect(p.yearly_return).toBeNull()
+    expect(p.days).toBeNull()
   })
 
   it('stockStats 直接映射 stats（新字段 code/name，无 c/n 兼容层）', async () => {

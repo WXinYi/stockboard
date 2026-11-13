@@ -284,8 +284,14 @@ class EmClient:
         args = self._base_args(zh_id, user_id)
         data = _api_detail._call_api_new(V2_YIELD_HANDLER, args, self._tokens) or {}
         # 复用 api_detail 既有换算口径把 rtV2 净值字段适配为 prevClose 契约字段。
+        # 月/年收益沿用 api_detail 的 monthYieldRate / yearYieldRate（无 View 后缀的原始值）；
+        # 字段缺失写 None 而非 0.0 —— 不可用 0 冒充缺失（Failure ≠ Fact）。
+        month = data.get("monthYieldRate")
+        year = data.get("yearYieldRate")
         return {"totalReturn": _api_detail._pct(data.get("totalYieldRate")),
                 "dailyReturn": _api_detail._pct(data.get("dayYieldRate")),
+                "monthlyReturn": _api_detail._pct(month) if month not in (None, "") else None,
+                "yearlyReturn": _api_detail._pct(year) if year not in (None, "") else None,
                 "netValue": _api_detail._safe_float(data.get("netWorth"))}
 
     def player_position(self, zh_id, user_id):
@@ -449,6 +455,8 @@ def patch_players_today(doc, updated_at, trade_counts, yield_by_player=None,
             y = yield_by_player[player["id"]]
             player["prevClose"] = {"totalReturn": y.get("totalReturn", 0.0),
                                    "dailyReturn": y.get("dailyReturn", 0.0),
+                                   "monthlyReturn": y.get("monthlyReturn"),
+                                   "yearlyReturn": y.get("yearlyReturn"),
                                    "netValue": y.get("netValue", 0.0)}
     return doc
 
@@ -534,7 +542,8 @@ def demo_bundle(date):
     rank = {rt: [{"zjzh": z, "zhuheName": n, "userid": u} for z, n, u in sample]
             for rt in RANK_TYPES}
     all_ids = list(dict.fromkeys([z for z, _, _ in sample] + [z for z, _ in WATCHED_PLAYERS]))
-    yield_ = {z: {"totalReturn": 100.0 + i, "dailyReturn": 1.5, "netValue": 2.0}
+    yield_ = {z: {"totalReturn": 100.0 + i, "dailyReturn": 1.5,
+                  "monthlyReturn": -0.24, "yearlyReturn": 215.77, "netValue": 2.0}
               for i, z in enumerate(all_ids)}
     position = {
         "900293400": [{"code": "002086", "name": "东方海洋", "ratio": 99.0, "profit": 78.0}],
