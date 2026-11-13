@@ -19,6 +19,19 @@ on:
   repository_dispatch:
     types: [crawl, crawl-eod]
   workflow_dispatch:
+    # 盘后补数 / S5 验收：显式覆盖班次（不影响定时 job，它们仍走北京时间判定）
+    inputs:
+      force_class:
+        description: '手动覆盖班次（auto = 按北京时间判定）'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - rank
+          - midday
+          - close
+          - market
   push:
     branches: [main]
 
@@ -80,12 +93,16 @@ jobs:
 
       - name: 班次判定(单一真源)
         id: shift
+        env:
+          FORCE_CLASS: ${{ inputs.force_class || 'auto' }}
         run: |
           HHMM=$(TZ=Asia/Shanghai date +%H%M)
           H=$((10#$HHMM))
           ACTION="${{ github.event.action }}"
           EVENT="${{ github.event_name }}"
-          if [ "$ACTION" = "crawl-eod" ]; then
+          if [ "$FORCE_CLASS" != "auto" ]; then
+            CLASS="$FORCE_CLASS"   # workflow_dispatch -f force_class=rank|midday|close
+          elif [ "$ACTION" = "crawl-eod" ]; then
             CLASS=close
           elif [ "$H" -ge 925 ] && [ "$H" -le 929 ]; then
             CLASS=rank
