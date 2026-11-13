@@ -13,6 +13,11 @@ async function getJson(path) {
   return data
 }
 
+/** 只读会话内缓存：命中时复用已加载的分片，避免同一份 JSON 被多处重复 fetch。 */
+export function peekJson(path) {
+  return _cache[path] || null
+}
+
 export function clearDataCache() {
   for (const k of Object.keys(_cache)) delete _cache[k]
 }

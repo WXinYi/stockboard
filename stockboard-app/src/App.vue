@@ -97,7 +97,7 @@ const crawlDay = computed(() => (currentDate.value || '').slice(0, 10))
 onMounted(async () => {
   await loadData()          // R5#5：只等 today.json（最小分片，最早拿 emContract）
   ensureRoute()
-  initCheck()
+  initCheck({ date: currentDate.value, updatedAt: crawlTime.value })
   getLatestTradingDay().then(d => { if (d && d.length === 8) tradingDay.value = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` }).catch(() => {})
 })
 

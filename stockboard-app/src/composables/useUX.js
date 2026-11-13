@@ -14,25 +14,35 @@ export function useDebounce(fn, delay = 300) {
 const AUCTION_STAMP_KEY = '__last_auction_stamp'
 const TODAY_STAMP_KEY = '__last_today_updated_at'
 
-function beijingHHMM() {
+function beijingNow() {
   try {
-    const s = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).format(new Date())
-    const m = s.match(/(\d{2}):(\d{2})/)
-    return m ? Number(m[1]) * 100 + Number(m[2]) : -1
-  } catch { return -1 }
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Shanghai', weekday: 'short',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date()).map(x => [x.type, x.value]))
+    return { weekday: p.weekday || '', hhmm: Number(p.hour) * 100 + Number(p.minute) }
+  } catch { return { weekday: '', hhmm: -1 } }
+}
+
+// 探测窗口：北京工作日 09:00–15:30（覆盖 09:26 rank 至 15:15 eod）。
+// 收盘后/周末 today.json 不会被采集班改写，定时探测纯属无效请求。
+export function inProbeWindow(now = beijingNow()) {
+  return now.weekday !== 'Sat' && now.weekday !== 'Sun' && now.hhmm >= 900 && now.hhmm <= 1530
 }
 
 export function useDataRefresh(onNewData) {
   const updateAvailable = ref(false)
   let timer = null
 
-  async function check() {
+  async function check(snapshot = null) {
     let changed = false
     try {
-      const resp = await fetch(`${import.meta.env.BASE_URL}data/latest/today.json`, { cache: 'no-cache' })
-      const today = await resp.json()
+      // 首屏传入 loadData() 已取到的 today 快照，避免再发一次请求；定时探测才走网络。
+      let today = snapshot
+      if (!today) {
+        const resp = await fetch(`${import.meta.env.BASE_URL}data/latest/today.json`, { cache: 'no-cache' })
+        today = await resp.json()
+      }
       const newTime = today.updatedAt || today.date || ''
       const last = localStorage.getItem(TODAY_STAMP_KEY)
       if (newTime && newTime !== last) {
@@ -41,7 +51,7 @@ export function useDataRefresh(onNewData) {
       }
     } catch { /* 分片缺失：交由 sliceErrors 显性化，不在此静默重试 */ }
 
-    const hhmm = beijingHHMM()
+    const { hhmm } = beijingNow()
     if (hhmm >= 920 && hhmm <= 940) {
       try {
         const r = await fetch(`${import.meta.env.BASE_URL}data/latest/auction.json`, { cache: 'no-store' })
@@ -68,7 +78,9 @@ export function useDataRefresh(onNewData) {
   onMounted(() => {
     document.addEventListener('visibilitychange', onVisible)
     timer = setInterval(() => {
-      if (document.visibilityState === 'visible') check()
+      // 非探测窗口不轮询；切回标签页仍由 onVisible 补一次，保证新部署不会漏。
+      if (document.visibilityState !== 'visible' || !inProbeWindow()) return
+      check()
     }, 60_000)
   })
 
@@ -78,7 +90,7 @@ export function useDataRefresh(onNewData) {
   })
 
   function dismiss() { updateAvailable.value = false }
-  async function initCheck() { await check() }
+  async function initCheck(snapshot) { await check(snapshot) }
 
   return { updateAvailable, dismiss, initCheck }
 }

@@ -1,6 +1,6 @@
 // 开盘啦(KPL) 前端数据封装 —— 详情页行情/板块 + 盘面页全市场 + 详情页资讯/F10
 // 接口来源: github.com/zensu357/KPL-post 接口清单; 字段映射全部经 curl 实测(2026-08-09)
-import { fetchAuction } from '../data/loader.js'
+import { fetchAuction, peekJson } from '../data/loader.js'
 import { isTradingDay } from '../utils/tradingCalendar.js'
 
 // ---- 公共常量(与 jiarenmens/src/config.py 同款, 仓库公开, 安全) ----
@@ -72,11 +72,12 @@ export async function getLatestTradingDay() {
   }
   try {
     const BASE = import.meta.env.BASE_URL
-    // no-store: 与 data/loader.js 同口径(2026-09-13 拍板②)。此处原先用默认缓存策略, 是全站
-    // 唯一一处读数据文件走 HTTP 缓存的地方 —— Pages 的 max-age 会让它读到旧 today.json,
-    // 页脚"数据截至"就会按旧采集日回退(实测: 缓存里是 09-12 周六 → 显示 09-11),
-    // 与其他区块(走 no-store)显示的日期自相矛盾。时点披露不能有第二个数据源。
-    const j = await withTimeout(fetch(BASE + 'data/latest/today.json', { cache: 'no-store' }).then(r => r.json()))
+    // 优先复用 loader 会话缓存：首屏 loadData() 已取过 today.json，交易日回退一天内不会变，
+    // 不该被 App / MarketTab / MarketDetail 每个调用方重复请求。
+    // 未命中仍用 no-store 直读(2026-09-13 拍板②)：Pages max-age 会读到旧 today.json,
+    // 页脚"数据截至"按旧采集日回退(实测: 缓存里是 09-12 周六 → 显示 09-11), 与其它区块矛盾。
+    let j = peekJson('data/latest/today.json')
+    if (!j) j = await withTimeout(fetch(BASE + 'data/latest/today.json', { cache: 'no-store' }).then(r => r.json()))
     if (j && j.date) {
       const s = String(j.date).replace(/-/g, '')
       const d = new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))
