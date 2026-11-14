@@ -8,12 +8,14 @@ on:
     paths:
       - 'jiarenmens/**/*.py'
       - 'stockboard-app/src/**'
+      - 'scf/**'
       - '.github/workflows/test.yml'
       - 'pyproject.toml'
   pull_request:
     paths:
       - 'jiarenmens/**/*.py'
       - 'stockboard-app/src/**'
+      - 'scf/**'
       - '.github/workflows/test.yml'
   workflow_dispatch:
 
@@ -27,6 +29,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: SCF 代理单测
+        run: node --test scf/index.test.cjs --test-reporter=spec
 
       - uses: actions/setup-python@v6
         with:

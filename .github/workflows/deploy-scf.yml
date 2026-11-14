@@ -18,6 +18,10 @@ jobs:
         with:
           node-version: 20
 
+      - name: SCF 单测（部署前拦截）
+        working-directory: scf
+        run: node --test index.test.cjs --test-reporter=spec
+
       - name: Install Tencent SCF SDK
         working-directory: scf
         run: npm i --no-audit --no-fund

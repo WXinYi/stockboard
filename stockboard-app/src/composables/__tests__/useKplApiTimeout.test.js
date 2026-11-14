@@ -52,4 +52,50 @@ describe('KPL 请求超时兜底（响应体挂起不再永久 pending）', () =
     await vi.advanceTimersByTimeAsync(8000)
     await expect(p).resolves.toBeNull()
   })
+
+  it('withTimeout 的 onTimeout 只在超时触发，成功时不触发', async () => {
+    const onTimeout = vi.fn()
+    await withTimeout(Promise.resolve('ok'), 50, onTimeout)
+    expect(onTimeout).not.toHaveBeenCalled()
+    const p = withTimeout(new Promise(() => {}), 50, onTimeout)
+    const assertion = expect(p).rejects.toThrow('请求超时')
+    await vi.advanceTimersByTimeAsync(50)
+    await assertion
+    expect(onTimeout).toHaveBeenCalledTimes(1)
+  })
+
+  it('GET 超时会 abort 底层 fetch（signal 传入且被取消）', async () => {
+    let signal = null
+    vi.stubGlobal('fetch', vi.fn(async (_url, opts) => {
+      signal = opts.signal
+      return { json: () => new Promise(() => {}) }
+    }))
+    const p = fetchZhangTingGene('002594')
+    const assertion = expect(p).rejects.toThrow('请求超时')
+    await vi.advanceTimersByTimeAsync(8000)
+    await assertion
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(signal.aborted).toBe(true)
+  })
+
+  it('POST 超时同样 abort 底层 fetch，成功路径不会误取消', async () => {
+    let signal = null
+    vi.stubGlobal('fetch', vi.fn(async (_url, opts) => {
+      signal = opts.signal
+      return { json: () => new Promise(() => {}) }
+    }))
+    const p = fetchStockPankou('002594')
+    const assertion = expect(p).rejects.toThrow('请求超时')
+    await vi.advanceTimersByTimeAsync(8000)
+    await assertion
+    expect(signal.aborted).toBe(true)
+
+    signal = null
+    vi.stubGlobal('fetch', vi.fn(async (_url, opts) => {
+      signal = opts.signal
+      return { json: async () => ({ errcode: '0', List: [] }) }
+    }))
+    await fetchStockPankou('002594')
+    expect(signal.aborted).toBe(false)
+  })
 })

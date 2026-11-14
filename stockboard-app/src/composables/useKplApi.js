@@ -17,23 +17,29 @@ const HOST_SECTION = DEV_PROXY ? '/kpl-sec' : PROD_PROXY + '/kpl-sec' // 板块�
 const HOST_LHB = DEV_PROXY ? '/kpl-lhb' : PROD_PROXY + '/kpl-lhb'     // 龙虎榜
 const COMMON = { PhoneOSNew: 1, VerSion: '6.2.20.2', Red: 0, apiv: 'w47' }
 
-export function withTimeout(promise, ms = 8000) {
+// onTimeout 可选：超时除了让调用方 reject，还要能主动取消底层请求。
+// 只做 Promise.race 是「不等了」，fetch 连接/响应体仍挂在后台（与 SCF 侧同源问题）。
+export function withTimeout(promise, ms = 8000, onTimeout = null) {
   let timer
   const timeout = new Promise((_, rej) => {
-    timer = setTimeout(() => rej(new Error('请求超时')), ms)
+    timer = setTimeout(() => {
+      if (typeof onTimeout === 'function') onTimeout()
+      rej(new Error('请求超时'))
+    }, ms)
   })
   // 成功/失败都清掉定时器，避免 8s 悬挂占用事件循环。
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
-// 超时必须覆盖「等响应头 + 读响应体」整条链：上游挂起时 resp.json() 会永久 pending，
-// 旧实现只包住 fetch()，body 不返回就永远不触发超时。
+// 超时必须覆盖「等响应头 + 读响应体」整条链：上游挂起时 resp.json() 会永久 pending。
+// AbortController 让真实 fetch 在超时时连 body 一起断开；mock 环境仍靠 Promise.race 兜底。
 async function requestJson(makeFetch, silent, label) {
+  const ctrl = new AbortController()
   try {
     return await withTimeout((async () => {
-      const resp = await makeFetch()
+      const resp = await makeFetch(ctrl.signal)
       return resp.json()
-    })())
+    })(), 8000, () => ctrl.abort())
   } catch (e) {
     if (!silent) console.error('[KPL]', label, e?.message)
     if (silent) return null
@@ -43,15 +49,16 @@ async function requestJson(makeFetch, silent, label) {
 
 // POST form-urlencoded; silent=true 失败返回 null 不抛(轮询静默模式)
 function postForm(url, params, silent) {
-  return requestJson(() => fetch(url, {
+  return requestJson(signal => fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
     body: new URLSearchParams(params).toString(),
+    signal,
   }), silent, params.a || url)
 }
 
 function getJson(url, silent) {
-  return requestJson(() => fetch(url), silent, url)
+  return requestJson(signal => fetch(url, { signal }), silent, url)
 }
 
 // ---- 交易时段判定: 周一至五 09:30-11:30 / 13:00-15:00 (本地时间) ----
@@ -84,7 +91,12 @@ export async function getLatestTradingDay() {
     // 未命中仍用 no-store 直读(2026-09-13 拍板②)：Pages max-age 会读到旧 today.json,
     // 页脚"数据截至"按旧采集日回退(实测: 缓存里是 09-12 周六 → 显示 09-11), 与其它区块矛盾。
     let j = peekJson('data/latest/today.json')
-    if (!j) j = await withTimeout(fetch(BASE + 'data/latest/today.json', { cache: 'no-store' }).then(r => r.json()))
+    if (!j) {
+      const ctrl = new AbortController()
+      j = await withTimeout(
+        fetch(BASE + 'data/latest/today.json', { cache: 'no-store', signal: ctrl.signal }).then(r => r.json()),
+        8000, () => ctrl.abort())
+    }
     if (j && j.date) {
       const s = String(j.date).replace(/-/g, '')
       const d = new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))

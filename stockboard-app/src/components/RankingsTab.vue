@@ -3,6 +3,7 @@ import { ref, computed, inject, watch, nextTick, onMounted, onUnmounted, onActiv
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { rankCellHtml } from '../utils/format.js'
+import { clearDataCache } from '../data/loader.js'
 import { RecycleScroller } from 'vue3-virtual-scroller'
 import 'vue3-virtual-scroller/dist/vue3-virtual-scroller.css'
 
@@ -23,26 +24,6 @@ const search = ref('')
 const hasTodayTrades = computed(() => tradedPlayerIds.value.size > 0)
 
 const allPlayers = computed(() => [...sorted.value.pinned, ...sorted.value.rest])
-
-// ── 榜单三态：加载中 / 分片失败可重试 / 数据为空 ──
-// Failure ≠ Fact：拉不到 players 分片时不能让空表格冒充「今日无人操作」，
-// 也不能把缺失收益显示成 +0.00%。三态各自显式，且失败/空态都给重试入口。
-const retrying = ref(false)
-const rankState = computed(() => {
-  if (retrying.value || loading.value.players) return 'loading'
-  if (sliceErrors.value.players || sliceErrors.value.today) return 'error'
-  if (sliceLoaded.value.players && !allPlayers.value.length) return 'empty'
-  return 'ok'
-})
-
-async function retry() {
-  if (retrying.value) return
-  retrying.value = true
-  try {
-    await ensureSlices(['players', 'today'])
-  } catch { /* ensureSlices 已在 sliceErrors 中标记失败原因 */ }
-  finally { retrying.value = false }
-}
 
 const { sorted: sortedList, toggle: tog, indicator: ind, sortKey, sortDir } = useTableSort(allPlayers, 'total_return')
 
@@ -65,6 +46,35 @@ const searchList = computed(() => {
   if (q) l = l.filter(p => (p.name + '' + p.zh_id).toLowerCase().includes(q))
   return l
 })
+
+// ── 榜单四态：加载中 / 分片失败可重试 / 数据为空 / 筛选后为空 ──
+// Failure ≠ Fact：拉不到 players 分片时不能让空表格冒充「今日无人操作」，
+// 也不能把缺失收益显示成 +0.00%。各态显式，失败/空态都给恢复入口。
+// 放在 searchList 之后：筛选把行筛成 0 时同样是「空」，不该露出空表头 + 0 行。
+const retrying = ref(false)
+const rankState = computed(() => {
+  if (retrying.value || loading.value.players) return 'loading'
+  if (sliceErrors.value.players || sliceErrors.value.today) return 'error'
+  if (sliceLoaded.value.players && !allPlayers.value.length) return 'empty'
+  if (!searchList.value.length) return 'filtered'
+  return 'ok'
+})
+
+async function retry() {
+  if (retrying.value) return
+  retrying.value = true
+  // 清会话内缓存，避免重试复用同一份数据；已成功加载的分片按 ensureSlices 语义不重拉。
+  clearDataCache()
+  try {
+    await ensureSlices(['players', 'today'])
+  } catch { /* ensureSlices 已在 sliceErrors 中标记失败原因 */ }
+  finally { retrying.value = false }
+}
+
+function clearFilters() {
+  search.value = ''
+  todayOnly.value = false
+}
 
 // 排名映射
 const rankMap = computed(() => {
@@ -146,7 +156,7 @@ function syncColWidth() {
   })
 }
 watch(activePeriod, syncColWidth)  // 列数变化（如切"全部"）时重算
-watch(rankState, s => { if (s === 'ok') syncColWidth() })  // 三态切回榜单时表头才存在，需重算列宽
+watch(rankState, s => { if (s === 'ok') syncColWidth() })  // 非榜单态切回时表头才存在，需重算列宽
 function onWindowResize() { syncColWidth() }  // 断点切换（移动↔桌面）列宽变化
 onMounted(() => {
   syncColWidth()
@@ -188,6 +198,11 @@ onUnmounted(() => window.removeEventListener('resize', onWindowResize))
         <p class="rank-state-title">暂无选手数据</p>
         <p class="rank-state-sub">当前快照没有榜单记录；若刚完成采集，可重试刷新。</p>
         <button class="filter-btn rank-retry" @click="retry()">重试</button>
+      </div>
+      <div v-else-if="rankState === 'filtered'" class="rank-state" data-state="filtered">
+        <p class="rank-state-title">筛选后没有选手</p>
+        <p class="rank-state-sub">当前搜索词或「今日操作」条件没有匹配记录，清除筛选即可查看全量榜单。</p>
+        <button class="filter-btn rank-retry" @click="clearFilters()">清除筛选</button>
       </div>
       <div v-else class="rank-hscroll">
         <div class="rank-cols">

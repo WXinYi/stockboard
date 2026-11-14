@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { computed, ref, defineComponent, h } from 'vue'
 import RankingsTab from '../RankingsTab.vue'
+import { clearDataCache } from '../../data/loader.js'
 
+vi.mock('../../data/loader.js', () => ({ clearDataCache: vi.fn() }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
   onBeforeRouteLeave: vi.fn(),
@@ -157,5 +159,43 @@ describe('RankingsTab · 三态改造不破坏排序/筛选', () => {
     await flushPromises()
     expect(w.findAll('.rank-row')).toHaveLength(1)
     expect(w.text()).toContain('未关注')
+  })
+})
+
+describe('RankingsTab · 筛选后空态与重试缓存', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('搜索无匹配：显式空态，清除筛选后榜单恢复', async () => {
+    const w = mountRank(makeStockData())
+    await flushPromises()
+    await w.find('.search-box input').setValue('不存在的选手')
+    await flushPromises()
+    expect(w.find('[data-state="filtered"]').exists()).toBe(true)
+    expect(w.text()).toContain('筛选后没有选手')
+    expect(w.find('.rank-head').exists()).toBe(false)
+
+    await w.find('.rank-retry').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-state]').exists()).toBe(false)
+    expect(w.findAll('.rank-row')).toHaveLength(2)
+  })
+
+  it('「今日操作」条件把行筛光：同样是显式空态而不是空表格', async () => {
+    const w = mountRank(makeStockData({
+      watchedIds: computed(() => new Set()),
+      tradedPlayerIds: computed(() => new Set(['999999999'])),
+    }))
+    await flushPromises()
+    expect(w.find('[data-state="filtered"]').exists()).toBe(true)
+  })
+
+  it('重试会清掉 loader 会话缓存并重拉两个分片', async () => {
+    const data = makeStockData({ sliceErrors: ref({ players: true }) })
+    const w = mountRank(data)
+    await flushPromises()
+    await w.find('.rank-retry').trigger('click')
+    await flushPromises()
+    expect(clearDataCache).toHaveBeenCalledTimes(1)
+    expect(data.ensureSlices).toHaveBeenCalledWith(['players', 'today'])
   })
 })
