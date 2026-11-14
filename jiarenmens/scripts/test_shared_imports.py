@@ -31,9 +31,10 @@ class TestSharedModules(unittest.TestCase):
 
     def test_watched_players_single_source(self):
         from src.config.watched import WATCHED, WATCHED_PLAYERS
-        self.assertEqual(len(WATCHED_PLAYERS), 10)
-        self.assertEqual(len(WATCHED), 10)
+        self.assertEqual(len(WATCHED_PLAYERS), 9)              # 2026-11-14 移出 900438148
+        self.assertEqual(len(WATCHED), len(WATCHED_PLAYERS))
         self.assertEqual(WATCHED_PLAYERS[0][0], "900456476")   # 顺序 = 置顶顺序
+        self.assertNotIn("900438148", WATCHED)
 
     def test_quotes_and_state(self):
         from src.notify.quotes import fetch_quotes, tencent_auction_amt

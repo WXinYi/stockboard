@@ -4,7 +4,7 @@
 本文件不修改任何实现源码。用 --demo / 临时 SQLite 离线通道在 /tmp 复现完整时序
 （09:26 榜单 → 哨兵 → 11:30 → 15:15 → --market-only），再对落盘 JSON 做严格断言：
   * exact 必填字段集合（不是 assertIn）；
-  * 每个 players[].userId 非空、恰好 10 条 watched=true、prevClose/today 存在；
+  * 每个 players[].userId 非空、watched 条数与名单真源精确一致、prevClose/today 存在；
   * stocks.json snapshot∈{1130,close}、stats 精确字段、全文无 qh/qtp/qap；
   * today.json.emContract 恰好 {ok,checkedAt}；
   * 禁止字段白名单（token / HIDDEN_UIDS / hidden）；
@@ -97,13 +97,14 @@ class TestExactContractFields(unittest.TestCase):
             self.assertTrue(p["userId"], f"{p['id']} userId 为空（AQ5=A 禁止）")
             self.assertIsInstance(p["watched"], bool)
 
-    def test_恰好10条watched_true_其余全false(self):
+    def test_watched_true_与名单精确一致_其余全false(self):
         doc = self.load("players.json")
         watched = [p for p in doc["players"] if p["watched"] is True]
-        self.assertEqual(len(watched), 10, "恰好 10 条 watched=true（不多不少）")
+        n = len(ps.WATCHED_PLAYERS)
+        self.assertEqual(len(watched), n, "watched=true 条数须与 WATCHED_PLAYERS 一致")
         self.assertEqual({p["id"] for p in watched},
-                         {zh for zh, _ in ps.WATCHED_PLAYERS}, "10 人名单精确匹配")
-        self.assertEqual(sum(1 for p in doc["players"] if p["watched"]), 10)
+                         {zh for zh, _ in ps.WATCHED_PLAYERS}, "关注名单精确匹配")
+        self.assertEqual(sum(1 for p in doc["players"] if p["watched"]), n)
         non_watched = [p for p in doc["players"] if not p["watched"]]
         self.assertTrue(all(p["watched"] is False for p in non_watched))
 

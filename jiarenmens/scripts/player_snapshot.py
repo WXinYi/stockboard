@@ -62,12 +62,12 @@ V2_YIELD_HANDLER = "combination_yield_detail_handler"
 V2_POSITION_HANDLER = "CombinationHoldPositionPermitHandler"
 V2_TRADES_HANDLER = "CombinationRelocatePositionHandler"
 
-# 10 名特别关注选手（顺序 = 置顶顺序；语义同 main.py:46-57）。
-# S1 内联只读快照：本 Sprint 禁止修改既有文件、禁止 R1 迁移；S2 由
-# src/config/watched.py 作为单一真源接管（AQ2=A / Commit-R1）。
+# 9 名特别关注选手（顺序 = 置顶顺序；语义同 main.py:46-57）。
+# ⚠️ 本副本必须与 src/config/watched.py（AQ2=A 单一真源）逐项一致：cmd_rank 的
+# force_insert_watched 用的是这份，改名单时两处都要改，否则下一班会把移出者重新插回。
 WATCHED_PLAYERS = [
     ("900456476", "狼之行一"), ("900351276", "新生代柚子04"),
-    ("900240956", "股得猫咛"), ("900438148", "我嘚财富"),
+    ("900240956", "股得猫咛"),
     ("900376763", "东之福气娟子"), ("900439290", "再也不硬抗了"),
     ("900461598", "大道可寻"), ("900293400", "月儿兰"),
     ("900458047", "点火的佩斯"), ("900455448", "捏盘冲升"),
@@ -370,7 +370,7 @@ def dedupe_rank_rows(rows_by_type):
 
 
 def force_insert_watched(players_map):
-    """10 名 WATCHED_PLAYERS **无条件强制插入**（无论在不在首班榜内），watched=True。
+    """9 名 WATCHED_PLAYERS **无条件强制插入**（无论在不在首班榜内），watched=True。
 
     榜内者沿用其 ``userid``（AQ5=A 主路径）；榜外者取已知公开 userId 静态常量
     （同 ``api_detail.NEW_USER_IDS``，**0 额外请求**）。这不是 AQ5=A 禁止的条件

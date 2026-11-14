@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Story 1.1/1.2/1.3 单测：--rank/--midday/--close 契约（AQ5=A / 75 次 / D3 / 灰度开关）。
 
-覆盖：userId 非空且硬连线自 userid、10 人 watched 强制插入、恰好 75 次榜单分页、
+覆盖：userId 非空且硬连线自 userid、名单内 watched 强制插入、恰好 75 次榜单分页、
 snapshot 枚举、全量 h/tp/ap 无 quality、调仓固定 1 页当日过滤、并集/sticky carry-forward、
 SB_DATA_V2=0 no-op、拒绝线上路径。
 运行: python3 scripts/test_player_snapshot.py
@@ -32,7 +32,7 @@ def client():
 def bundle_with_n_players(n, date):
     """构造恰好 n 名选手的离线 bundle（K1 真实调用计数用）。
 
-    10 名 watched 内嵌于榜单，5 榜各 <= 300 行且互不重叠：``cmd_rank`` 75 次
+    名单内 watched 内嵌于榜单，5 榜各 <= 300 行且互不重叠：``cmd_rank`` 75 次
     分页全量取回、``dedupe_rank_rows`` 去重后恰为 n 人，``force_insert_watched``
     不再新增（watched 已在榜内），故 players.json 恰 n 人 → 每人调用数可精确断言。
     """
@@ -100,11 +100,11 @@ class TestRank(unittest.TestCase):
         self.assertEqual(by["900293400"]["userId"], "6838395742604432")
         self.assertEqual(c.rank_calls(), 75, "不得有逐人补解析调用")
 
-    def test_10人watched_无条件强制插入_含榜外者(self):
+    def test_watched_无条件强制插入_含榜外者(self):
         c = client()
         doc = ps.cmd_rank(self.tmp, c, DATE, 300)
         watched = [p for p in doc["players"] if p["watched"]]
-        self.assertEqual(len(watched), 10, "恰好 10 条 watched=true")
+        self.assertEqual(len(watched), len(ps.WATCHED_PLAYERS), "watched=true 条数须与名单一致")
         ids = {p["id"] for p in doc["players"]}
         for zh_id, _ in ps.WATCHED_PLAYERS:
             self.assertIn(zh_id, ids, f"{zh_id} 无论是否入榜都必须插入")

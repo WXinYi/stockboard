@@ -15,7 +15,7 @@ import { fetchPlayers, fetchStocks, fetchToday } from '../data/loader.js'
 
 // 仅当 players.json 的 watched 全缺失时兜底（正常路径永远是数据里的 watched=true）
 const FALLBACK_WATCHED = new Set([
-  '900456476', '900351276', '900240956', '900438148', '900376763',
+  '900456476', '900351276', '900240956', '900376763',
   '900439290', '900461598', '900293400', '900458047', '900455448',
 ])
 

@@ -215,7 +215,7 @@ class TestBuildMessage(unittest.TestCase):
         data = {"900456476": {"name": "狼之行一", "ok": True, "trades": [t_a], "positions": []},
                 "900458047": {"name": "点火的佩斯", "ok": True, "trades": [t_b], "positions": []},
                 "900240956": {"name": "股得猫咛", "ok": True, "trades": [], "positions": []},
-                "900438148": {"name": "我嘚财富", "hidden": True}}
+                "900439290": {"name": "再也不硬抗了", "hidden": True}}
         new_mark = {"900456476": {id(t_a): False}}   # 只有甲有本轮新增
         msg = watchdog.build_message("2026-09-18", "10:00", data, new_mark, {})
         lines = msg.splitlines()
@@ -226,19 +226,20 @@ class TestBuildMessage(unittest.TestCase):
         self.assertNotIn("🆕", lines[i_b], "无新增的选手不标 🆕")
         self.assertTrue(any("🆕" in l and "买入" in l for l in lines[i_a:i_b]))
         self.assertTrue(any("💤 今日暂无操作" in l and "股得猫咛" in l for l in lines))
-        self.assertTrue(any("🔇 隐藏号今日暂无操作" in l and "我嘚财富" in l for l in lines))
+        self.assertTrue(any("🔇 隐藏号今日暂无操作" in l and "再也不硬抗了" in l for l in lines))
 
     def test_hidden_player_with_trades_renders(self):
         """隐藏号调仓走流水通道(2026-11-07): 有当日操作时正常出卡带 🔇 角标,
         不进"暂无操作"脚注; 无 positions 也不叠页。"""
         t_h = {"stock_code": "600838", "stock_name": "上海九百", "direction": "买入",
                "trades_count": 1, "position_ratio": "9成以上", "price": 12.06}
-        data = {"900438148": {"name": "我嘚财富", "hidden": True, "ok": True, "trades": [t_h]},
+        # 隐藏号样例改用仍在名单中的 900439290（900438148 于 2026-11-14 由用户移出关注名单）
+        data = {"900439290": {"name": "再也不硬抗了", "hidden": True, "ok": True, "trades": [t_h]},
                 "900240956": {"name": "股得猫咛", "ok": True, "trades": [], "positions": []}}
-        new_mark = {"900438148": {id(t_h): False}}
+        new_mark = {"900439290": {id(t_h): False}}
         msg = watchdog.build_message("2026-11-07", "10:00", data, new_mark, {})
         lines = msg.splitlines()
-        i_h = next(i for i, l in enumerate(lines) if "我嘚财富" in l)
+        i_h = next(i for i, l in enumerate(lines) if "再也不硬抗了" in l)
         self.assertIn("🔇", lines[i_h], "隐藏号出卡带 🔇 角标")
         self.assertIn("🆕", lines[i_h])
         self.assertTrue(any("买入" in l and "上海九百" in l for l in lines[i_h:i_h+3]))

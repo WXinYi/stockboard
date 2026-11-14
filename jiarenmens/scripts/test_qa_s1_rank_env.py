@@ -107,7 +107,7 @@ class TestAq5HardwiredNoFallback(unittest.TestCase):
         self.assertEqual(client.rank_calls(), 75, "0 额外补解析请求")
 
     def test_大规模榜单_每行userId非空且逐行可追溯(self):
-        """5 榜各 60 行 + 10 人 watched 强制插入 → 70 人，逐行 userId 可追溯、无缺失。"""
+        """5 榜各 60 行 + 名单内 watched 强制插入 → 60+N 人，逐行 userId 可追溯、无缺失。"""
         rows = [{"zjzh": f"9001{i:05d}", "zhuheName": f"选手{i}",
                  "userid": f"UID{i:06d}"} for i in range(60)]
         bundle = {"rank": {rt: list(rows) for rt in ps.RANK_TYPES},
@@ -115,7 +115,8 @@ class TestAq5HardwiredNoFallback(unittest.TestCase):
         client = ps.FixtureClient.from_data(bundle)
         doc = ps.cmd_rank(self.out, client, DATE, 300)
         players = doc["players"]
-        self.assertEqual(len(players), 70, "60 去重 + 10 榜外 watched")
+        n = len(ps.WATCHED_PLAYERS)
+        self.assertEqual(len(players), 60 + n, "60 去重 + N 榜外 watched")
         by = {p["id"]: p for p in players}
         for r in rows:
             self.assertEqual(by[r["zjzh"]]["userId"], r["userid"])
@@ -123,7 +124,7 @@ class TestAq5HardwiredNoFallback(unittest.TestCase):
             self.assertFalse(by[r["zjzh"]]["watched"])
         for p in players:
             self.assertTrue(p["userId"], f"{p['id']} 缺 userId")
-        self.assertEqual(sum(1 for p in players if p["watched"]), 10)
+        self.assertEqual(sum(1 for p in players if p["watched"]), n)
         self.assertEqual(client.rank_calls(), 75)
 
     def test_缺userid键_显式抛错_不静默填空(self):
