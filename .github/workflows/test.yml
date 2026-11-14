@@ -35,7 +35,8 @@ jobs:
           node-version: 20
 
       - name: SCF 代理单测
-        run: node --test scf/index.test.cjs --test-reporter=spec
+        # Node 20 的 --test 会把文件之后的位置参数当成测试文件；reporter 参数一律不放。
+        run: node --test scf/index.test.cjs
 
       - uses: actions/setup-python@v6
         with:

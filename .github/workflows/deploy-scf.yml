@@ -20,7 +20,8 @@ jobs:
 
       - name: SCF 单测（部署前拦截）
         working-directory: scf
-        run: node --test index.test.cjs --test-reporter=spec
+        # 与 test.yml 同款：Node 20 下不要把 --test-reporter 放在测试文件之后。
+        run: node --test index.test.cjs
 
       - name: Install Tencent SCF SDK
         working-directory: scf
