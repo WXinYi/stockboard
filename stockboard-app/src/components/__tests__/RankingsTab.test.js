@@ -198,4 +198,40 @@ describe('RankingsTab · 筛选后空态与重试缓存', () => {
     expect(clearDataCache).toHaveBeenCalledTimes(1)
     expect(data.ensureSlices).toHaveBeenCalledWith(['players', 'today'])
   })
+
+  // MN-02a: retrying → loading 分支此前一闪而过、没有断言；重试期间不应露出空表头或可重复点击
+  it('重试进行中显示 loading 态并防重复点击', async () => {
+    let resolveRetry
+    const ensureSlices = vi.fn(() => new Promise(r => { resolveRetry = r }))
+    const data = makeStockData({ sliceErrors: ref({ players: true }), ensureSlices })
+    const w = mountRank(data)
+    await flushPromises()
+    expect(w.find('[data-state="error"]').exists()).toBe(true)
+
+    await w.find('.rank-retry').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-state="loading"]').exists()).toBe(true)
+    expect(w.find('.rank-head').exists()).toBe(false)
+    expect(w.find('.rank-retry').exists()).toBe(false)
+    expect(ensureSlices).toHaveBeenCalledTimes(1)
+
+    resolveRetry()
+    await flushPromises()
+    expect(w.find('[data-state="error"]').exists()).toBe(true)  // 错误标记未清 → 不假装成功
+  })
+
+  // MN-02b: clearFilters() 同时清 search 与 todayOnly，此前只覆盖了 search
+  it('「今日操作」筛光后点清除筛选 → todayOnly 恢复、全量榜单回来', async () => {
+    const w = mountRank(makeStockData({
+      watchedIds: computed(() => new Set()),
+      tradedPlayerIds: computed(() => new Set(['999999999'])),
+    }))
+    await flushPromises()
+    expect(w.find('[data-state="filtered"]').exists()).toBe(true)
+
+    await w.find('.rank-retry').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-state]').exists()).toBe(false)
+    expect(w.findAll('.rank-row')).toHaveLength(2)
+  })
 })

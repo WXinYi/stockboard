@@ -42,6 +42,9 @@ concurrency:
 jobs:
   crawl:
     runs-on: ubuntu-24.04
+    # GitHub 默认 job 超时 360 分钟；盘后 --close 串行 4002 次请求曾挂起 46 分钟被人工取消。
+    # 历史最长真实班次 24.4 分钟(EOD 专班) → 60 分钟留约 2.5x 余量，挂死自动止损且会触发 alert-on-failure。
+    timeout-minutes: 60
     permissions:
       contents: write
 

@@ -270,4 +270,32 @@ describe('PlayerDetail · Failure ≠ Fact：今日操作状态语义', () => {
     expect(today.text()).toContain('贵州茅台')
     expect(w.text()).not.toContain('第 1 页明细')
   })
+
+  // MN-03a: 数据时点未知必须说「无法判定」，不能把 Failure 说成「今日无操作」
+  it('currentDate 为空 → 显示 no-date，不谎称今日无操作', async () => {
+    vi.stubGlobal('fetch', stubFetch(false, { pages: [], totalCount: 0, totalPages: 1, pageIndex: 1 }))
+    const w = mountDetail({ currentDate: computed(() => '') })
+    await flushPromises()
+    expect(w.find('[data-today="no-date"]').exists()).toBe(true)
+    expect(w.text()).toContain('数据时点未知，无法判定今日操作')
+    expect(w.text()).not.toContain('今日暂无调仓记录')
+    expect(w.text()).not.toContain('今日是否有操作无法确认')
+  })
+
+  // MN-03b: 实时请求未开始/进行中（blocks 仍 idle）应显示「请求中」而非「无操作」
+  it('实时接口未返回（idle）→ 显示 pending，不谎称今日无操作', async () => {
+    const data = provideStockData()
+    data.playerLookup = computed(() => ({
+      '900438148': { zh_id: '900438148', id: '900438148', name: '我嘚财富',
+                     userId: '', watched: false,
+                     total_return: null, daily_return: null, net_value: null, today: null },
+    }))
+    const w = mount(PlayerDetail, {
+      global: { provide: { stockData: data, refreshTick: ref(0) } },
+    })
+    await flushPromises()
+    expect(w.find('[data-today="pending"]').exists()).toBe(true)
+    expect(w.text()).toContain('实时调仓请求中')
+    expect(w.text()).not.toContain('今日暂无调仓记录')
+  })
 })

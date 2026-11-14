@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { withTimeout, fetchZhangTingGene, fetchStockPankou } from '../useKplApi.js'
+import { withTimeout, fetchZhangTingGene, fetchStockPankou, getLatestTradingDay } from '../useKplApi.js'
 
 describe('KPL 请求超时兜底（响应体挂起不再永久 pending）', () => {
   beforeEach(() => {
@@ -97,5 +97,21 @@ describe('KPL 请求超时兜底（响应体挂起不再永久 pending）', () =
     }))
     await fetchStockPankou('002594')
     expect(signal.aborted).toBe(false)
+  })
+
+  // MN-01: getLatestTradingDay() 的 no-store 直读路径此前只断言 cache / 日期回退，
+  // 没锁定「8s 超时必须 abort 底层 fetch 并回退到最近交易日」。
+  it('getLatestTradingDay 直读挂起 → 8s 超时 abort 且回退到最近交易日', async () => {
+    vi.setSystemTime(new Date(2026, 10, 15, 10, 0, 0))   // 2026-11-15 周日（本地时间，避免时区漂移）
+    let signal = null
+    vi.stubGlobal('fetch', vi.fn((_url, opts) => {
+      signal = opts.signal
+      return new Promise(() => {})                       // 永不 resolve
+    }))
+    const p = getLatestTradingDay()
+    await vi.advanceTimersByTimeAsync(8000)
+    await expect(p).resolves.toBe('20261113')            // 周日回退到周五
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(signal.aborted).toBe(true)
   })
 })
