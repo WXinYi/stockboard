@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from src.config.watched import WATCHED_PLAYERS  # noqa: E402  (AQ2=A 单一真源)
 from src.utils.atomic import _atomic_json  # noqa: E402  (F6 原子写)
 from src.spiders.api_detail import NEW_USER_IDS as WATCHED_USER_IDS  # noqa: E402
 # M-02：复用既有 EM 协议实现（仅 import / reuse，绝不修改这两个 tracked 文件）。
@@ -62,16 +63,8 @@ V2_YIELD_HANDLER = "combination_yield_detail_handler"
 V2_POSITION_HANDLER = "CombinationHoldPositionPermitHandler"
 V2_TRADES_HANDLER = "CombinationRelocatePositionHandler"
 
-# 9 名特别关注选手（顺序 = 置顶顺序；语义同 main.py:46-57）。
-# ⚠️ 本副本必须与 src/config/watched.py（AQ2=A 单一真源）逐项一致：cmd_rank 的
-# force_insert_watched 用的是这份，改名单时两处都要改，否则下一班会把移出者重新插回。
-WATCHED_PLAYERS = [
-    ("900456476", "狼之行一"), ("900351276", "新生代柚子04"),
-    ("900240956", "股得猫咛"),
-    ("900376763", "东之福气娟子"), ("900439290", "再也不硬抗了"),
-    ("900461598", "大道可寻"), ("900293400", "月儿兰"),
-    ("900458047", "点火的佩斯"), ("900455448", "捏盘冲升"),
-]
+# 关注名单来自 src/config/watched.py 单一真源（AQ2=A，见上方 import），
+# 顺序 = 置顶顺序；本模块不再保留内联副本，改名单只需改一处。
 
 ONLINE_MARKER = "public/data/latest"
 DEFAULT_OUT = Path(tempfile.gettempdir()) / "player-data-refactor-s1" / "out"
@@ -370,11 +363,13 @@ def dedupe_rank_rows(rows_by_type):
 
 
 def force_insert_watched(players_map):
-    """9 名 WATCHED_PLAYERS **无条件强制插入**（无论在不在首班榜内），watched=True。
+    """WATCHED_PLAYERS **无条件强制插入**（无论在不在首班榜内），watched=True。
 
-    榜内者沿用其 ``userid``（AQ5=A 主路径）；榜外者取已知公开 userId 静态常量
-    （同 ``api_detail.NEW_USER_IDS``，**0 额外请求**）。这不是 AQ5=A 禁止的条件
-    回退分支：无字段探测、无逐人 API 补解析、不触发 option B。
+    名单来自 ``src/config/watched.py`` 单一真源（AQ2=A，顺序 = 置顶顺序），
+    本模块不另存副本。榜内者沿用其 ``userid``（AQ5=A 主路径）；榜外者取已知
+    公开 userId 静态常量（同 ``api_detail.NEW_USER_IDS``，**0 额外请求**）。
+    这不是 AQ5=A 禁止的条件回退分支：无字段探测、无逐人 API 补解析、不触发
+    option B。
     """
     for zh_id, name in WATCHED_PLAYERS:
         if zh_id in players_map:
