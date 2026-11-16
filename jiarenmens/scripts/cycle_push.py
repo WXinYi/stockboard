@@ -93,6 +93,76 @@ def fmt_time(ts):
     return datetime.fromtimestamp(ts).strftime("%H:%M") if isinstance(ts, (int, float)) else "?"
 
 
+# ── A 股共识附加段（2026-11-16 用户要求：午盘顺便推调仓共识，重仓共识只推 A 股）──
+# 规则与前端 stockboard-app/src/utils/stockMarket.js 完全一致：6 位=A 股，5 位=港股。
+# 只推 A 股，与页面过滤口径相同；数据层 today.json / stocks.json 仍保留全量，不改契约。
+DATA_LATEST = ROOT.parent / "stockboard-app" / "public" / "data" / "latest"
+CONSENSUS_TOP_N = 5
+
+
+def _is_a_stock(code) -> bool:
+    import re
+    return bool(re.fullmatch(r"\d{6}", str(code or "")))
+
+
+def _safe_int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _load_json(name: str):
+    try:
+        return json.loads((DATA_LATEST / name).read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[cycle_push] 读取 {name} 失败，跳过共识段: {e}", file=sys.stderr)
+        return None
+
+
+def build_consensus_markdown() -> str:
+    """午盘附加：A 股调仓共识 + A 股重仓共识（各 Top5）。数据缺失/异常返回空串。"""
+    today = _load_json("today.json") or {}
+    stocks = _load_json("stocks.json") or {}
+    # 两个都缺才是真的没数据；只缺一个时仍推另一半（宽容，不至于整段消失）
+    if not today and not stocks:
+        return ""
+
+    lines = ["\n**📊 A股共识（收盘后快照 · 滞后信息，非买卖依据）**"]
+    has_data = False
+
+    # 调仓共识：today.json.tradeConsensus.stocks（买/卖人数按选手去重）
+    tc = today.get("tradeConsensus") or {}
+    trade_rows = [s for s in (tc.get("stocks") or []) if _is_a_stock(s.get("code"))]
+    if trade_rows:
+        has_data = True
+        lines.append(f"- 调仓 Top{CONSENSUS_TOP_N}（净买入人数）:")
+        for s in trade_rows[:CONSENSUS_TOP_N]:
+            buy, sell = _safe_int(s.get("buy")), _safe_int(s.get("sell"))
+            lines.append(f"  · {s.get('name', '')} {s.get('code')}: 买{buy}人/"
+                         f"卖{sell}人 净{buy - sell:+d}")
+    else:
+        lines.append("- 调仓共识: 当日暂无 A 股调仓数据")
+
+    # 重仓共识：stocks.json.stats（持有人数 h / 人均仓位 tp/h / 人均盈亏 ap/h）
+    hold_rows = [s for s in (stocks.get("stats") or []) if _is_a_stock(s.get("code"))]
+    if hold_rows:
+        has_data = True
+        lines.append(f"- 重仓 Top{CONSENSUS_TOP_N}（按合计仓位）:")
+        for s in hold_rows[:CONSENSUS_TOP_N]:
+            h = _safe_int(s.get("h")) or 1
+            try:
+                avg_ratio = float(s.get("tp") or 0) / h
+            except (TypeError, ValueError):
+                avg_ratio = 0.0
+            lines.append(f"  · {s.get('name', '')} {s.get('code')}: {h}人持有 · "
+                         f"人均仓位 {avg_ratio:.0f}%")
+    else:
+        lines.append("- 重仓共识: 暂无 A 股持仓数据")
+
+    return "\n".join(lines) if has_data else ""
+
+
 def build_markdown(res: dict, session: str) -> str:
     c, m = res, res["metrics"]
     title = "午间盘面格局" if session == "midday" else "尾盘格局"
@@ -151,6 +221,9 @@ def main():
     res = compute_cycle(rt["date"], persist=False, rt_today=rt)
     res["_rt_rows"] = rt["rows"]
     text = build_markdown(res, args.session)
+    # 午盘顺便附加 A 股共识（调仓 + 重仓），数据缺失时该函数返回空串、不影响原推送
+    if args.session == "midday":
+        text += build_consensus_markdown()
     if args.dry_run:
         print(text)
         return 0
