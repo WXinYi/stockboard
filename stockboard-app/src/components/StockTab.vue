@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
 import { pctHtml } from '../utils/format.js'
+import { onlyAStock } from '../utils/stockMarket.js'
 
 const router = useRouter()
 const { stockStats: stats, sortedPlayers: sp, isQuality,
@@ -27,7 +28,8 @@ const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
 // stocks.json 仍导出双口径(qh/qtp/qap 优质三列保留在数据里备用), 前端只消费全体四列。
 // 历史: 09-23 上线优质口径(当日下线"幽灵共识"); 11-07 修 qh 恒定导出事故; 11-08 拍板只留全体
 // —— 优质口径本质是长线配置榜, 与本页短线共识定位不符(回测: 高手持仓次日跟随为负)。
-const viewStats = computed(() => stats.value || [])
+// 2026-11-16 用户要求：只看 A 股，去掉港股（5 位代码）。数据仍全量，仅展示层过滤。
+const viewStats = computed(() => onlyAStock(stats.value))
 
 // ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动 —— 详情返回后窗口滚动回到跳转前位置
 // (共识列表不再设内部滚动容器, 单滚动条; 之前的双滚动条与内部 scrollTop 丢失问题一并消除) ──
@@ -78,10 +80,10 @@ const { copiedKey, copyStockCode } = useCopyCode()
   <div class="card">
     <h2>
       重仓共识
-      <span class="badge">Top 20</span>
+      <span class="badge">A股 Top 20</span>
     </h2>
     <p class="hint">
-      全体采集选手的持仓聚合(含榜单漂移样本) ·
+      仅 A 股（沪深/北交所/ETF/可转债，已滤除港股）· 全体采集选手的持仓聚合(含榜单漂移样本) ·
       <strong v-if="snapshotLabel">{{ snapshotLabel }}</strong><span v-if="stocksUpdatedAt">（{{ stocksUpdatedAt.slice(5,16) }}）</span><span v-else>持仓为最近收盘校准值（盘中不刷新）</span>
       · 合计仓位为所有人相加，括号内为人均 · 点击表头可切换排序
     </p>

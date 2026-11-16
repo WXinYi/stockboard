@@ -2,12 +2,14 @@
 import { computed, inject, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCopyCode } from '../composables/useCopyCode.js'
+import { onlyAStock } from '../utils/stockMarket.js'
 
 const router = useRouter()
 const { tradeConsensus } = inject('stockData')
 
 const consensus = computed(() => tradeConsensus.value || { totalTrades: 0, totalBuyers: 0, stocks: [] })
-const rows = computed(() => consensus.value.stocks || [])
+// 2026-11-16 用户要求：只看 A 股，去掉港股（5 位代码）。展示层过滤，数据仍全量保留。
+const rows = computed(() => onlyAStock(consensus.value.stocks))
 const { copiedKey, copyStockCode } = useCopyCode()
 
 // 视图切换：净买入 / 买入人数 / 卖出人数（默认净买入 = 看大家往哪换仓）
@@ -32,7 +34,7 @@ function netHtml(n) {
   <div class="card">
     <h2>调仓共识说明</h2>
     <p class="hint">
-      统计全部选手当日买卖：买入/卖出人数按选手去重，一人多次只算一人。点击表头或切换排序查看。
+      统计全部选手当日买卖，仅展示 A 股（港股已滤除）：买入/卖出人数按选手去重，一人多次只算一人。点击表头或切换排序查看。
       这是收盘后采集的公开组合调仓，属滞后信息，仅作资金关注度参考，<strong>不构成买卖依据</strong>。
     </p>
   </div>
@@ -40,10 +42,11 @@ function netHtml(n) {
   <div class="card">
     <h2>
       调仓共识
-      <span class="badge">Top 20</span>
+      <span class="badge">A股 Top 20</span>
     </h2>
     <p class="hint">
-      当日 {{ consensus.totalTrades }} 笔调仓 · {{ consensus.totalBuyers }} 人买入 ·
+      仅 A 股（沪深/北交所/ETF/可转债，已滤除港股）· 下方按净买入排序 ·
+      全市场当日共 {{ consensus.totalTrades }} 笔调仓 · {{ consensus.totalBuyers }} 人买入 ·
       数据为最近一次采集快照（盘中不刷新，收盘后更新当日）
     </p>
 
