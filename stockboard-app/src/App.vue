@@ -117,7 +117,7 @@ onMounted(async () => {
         <div class="header-right">
           <button v-if="!isDetailPage" class="refresh-btn" title="搜索股票" @click="showSearch = true">🔍</button>
           <span v-if="crawlTime" class="header-time-label">数据时点</span>
-          <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeRelative }}</span>
+          <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeShort || crawlTimeRelative }}</span>
           <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }} 名选手</span>
           <span v-if="loading.today" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
           <button class="refresh-btn" :class="{ spinning: refreshing }"

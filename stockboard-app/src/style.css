@@ -153,10 +153,10 @@ h3 { font-size: 13px; font-weight: 600; }
   flex-shrink: 0; position: sticky; top: 0; z-index: 50;
 }
 .header-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.header-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0; }
 .header-title {
   font-size: 16px; font-weight: 700; color: var(--ink);
-  letter-spacing: -.02em; white-space: nowrap;
+  letter-spacing: -.02em; white-space: nowrap; flex-shrink: 0;
 }
 /* 品牌铭牌：方形描边 + 橙色左杠 */
 .brand-mark {
@@ -185,6 +185,13 @@ h3 { font-size: 13px; font-weight: 600; }
   border: 1px solid rgba(224, 177, 92, .22);
   padding: 2px 8px; border-radius: 2px;
   letter-spacing: .06em;
+}
+/* 窄屏顶栏防重叠（2026-11-16）：隐藏次要的"数据时点"文字，缩紧间距，
+   标题与时间都不收缩，避免右侧内容把标题（如"排行"）盖住。 */
+@media (max-width: 500px) {
+  .header-time-label { display: none; }
+  .header-right { gap: 6px; }
+  .header-badge { padding: 2px 5px; letter-spacing: 0; }
 }
 .back-btn {
   width: 30px; height: 30px; padding: 0; line-height: 30px; text-align: center;
