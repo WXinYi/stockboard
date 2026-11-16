@@ -311,7 +311,10 @@ jobs:
           else
             git commit -m "📊 数据更新 $(date +%Y-%m-%d) [skip ci]"
             for i in 1 2 3; do
-              if git pull --rebase -X theirs && git push; then
+              # 真实交易日班还会改 auction.json / hot_rank.db 等非白名单 tracked 文件,
+              # 它们不属于本 step 的 7 个契约 add 范围 → 残留 unstaged 会让 pull --rebase 直接拒绝。
+              # autoStash 自动暂存/恢复这些改动, 不改白名单、不动并发/闸门语义。
+              if git -c rebase.autoStash=true pull --rebase -X theirs && git push; then
                 echo "✅ 推送成功"
                 exit 0
               fi
