@@ -781,7 +781,11 @@ def cmd_snapshot(out, client, date, snapshot, updated_at, trade_pages,
                         refresh_prev_close=is_close,
                         today_label=TODAY_LABEL[snapshot])
     _atomic_json(out / PLAYERS_JSON, players_doc)
-    return {"snapshot": snapshot, "tradedPlayerIds": traded_ids, "stats": len(stats)}
+    # apiCalls：本班实际 rtV2 调用数（client.calls 已含并发汇总/串行 append），
+    # 2026-11-16 用户选 B 收口全天请求量口径：让日志打出实数而非靠推算。
+    return {"snapshot": snapshot, "tradedPlayerIds": traded_ids,
+            "stats": len(stats), "apiCalls": len(client.calls),
+            "playerCount": len(players)}
 
 
 def demo_bundle(date):
@@ -869,6 +873,10 @@ def main(argv=None):
         info = cmd_snapshot(out, client, date, snapshot, bj_iso(), pages)
     print(f"stocks.json(snapshot={info['snapshot']}) / today.json / players[].today → "
           f"{info['stats']} 只票 / 调仓 {len(info['tradedPlayerIds'])} 人 → {out}")
+    per_player = 3 if snapshot == SNAPSHOT_CLOSE else 2
+    print(f"[apiCalls] {snapshot} 本班 rtV2 调用 {info['apiCalls']} 次 "
+          f"(选手 {info['playerCount']} 人 × {per_player} = "
+          f"{info['playerCount'] * per_player})", flush=True)
     return 0
 
 

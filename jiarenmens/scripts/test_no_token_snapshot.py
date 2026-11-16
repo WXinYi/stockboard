@@ -173,6 +173,21 @@ class TestConcurrentSnapshotContract(unittest.TestCase):
         self.assertEqual(parallel, serial)
         self.assertEqual(sum(1 for c in parallel if c[0] == "yield"), 12)
 
+    def test_apiCalls_日志计数等于实际调用数(self):
+        """2026-11-16 用户选B：让日志打出真实调用数，apiCalls 必须=2N/3N。"""
+        for snapshot, expected in ((ps.SNAPSHOT_MIDDAY, 24), (ps.SNAPSHOT_CLOSE, 36)):
+            master = ps.NoTokenClient(transport=lambda *a, **k: FakeResp({"code": 0, "data": {}}))
+            factory = lambda: ps.NoTokenClient(
+                transport=lambda *a, **k: FakeResp({"code": 0, "data": {}}))
+            info = ps.cmd_snapshot(self.out, master, "2026-11-16", snapshot,
+                                   "2026-11-16T15:15:00+08:00", 1,
+                                   client_factory=factory, concurrency=4,
+                                   progress_every=0)
+            self.assertEqual(info["apiCalls"], expected,
+                             f"{snapshot} apiCalls 应等于实际 rtV2 调用数")
+            self.assertEqual(info["apiCalls"], len(master.calls))
+            self.assertEqual(info["playerCount"], 12)
+
 
 class TestTradeConsensus(unittest.TestCase):
     """2026-11-16 调仓共识页：买卖人数去重 / 净买入排序 / 方向未知不猜测。"""
