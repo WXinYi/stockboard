@@ -108,6 +108,27 @@ class TestNoTokenClient(unittest.TestCase):
         self.assertEqual(len(rows), 1, "历史行必须被 D3 当日过滤剔除")
         self.assertEqual(rows[0]["stock_code"], "000001")
 
+    def test_调仓日期发接口必须是紧凑YYYYMMDD(self):
+        """11-16 事故回归：带连字符的 2026-11-16 会让 rtV2 静默返回 totalPages=0。
+
+        同一选手实测：空日期/紧凑 20261116 → 当日 5 条；2026-11-16 → 0 条。
+        客户端 D3 过滤仍用 YYYY-MM-DD，只有发给接口的 args 转紧凑格式。
+        """
+        c = ps.NoTokenClient(transport=self.transport([{"code": 0, "data": {"pages": []}}]))
+        c.player_trades("900001", "u1", "2026-11-16", "2026-11-30", 2)
+        self.assertEqual(len(self.sent), 1)
+        args = self.sent[0]["payload"]["args"]
+        self.assertEqual(args["beginDate"], "20261116")
+        self.assertEqual(args["endDate"], "20261130")
+        self.assertEqual(args["pageNum"], 2)
+        self.assertEqual(args["pageSize"], ps.RANK_PAGE_SIZE)
+        self.assertNotIn("-", args["beginDate"], "接口日期不得含连字符")
+
+    def test_紧凑日期helper幂等(self):
+        self.assertEqual(ps._compact_date("2026-11-16"), "20261116")
+        self.assertEqual(ps._compact_date("20261116"), "20261116")
+        self.assertEqual(ps._compact_date(""), "")
+
 
 class TestConcurrentSnapshotContract(unittest.TestCase):
     """并发与串行的调用次数/顺序必须完全一致（K1 口径不变）。"""

@@ -355,6 +355,15 @@ NO_TOKEN_MAX_RETRY = 1        # 与前端 MAX_RETRY 一致
 NO_TOKEN_NO_RETRY_CODES = {"9035", "9061", "-1", "400", "empty"}
 
 
+def _compact_date(value):
+    """EM rtV2 的 beginDate/endDate 只接受紧凑 YYYYMMDD；带连字符会静默返回 totalPages=0。
+
+    2026-11-16 事故实证：同一选手传 `2026-11-16` → 空，传 `20261116` → 当日 5 条。
+    入参仍是契约内的 YYYY-MM-DD（D3 客户端过滤用），只在发往接口的 args 里转换。
+    """
+    return str(value or "").replace("-", "")
+
+
 class NoTokenClient:
     """只读 no-token 直连：midday/close 用，绕开登录态 token 的 3×20s 串行挂死。
 
@@ -420,7 +429,8 @@ class NoTokenClient:
         self.calls.append(("trades", zh_id, begin_date, end_date, page))
         args = self._base_args(zh_id, user_id)
         args.update({"pageNum": page, "pageSize": RANK_PAGE_SIZE,
-                     "beginDate": begin_date, "endDate": end_date})
+                     "beginDate": _compact_date(begin_date),
+                     "endDate": _compact_date(end_date)})
         data = self._post(args, NO_TOKEN_METHODS["trades"])
         rows = data.get("pages") if isinstance(data, dict) else data
         out = []
