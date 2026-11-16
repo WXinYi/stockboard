@@ -8,6 +8,7 @@ const primary = [
   { key: 'market', label: '选股', icon: 'market' },
   { key: 'rankings', label: '排行', icon: 'rankings' },
   { key: 'stocks', label: '重仓共识', icon: 'stocks' },
+  { key: 'flow', label: '调仓共识', icon: 'flow' },
 ]
 const route = useRoute()
 

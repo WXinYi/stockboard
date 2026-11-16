@@ -4,6 +4,7 @@ import MarketDetail from './components/MarketDetail.vue'
 import BoardDetail from './components/BoardDetail.vue'
 import RankingsTab from './components/RankingsTab.vue'
 import StockTab from './components/StockTab.vue'
+import FlowTab from './components/FlowTab.vue'
 import PlayerDetail from './components/PlayerDetail.vue'
 import StockDetailPage from './components/StockDetailPage.vue'
 import StockH5Page from './components/StockH5Page.vue'
@@ -18,6 +19,7 @@ const routes = [
   // PRD-Q4=3B：/copy 路由与 CopyTradeTab.vue 已整体移除，不做简版、不留隐藏入口
   { path: '/rankings', component: RankingsTab, meta: { keepAlive: true } },
   { path: '/stocks', component: StockTab, meta: { keepAlive: true } },
+  { path: '/flow', component: FlowTab, meta: { keepAlive: true } },
   { path: '/auction', component: AuctionTab },
   { path: '/player/:zh_id', component: PlayerDetail },
   { path: '/stock/:code', component: StockDetailPage },

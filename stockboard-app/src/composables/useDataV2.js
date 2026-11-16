@@ -75,6 +75,8 @@ export function useDataV2() {
   const crawlTime = computed(() => slices.today.value?.updatedAt || '')
   const emContract = computed(() => slices.today.value?.emContract || { ok: false, checkedAt: '' })
   const tradedPlayerIds = computed(() => new Set(slices.today.value?.tradedPlayerIds || []))
+  // 2026-11-16 调仓共识：today.json.tradeConsensus（买卖人数/笔数按股票聚合）
+  const tradeConsensus = computed(() => slices.today.value?.tradeConsensus || null)
 
   const watchedIds = computed(() => {
     const fromData = allPlayers.value.filter(p => p.watched).map(p => p.zh_id)
@@ -141,7 +143,7 @@ export function useDataV2() {
     loading, slices, sliceErrors, sliceLoaded,
     sortKey, qualityOnly, isQuality,
     allPlayers, sortedPlayers, fullRankPlayers, playerStyles, playerLookup,
-    currentDate, crawlTime, emContract, tradedPlayerIds, watchedIds,
+    currentDate, crawlTime, emContract, tradedPlayerIds, tradeConsensus, watchedIds,
     stockStats, stocksSnapshot, stocksUpdatedAt,
     ensureSlices, loadData, clearSlices,
   }

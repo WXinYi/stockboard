@@ -135,7 +135,13 @@ class TestExactContractFields(unittest.TestCase):
 
     def test_today_精确字段_emContract_恰好ok与checkedAt(self):
         doc = self.load("today.json")
-        self.assertEqual(set(doc), {"date", "updatedAt", "tradedPlayerIds", "emContract"})
+        # 2026-11-16 调仓共识页：today.json 新增 tradeConsensus（方案 C），精确集合同步扩展
+        self.assertEqual(set(doc), {"date", "updatedAt", "tradedPlayerIds", "emContract", "tradeConsensus"})
+        tc = doc["tradeConsensus"]
+        self.assertEqual(set(tc), {"totalTrades", "totalBuyers", "stocks"})
+        for s in tc["stocks"]:
+            self.assertEqual(set(s), {"code", "name", "buy", "sell",
+                                      "buyTrades", "sellTrades", "net", "lastTime"})
         self.assertEqual(set(doc["emContract"]), {"ok", "checkedAt"})
         self.assertIsInstance(doc["emContract"]["ok"], bool)
         self.assertTrue(doc["emContract"]["checkedAt"])

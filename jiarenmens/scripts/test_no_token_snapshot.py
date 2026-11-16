@@ -174,5 +174,61 @@ class TestConcurrentSnapshotContract(unittest.TestCase):
         self.assertEqual(sum(1 for c in parallel if c[0] == "yield"), 12)
 
 
+class TestTradeConsensus(unittest.TestCase):
+    """2026-11-16 调仓共识页：买卖人数去重 / 净买入排序 / 方向未知不猜测。"""
+
+    def test_买卖人数按选手去重(self):
+        trades_by = {
+            "u1": [
+                {"stock_code": "002524", "stock_name": "光正眼科", "bs": "B", "time": "2026-11-16 10:00:37"},
+                {"stock_code": "002524", "stock_name": "光正眼科", "bs": "B", "time": "2026-11-16 10:05:00"},
+            ],
+            "u2": [{"stock_code": "002524", "stock_name": "光正眼科", "bs": "S", "time": "2026-11-16 11:00:00"}],
+            "u3": [{"stock_code": "600000", "stock_name": "浦发银行", "bs": "B", "time": "2026-11-16 09:35:00"}],
+        }
+        c = ps.aggregate_trade_consensus(trades_by)
+        self.assertEqual(c["totalTrades"], 4)
+        self.assertEqual(c["totalBuyers"], 2)          # u1 + u3
+        by_code = {s["code"]: s for s in c["stocks"]}
+        gd = by_code["002524"]
+        self.assertEqual(gd["buy"], 1, "u1 买两次只算 1 人")
+        self.assertEqual(gd["sell"], 1)
+        self.assertEqual(gd["buyTrades"], 2, "笔数不去重")
+        self.assertEqual(gd["net"], 0)
+        self.assertEqual(gd["lastTime"], "11:00:00", "取最后一笔时间")
+        self.assertEqual(gd["name"], "光正眼科")
+
+    def test_按净买入排序_方向未知不算(self):
+        trades_by = {
+            "u1": [{"stock_code": "A", "bs": "B"}, {"stock_code": "B", "bs": "S"}],
+            "u2": [{"stock_code": "A", "bs": "B"}, {"stock_code": "C", "bs": ""}],
+        }
+        c = ps.aggregate_trade_consensus(trades_by)
+        self.assertEqual(c["stocks"][0]["code"], "A")
+        codes = {s["code"] for s in c["stocks"]}
+        self.assertNotIn("C", codes, "bs 为空的方向未知票不进共识")
+        self.assertEqual(c["stocks"][0]["buy"], 2)
+
+    def test_today_doc默认带空共识_保持向后兼容(self):
+        d = ps.build_today_doc("2026-11-16", "2026-11-16T15:15:00+08:00", ["u1"])
+        self.assertEqual(d["tradeConsensus"], {"totalTrades": 0, "totalBuyers": 0, "stocks": []})
+        self.assertEqual(d["tradedPlayerIds"], ["u1"])
+
+    def test_player_trades保留完整字段(self):
+        data = {"pages": [{"bizDate": "20261116", "stkCode": "002524",
+                           "stkName": "光正眼科", "bsMark": "B",
+                           "relocateTime": "2026-11-16 10:00:37",
+                           "positionRatio": "2成", "relocatePrice": "3.540"}]}
+        c = ps.NoTokenClient(transport=lambda *a, **k: FakeResp({"code": 0, "data": data}))
+        rows = c.player_trades("900001", "u1", "2026-11-16", "2026-11-16", 1)
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(r["bs"], "B")
+        self.assertEqual(r["stock_name"], "光正眼科")
+        self.assertEqual(r["position_ratio"], "2成")
+        self.assertEqual(r["price"], "3.540")
+        self.assertEqual(r["time"], "2026-11-16 10:00:37")
+
+
 if __name__ == "__main__":
     unittest.main()

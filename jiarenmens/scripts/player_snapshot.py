@@ -440,8 +440,17 @@ class NoTokenClient:
             biz = str(row.get("bizDate", "") or "")
             trade_date = f"{biz[:4]}-{biz[4:6]}-{biz[6:8]}" if len(biz) == 8 else biz
             if begin_date <= trade_date <= end_date:   # D3 当日过滤
-                out.append({"trade_date": trade_date,
-                            "stock_code": str(row.get("stkCode", "") or "")})
+                out.append({
+                    "trade_date": trade_date,
+                    "stock_code": str(row.get("stkCode", "") or ""),
+                    # 调仓共识所需字段（2026-11-16）：接口原本就返回，此前被丢弃。
+                    # 保留全字段不增加任何 HTTP 请求（K1 请求数口径不变）。
+                    "stock_name": str(row.get("stkName", "") or ""),
+                    "bs": str(row.get("bsMark", "") or "").upper(),   # B=买 / S=卖
+                    "time": str(row.get("relocateTime", "") or ""),
+                    "position_ratio": str(row.get("positionRatio", "") or ""),
+                    "price": str(row.get("relocatePrice", "") or ""),
+                })
         return out
 
     def player_yield(self, zh_id, user_id):
@@ -549,6 +558,66 @@ def aggregate_stock_stats(position_by_player):
     return stats
 
 
+def aggregate_trade_consensus(trades_by):
+    """调仓共识（2026-11-16 新增）：按股票聚合当日买卖，人数按选手去重。
+
+    输入 ``trades_by[zh_id]`` 是 ``player_trades()`` 的完整行（含 bs / stock_name /
+    time）；同一选手对同一股票买多次只算 1 个买入人。排序按净买入人数、买入人数。
+    * ``buy`` / ``sell`` = 买入 / 卖出该股的**选手数**（去重）；
+    * ``buyTrades`` / ``sellTrades`` = 买入 / 卖出**笔数**；
+    * ``net`` = buy − sell（净买入人数，负数为净卖出）；
+    * ``lastTime`` = 该股最后一笔调仓的 HH:MM:SS（接口 relocateTime 尾部）。
+
+    Failure ≠ Fact：bs 既非 B 也非 S 的行不参与人数统计（不猜测方向）。
+    """
+    agg = {}
+
+    def slot(code, name=""):
+        e = agg.setdefault(code, {"code": code, "name": name, "buy": 0, "sell": 0,
+                                  "buyTrades": 0, "sellTrades": 0, "lastTime": ""})
+        if name and not e["name"]:
+            e["name"] = name
+        return e
+
+    for rows in trades_by.values():
+        seen_buy, seen_sell = set(), set()   # 每个选手对每只股票的人数去重
+        for row in (rows or []):
+            if not isinstance(row, dict):
+                continue
+            code = str(row.get("stock_code", "") or "")
+            if not code:
+                continue
+            bs = str(row.get("bs", "") or "").upper()
+            if bs not in ("B", "S"):
+                continue                       # 方向未知不猜测（Failure ≠ Fact）
+            e = slot(code, str(row.get("stock_name", "") or ""))
+            if bs == "B":
+                e["buyTrades"] += 1
+                seen_buy.add(code)
+            else:
+                e["sellTrades"] += 1
+                seen_sell.add(code)
+            t = str(row.get("time", "") or "")
+            hhmmss = t[-8:] if len(t) >= 8 else t
+            if hhmmss > e["lastTime"]:
+                e["lastTime"] = hhmmss
+        for code in seen_buy:
+            agg[code]["buy"] += 1
+        for code in seen_sell:
+            agg[code]["sell"] += 1
+
+    stocks = []
+    for e in agg.values():
+        e["net"] = e["buy"] - e["sell"]
+        stocks.append(e)
+    stocks.sort(key=lambda e: (-e["net"], -e["buy"], e["code"]))
+    total_trades = sum(len(rows or []) for rows in trades_by.values())
+    total_buyers = sum(1 for rows in trades_by.values()
+                       if any(str(r.get("bs", "") or "").upper() == "B"
+                              for r in (rows or []) if isinstance(r, dict)))
+    return {"totalTrades": total_trades, "totalBuyers": total_buyers, "stocks": stocks}
+
+
 def build_stocks_doc(date, snapshot, updated_at, stats):
     """``snapshot`` 枚举硬校验：仅 1130 / close（架构 §3.2 / AC-1.3.3）。"""
     if snapshot not in (SNAPSHOT_MIDDAY, SNAPSHOT_CLOSE):
@@ -556,14 +625,18 @@ def build_stocks_doc(date, snapshot, updated_at, stats):
     return {"date": date, "snapshot": snapshot, "updatedAt": updated_at, "stats": stats}
 
 
-def build_today_doc(date, updated_at, traded_ids, prev_today=None):
+def build_today_doc(date, updated_at, traded_ids, prev_today=None, trade_consensus=None):
     """today.json：``tradedPlayerIds`` 11:30→15:15 并集 carry-forward；
-    ``emContract`` **原样保留**（当日 sticky，不重置为 true，架构 §3.3）。"""
+    ``emContract`` **原样保留**（当日 sticky，不重置为 true，架构 §3.3）；
+    ``tradeConsensus``（2026-11-16 新增）**用本班全量结果覆盖**，不做并集 —— 每班
+    调仓接口都返回当日截至当前的完整明细，11:30 是 15:15 的子集，并集会重复计数。"""
     prev = prev_today or {}
     em = prev.get("emContract") or {"ok": False, "checkedAt": ""}
     return {"date": date, "updatedAt": updated_at,
             "tradedPlayerIds": sorted(set(list(prev.get("tradedPlayerIds", [])) + list(traded_ids))),
-            "emContract": em}
+            "emContract": em,
+            "tradeConsensus": trade_consensus if trade_consensus is not None
+                              else {"totalTrades": 0, "totalBuyers": 0, "stocks": []}}
 
 
 def patch_players_today(doc, updated_at, trade_counts, yield_by_player=None,
@@ -697,10 +770,11 @@ def cmd_snapshot(out, client, date, snapshot, updated_at, trade_pages,
 
     traded_ids = [zh for zh, rows in trades_by.items() if rows]
     stats = aggregate_stock_stats(position_by)
+    consensus = aggregate_trade_consensus(trades_by)
     _atomic_json(out / STOCKS_JSON, build_stocks_doc(date, snapshot, updated_at, stats))
     prev_today = read_json(out / TODAY_JSON, None)
     _atomic_json(out / TODAY_JSON,
-                 build_today_doc(date, updated_at, traded_ids, prev_today))
+                 build_today_doc(date, updated_at, traded_ids, prev_today, consensus))
     counts = {zh: len(rows) for zh, rows in trades_by.items()}
     patch_players_today(players_doc, updated_at, counts,
                         yield_by if is_close else None,

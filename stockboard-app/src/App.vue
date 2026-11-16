@@ -35,6 +35,7 @@ const pageTitles = {
   market: '选股',
   rankings: '排行榜',
   stocks: '重仓共识',
+  flow: '调仓共识',
   auction: '竞价抢筹',
 }
 const marketSectionTitles = MARKET_SECTION_TITLES
@@ -80,6 +81,7 @@ const { updateAvailable, initCheck, dismiss } = useDataRefresh(() => { refreshDa
 const ROUTE_SLICES = {
   '/rankings': ['players', 'today'],
   '/stocks': ['stocks', 'players'],
+  '/flow': ['today'],
   '/player': ['players'],
 }
 

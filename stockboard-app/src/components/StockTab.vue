@@ -6,7 +6,14 @@ import { useCopyCode } from '../composables/useCopyCode.js'
 import { pctHtml } from '../utils/format.js'
 
 const router = useRouter()
-const { stockStats: stats, sortedPlayers: sp, isQuality } = inject('stockData')
+const { stockStats: stats, sortedPlayers: sp, isQuality,
+        stocksSnapshot, stocksUpdatedAt } = inject('stockData')
+// 规格要求的时点标注（11:30 午间快照 / 15:15 收盘真值），此前缺失
+const snapshotLabel = computed(() => {
+  if (stocksSnapshot.value === '1130') return '11:30 午间快照'
+  if (stocksSnapshot.value === 'close') return '15:15 收盘真值'
+  return ''
+})
 function navigateToPlayer(id) { router.push('/player/' + id) }
 
 // 📈 跳转股票详情页(自建详情, 页内含 H5 嵌套入口)
@@ -73,12 +80,16 @@ const { copiedKey, copyStockCode } = useCopyCode()
       重仓共识
       <span class="badge">Top 20</span>
     </h2>
-    <p class="hint">全体采集选手的持仓聚合(含榜单漂移样本) · 持仓为最近收盘校准值（盘中不刷新，15:15 后更新当日）· 点击表头可切换排序</p>
+    <p class="hint">
+      全体采集选手的持仓聚合(含榜单漂移样本) ·
+      <strong v-if="snapshotLabel">{{ snapshotLabel }}</strong><span v-if="stocksUpdatedAt">（{{ stocksUpdatedAt.slice(5,16) }}）</span><span v-else>持仓为最近收盘校准值（盘中不刷新）</span>
+      · 合计仓位为所有人相加，括号内为人均 · 点击表头可切换排序
+    </p>
       <div>
         <table><thead><tr>
         <th>#</th><th>股票</th><th>代码</th>
         <th style="cursor:pointer;" @click="tog('h')">持有人{{ ind('h') }}</th>
-        <th style="cursor:pointer;" @click="tog('tp')">总仓位{{ ind('tp') }}</th>
+        <th style="cursor:pointer;" @click="tog('tp')" title="合计仓位=所有持有人仓位之和；括号内为人均">合计仓位{{ ind('tp') }}</th>
         <th style="cursor:pointer;" @click="tog('ap')">平均盈亏{{ ind('ap') }}</th>
       </tr></thead>
         <tbody>
@@ -95,7 +106,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
             <td>{{ s.h }}人</td>
             <td>
               <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp/s.h) + '%' }"></span></span>
-              {{ s.tp.toFixed(0) }}%
+              {{ s.tp.toFixed(0) }}%<span class="per-head">人均 {{ (s.tp/s.h).toFixed(0) }}%</span>
             </td>
             <td v-html="pctHtml(s.ap/s.h)"></td>
           </tr>
@@ -112,4 +123,5 @@ const { copiedKey, copyStockCode } = useCopyCode()
 .stock-copy { border: none; background: none; cursor: pointer; color: var(--ink-4); padding: 0 3px; vertical-align: middle; }
 .stock-copy:hover { color: var(--accent); }
 .copied-tip { color: var(--down); font-size: 11px; margin-left: 4px; }
+.per-head { color: var(--ink-4); font-size: 10px; margin-left: 5px; white-space: nowrap; }
 </style>
