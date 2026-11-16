@@ -37,7 +37,10 @@ on:
 
 concurrency:
   group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  # 2026-11-16 周一事故：11:30 midday 被 11:35 的 market 班 cancel-in-progress 取消，
+  # 数据未上线且无告警。选手快照(midday/close)必须跑完，后续 market 班排队即可
+  # （market-only 不写 4 契约，排队不会污染数据）。no-token 并发后 midday 约数分钟。
+  cancel-in-progress: false
 
 jobs:
   crawl:
@@ -241,7 +244,7 @@ jobs:
           EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
           EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
           SB_WRITE_PROD: '1'
-        run: cd jiarenmens && python scripts/player_snapshot.py --midday --live --out ../stockboard-app/public/data/latest
+        run: cd jiarenmens && python scripts/player_snapshot.py --midday --live --no-token --out ../stockboard-app/public/data/latest
 
       - name: 选手收盘快照(--close)
         if: steps.shift.outputs.class == 'close' && steps.shift.outputs.player_ok == 'true'
@@ -249,7 +252,7 @@ jobs:
           EM_CT_TOKEN: ${{ secrets.EM_CT_TOKEN }}
           EM_UT_TOKEN: ${{ secrets.EM_UT_TOKEN }}
           SB_WRITE_PROD: '1'
-        run: cd jiarenmens && python scripts/player_snapshot.py --close --live --out ../stockboard-app/public/data/latest
+        run: cd jiarenmens && python scripts/player_snapshot.py --close --live --no-token --out ../stockboard-app/public/data/latest
 
       - name: 市场切片导出(--market-only)
         if: steps.dayguard.outputs.trading != 'false'

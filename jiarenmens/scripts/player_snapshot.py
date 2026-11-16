@@ -28,9 +28,13 @@ import json
 import os
 import sys
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -335,6 +339,125 @@ class EmClient:
         return sum(1 for c in self.calls if c[0] == "rank_page")
 
 
+# ── no-token 直连客户端（11-16 周一 midday 卡死后新增）────────────────
+# 与前端 useEmPlayer.js::requestOnce 的 payload 形状逐字一致：
+#   args 只带公开 userId + combinationId（调仓另带分页），顶层
+#   client/clientType/clientVersion；**绝不携带 ctToken/utToken**（A6）。
+# 已实测 position/trades/yield 三块均 code=0（2026-11-16 盘中）。
+NO_TOKEN_VERSION = "11.5.5_3.0.0.261105130728749"
+NO_TOKEN_METHODS = {
+    "yield": "combination_yield_detail_handler",
+    "position": "CombinationHoldPositionPermitHandler",
+    "trades": "CombinationRelocatePositionHandler",
+}
+NO_TOKEN_TIMEOUT = 8          # 与前端 TIMEOUT_MS 一致
+NO_TOKEN_MAX_RETRY = 1        # 与前端 MAX_RETRY 一致
+NO_TOKEN_NO_RETRY_CODES = {"9035", "9061", "-1", "400", "empty"}
+
+
+class NoTokenClient:
+    """只读 no-token 直连：midday/close 用，绕开登录态 token 的 3×20s 串行挂死。
+
+    * 每次调用 ``calls.append`` 与 EmClient 同格式，K1 次数口径不变。
+    * 短超时 8s + 1 次重试（仅瞬时故障）；确定性失败不重试（Failure ≠ Fact）。
+    * 线程安全性：每个 worker 独占一个实例（cmd_snapshot 按 player 建实例），
+      ``calls`` 列表由调用方汇总，不在多线程间共享。
+    """
+
+    def __init__(self, timeout=NO_TOKEN_TIMEOUT, max_retry=NO_TOKEN_MAX_RETRY,
+                 transport=None):
+        self.calls = []
+        self.timeout = timeout
+        self.max_retry = max_retry
+        self._transport = transport or requests.post
+
+    def _post(self, args, method):
+        payload = {"args": args, "method": method, "client": "ios",
+                   "clientType": "cfw", "clientVersion": NO_TOKEN_VERSION}
+        last = None
+        for attempt in range(self.max_retry + 1):
+            if attempt:
+                time.sleep(0.5)
+            try:
+                resp = self._transport(V2_API_URL, json=payload,
+                                       timeout=self.timeout)
+                data = resp.json()
+                code = str(data.get("code", ""))
+                if code in ("0", ""):
+                    return data.get("data") or {}
+                if code in NO_TOKEN_NO_RETRY_CODES:
+                    return {}
+                last = code
+            except Exception as e:
+                last = type(e).__name__
+        # 显式失败不伪造数据：返回空集合，由上层「无数据」语义处理。
+        return {}
+
+    def _base_args(self, zh_id, user_id):
+        return {"userId": str(user_id), "combinationId": str(zh_id)}
+
+    def player_position(self, zh_id, user_id):
+        self.calls.append(("position", zh_id))
+        raw = self._post(self._base_args(zh_id, user_id),
+                         NO_TOKEN_METHODS["position"])
+        # no-token 返回板块分块 list：[{data:[{stkMktCode,__code,__name,
+        # positionRateDetail,webYkRate}]}] → 摊平成 stats 期望的行。
+        out = []
+        for block in (raw if isinstance(raw, list) else []):
+            for row in (block.get("data") or []):
+                code = str(row.get("__code") or "")
+                if not code:
+                    code = str(row.get("stkMktCode", "") or "").split("|")[-1]
+                out.append({
+                    "code": code,
+                    "name": str(row.get("__name") or ""),
+                    "ratio": _api_detail._safe_float(row.get("positionRateDetail")),
+                    "profit": _api_detail._safe_float(row.get("webYkRate")),
+                })
+        return out
+
+    def player_trades(self, zh_id, user_id, begin_date, end_date, page):
+        self.calls.append(("trades", zh_id, begin_date, end_date, page))
+        args = self._base_args(zh_id, user_id)
+        args.update({"pageNum": page, "pageSize": RANK_PAGE_SIZE,
+                     "beginDate": begin_date, "endDate": end_date})
+        data = self._post(args, NO_TOKEN_METHODS["trades"])
+        rows = data.get("pages") if isinstance(data, dict) else data
+        out = []
+        for row in (rows or []):
+            if not isinstance(row, dict):
+                continue
+            biz = str(row.get("bizDate", "") or "")
+            trade_date = f"{biz[:4]}-{biz[4:6]}-{biz[6:8]}" if len(biz) == 8 else biz
+            if begin_date <= trade_date <= end_date:   # D3 当日过滤
+                out.append({"trade_date": trade_date,
+                            "stock_code": str(row.get("stkCode", "") or "")})
+        return out
+
+    def player_yield(self, zh_id, user_id):
+        self.calls.append(("yield", zh_id))
+        data = self._post(self._base_args(zh_id, user_id),
+                          NO_TOKEN_METHODS["yield"])
+        # 与 EmClient.player_yield 完全同构；缺失写 None（Failure ≠ Fact）。
+        if not isinstance(data, dict):
+            return {"totalReturn": None, "dailyReturn": None,
+                    "monthlyReturn": None, "yearlyReturn": None, "netValue": None}
+
+        def pct(key):
+            v = data.get(key)
+            return _api_detail._pct(v) if v not in (None, "") else None
+
+        return {"totalReturn": pct("totalYieldRate"),
+                "dailyReturn": pct("dayYieldRate"),
+                "monthlyReturn": pct("monthYieldRate"),
+                "yearlyReturn": pct("yearYieldRate"),
+                "netValue": (_api_detail._safe_float(data["netWorth"])
+                             if data.get("netWorth") not in (None, "") else None)}
+
+    def rank_calls(self):
+        return 0    # 榜单仍走 EmClient（rtV1 75 次口径不变）
+
+
 # ═══════════════════════════════════════════
 # 纯函数：4 JSON 契约的构建（单测直接断言）
 # ═══════════════════════════════════════════
@@ -476,8 +599,25 @@ def cmd_rank(out, client, date, rank_limit):
     return doc
 
 
-def cmd_snapshot(out, client, date, snapshot, updated_at, trade_pages):
+def _one_with(worker, player, date, is_close, trade_pages, user_ids):
+    """单 worker 独占 client 的采集单元；返回 calls 供主线程按序汇总。"""
+    zh_id = player["id"]
+    uid = user_ids[zh_id]
+    pos = worker.player_position(zh_id, uid)
+    trades = []
+    for page in range(1, trade_pages + 1):
+        trades.extend(worker.player_trades(zh_id, uid, date, date, page))
+    yld = worker.player_yield(zh_id, uid) if is_close else None
+    return zh_id, pos, trades, yld, list(worker.calls)
+
+
+def cmd_snapshot(out, client, date, snapshot, updated_at, trade_pages,
+                 client_factory=None, concurrency=1, progress_every=100):
     """11:30 / 15:15 两班（AC-1.3 / 架构 §7.3 精确请求量口径）。
+
+    ``concurrency>1`` 时按选手并发（每 worker 独占 client_factory() 实例），
+    结果**按原玩家顺序汇总** → ``client.calls`` 顺序与串行完全一致，
+    K1 的 2N/3N 调用次数与顺序断言不变；``--demo`` 仍走串行零网络。
 
     调用集合（N = 选手数）：
       * ``--midday``：**2 调用/人** = 调仓 1 页（当日过滤）+ 持仓；**不调收益接口**。
@@ -501,16 +641,49 @@ def cmd_snapshot(out, client, date, snapshot, updated_at, trade_pages):
     user_ids = {p["id"]: p["userId"] for p in players}
 
     yield_by, position_by, trades_by = {}, {}, {}
-    for player in players:
+
+    def _one(player):
         zh_id = player["id"]
-        # 两班共有：持仓 + 调仓固定 1 页（D3 当日过滤、不取历史 40 条）
-        position_by[zh_id] = client.player_position(zh_id, user_ids[zh_id])
+        uid = user_ids[zh_id]
+        pos = client.player_position(zh_id, uid)
+        trades = []
         for page in range(1, trade_pages + 1):
-            trades_by.setdefault(zh_id, []).extend(
-                client.player_trades(zh_id, user_ids[zh_id], date, date, page))
-        # AC-1.3：收益接口是 --close 独有的额外一次调用（midday 绝不调用）
-        if is_close:
-            yield_by[zh_id] = client.player_yield(zh_id, user_ids[zh_id])
+            trades.extend(client.player_trades(zh_id, uid, date, date, page))
+        yld = client.player_yield(zh_id, uid) if is_close else None
+        return zh_id, pos, trades, yld
+
+    if concurrency > 1:
+        if client_factory is None:
+            raise ValueError("concurrency>1 需要 client_factory（每 worker 独占实例）")
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = {}
+            for idx, player in enumerate(players):
+                worker = client_factory()
+                fut = pool.submit(_one_with, worker, player, date,
+                                  is_close, trade_pages, user_ids)
+                futures[fut] = idx
+            results = {}
+            done = 0
+            for fut in as_completed(futures):
+                results[futures[fut]] = fut.result()   # 按玩家原始下标存，完成顺序无关
+                done += 1
+                if progress_every and (done % progress_every == 0 or done == len(players)):
+                    print(f"  [{snapshot}] {done}/{len(players)} 人已采集", flush=True)
+            # 严格按玩家原始顺序汇总 → client.calls 顺序与串行完全一致（K1 口径）
+            for idx in range(len(players)):
+                zh_id, pos, trades, yld, calls = results[idx]
+                position_by[zh_id] = pos
+                trades_by[zh_id] = trades
+                if is_close:
+                    yield_by[zh_id] = yld
+                client.calls.extend(calls)
+    else:
+        for player in players:
+            zh_id, pos, trades, yld = _one(player)
+            position_by[zh_id] = pos
+            trades_by[zh_id] = trades
+            if is_close:
+                yield_by[zh_id] = yld
 
     traded_ids = [zh for zh, rows in trades_by.items() if rows]
     stats = aggregate_stock_stats(position_by)
@@ -571,6 +744,10 @@ def build_parser():
     ap.add_argument("--fixtures", default="", help="离线 fixture 目录（含 bundle.json）")
     ap.add_argument("--demo", action="store_true", help="用内置样例离线 dry-run")
     ap.add_argument("--live", action="store_true", help="真实 EM 客户端（S2 接入，S1 不启用）")
+    ap.add_argument("--no-token", action="store_true",
+                    help="midday/close 用 no-token 直连并发（绕开登录态 token 串行挂死）")
+    ap.add_argument("--concurrency", type=int, default=12,
+                    help="--no-token 并 worker 数（默认 12；1 = 串行）")
     ap.add_argument("--date", default="", help="覆盖交易日 YYYY-MM-DD（默认北京当日）")
     return ap
 
@@ -592,9 +769,20 @@ def main(argv=None):
         return 0
 
     snapshot = SNAPSHOT_MIDDAY if args.midday else SNAPSHOT_CLOSE
-    client = make_client(args, date)
     pages = int(os.environ.get("EM_TRADE_PAGES", str(DEFAULT_TRADE_PAGES)))
-    info = cmd_snapshot(out, client, date, snapshot, bj_iso(), pages)
+    if args.no_token:
+        if not args.live:
+            raise SystemExit("--no-token 需配合 --live（demo/fixtures 已是零网络）")
+        concurrency = max(1, min(32, args.concurrency))
+        factory = lambda: NoTokenClient()
+        client = factory()
+        print(f"[no-token] 并发 {concurrency} worker / 每请求 {NO_TOKEN_TIMEOUT}s × "
+              f"{NO_TOKEN_MAX_RETRY + 1} 次 → {snapshot}", flush=True)
+        info = cmd_snapshot(out, client, date, snapshot, bj_iso(), pages,
+                            client_factory=factory, concurrency=concurrency)
+    else:
+        client = make_client(args, date)
+        info = cmd_snapshot(out, client, date, snapshot, bj_iso(), pages)
     print(f"stocks.json(snapshot={info['snapshot']}) / today.json / players[].today → "
           f"{info['stats']} 只票 / 调仓 {len(info['tradedPlayerIds'])} 人 → {out}")
     return 0
