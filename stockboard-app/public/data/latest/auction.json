@@ -1,70 +1,35 @@
 {
- "date": "2026-11-13",
+ "date": "2026-11-16",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "环境正常"
+   "情绪值23 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
+   "红盘占比 21% < 40% (参考)"
   ],
   "data": {
-   "strong": 36,
-   "lbgd": 3,
+   "strong": 23,
+   "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.6095905408364353,
+   "red_ratio": 0.21098809275120117,
    "bid_count": [
-    123,
-    128,
+    114,
+    118,
     50,
-    27,
-    1
+    0,
+    3
    ],
-   "bid_total": "126亿",
-   "bid_total_prev": "157亿"
+   "bid_total": "54亿",
+   "bid_total_prev": "126亿"
   }
  },
  "boards": [
   {
-   "code": "801001",
-   "name": "芯片",
-   "burst": 18.7,
-   "amount": 1877604456.0,
-   "main_net": 266899150.0,
-   "src": "爆量+强度",
-   "strength": 1058.0
-  },
-  {
-   "code": "801807",
-   "name": "算力",
-   "burst": 8.3,
-   "amount": 549440669.0,
-   "main_net": 113300846.0,
-   "src": "爆量+强度",
-   "strength": 389.0
-  },
-  {
-   "code": "801159",
-   "name": "机器人概念",
-   "burst": 7.8,
-   "amount": 490275996.0,
-   "main_net": 50664202.0,
-   "src": "爆量+强度",
-   "strength": 228.0
-  },
-  {
-   "code": "801048",
-   "name": "黄金",
-   "burst": 6.5,
-   "amount": 151032400.0,
-   "main_net": 9164564.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801808",
-   "name": "GPU",
-   "burst": 5.1,
-   "amount": 387065487.0,
-   "main_net": 109031334.0,
+   "code": "801062",
+   "name": "军工",
+   "burst": 6.0,
+   "amount": 134011506.0,
+   "main_net": -1220174.0,
    "src": "爆量L1",
    "strength": 0.0
   },
@@ -72,154 +37,109 @@
    "code": "801199",
    "name": "汽车零部件",
    "burst": 5.0,
-   "amount": 284102681.0,
-   "main_net": 21821719.0,
+   "amount": 126344954.0,
+   "main_net": -837838.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801085",
-   "name": "人工智能",
-   "burst": 4.6,
-   "amount": 554177611.0,
-   "main_net": 88125332.0,
+   "code": "801031",
+   "name": "文化传媒",
+   "burst": 4.5,
+   "amount": 412171686.0,
+   "main_net": 6602650.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "803041",
-   "name": "光通信",
-   "burst": 0.0,
-   "amount": 2636342452.0,
-   "main_net": 149612667.0,
-   "src": "强度",
-   "strength": 570.0
+   "code": "801786",
+   "name": "影视院线",
+   "burst": 4.5,
+   "amount": 200035366.0,
+   "main_net": -8023905.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801874",
-   "name": "电源",
-   "burst": 0.0,
-   "amount": 176793291.0,
-   "main_net": 12838670.0,
-   "src": "强度",
-   "strength": 541.0
+   "code": "801070",
+   "name": "光伏",
+   "burst": 4.3,
+   "amount": 335160062.0,
+   "main_net": -9110292.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801218",
-   "name": "华为概念",
-   "burst": 0.0,
-   "amount": 3690640844.0,
-   "main_net": 19033722.0,
-   "src": "强度",
-   "strength": 537.0
+   "code": "801045",
+   "name": "医药",
+   "burst": 4.0,
+   "amount": 130543699.0,
+   "main_net": -103950.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801932",
-   "name": "海洋经济",
-   "burst": 0.0,
-   "amount": 756168723.0,
-   "main_net": 5681901.0,
-   "src": "强度",
-   "strength": 511.0
+   "code": "801351",
+   "name": "科创板",
+   "burst": 4.0,
+   "amount": 78030706.0,
+   "main_net": -384674.0,
+   "src": "爆量L1",
+   "strength": 0.0
   },
   {
-   "code": "801464",
-   "name": "农业",
-   "burst": 0.0,
-   "amount": 559144189.0,
-   "main_net": 4804127.0,
-   "src": "强度",
-   "strength": 305.0
-  },
-  {
-   "code": "801216",
-   "name": "PCB概念",
-   "burst": 0.0,
-   "amount": 1135145225.0,
-   "main_net": 37570237.0,
-   "src": "强度",
-   "strength": 60.0
-  },
-  {
-   "code": "801433",
-   "name": "光学镜头",
-   "burst": 0.0,
-   "amount": 62066006.0,
-   "main_net": 925568.0,
-   "src": "强度",
-   "strength": 58.0
-  },
-  {
-   "code": "801377",
-   "name": "金刚石概念",
-   "burst": 0.0,
-   "amount": 65647629.0,
-   "main_net": 2647121.0,
-   "src": "强度",
-   "strength": 55.0
-  },
-  {
-   "code": "801660",
-   "name": "通信",
-   "burst": 0.0,
-   "amount": 3765655281.0,
-   "main_net": 136793433.0,
-   "src": "强度",
-   "strength": 53.0
-  },
-  {
-   "code": "801067",
-   "name": "面板",
-   "burst": 0.0,
-   "amount": 1032515657.0,
-   "main_net": 1999963.0,
-   "src": "强度",
-   "strength": 52.0
+   "code": "801723",
+   "name": "创新药",
+   "burst": 4.0,
+   "amount": 67991418.0,
+   "main_net": 193350.0,
+   "src": "爆量L1",
+   "strength": 0.0
   }
  ],
  "strike": [
   {
-   "code": "603366",
-   "name": "日出东方",
-   "height": 5,
+   "code": "605255",
+   "name": "天普股份",
+   "height": 4,
    "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 5连板 | 封单 0.83亿；逆市连板(火种观察) 5板",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 芯片主线空间龙, 封单 0.23亿；逆市连板(火种观察) 4板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "600327",
-   "name": "大东方",
-   "height": 5,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[零售] 4只涨停, 封单 0.27亿；逆市连板(火种观察) 5板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "601566",
-   "name": "九牧王",
+   "code": "600977",
+   "name": "中国电影",
    "height": 1,
    "status": "观察(容量)",
-   "reason": "龙头谱系[中军(零售)] 成交 8.8亿 容量核心",
+   "reason": "龙头谱系[中军(影视院线)] 成交 19.0亿 容量核心",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "603135",
-   "name": "中重科技",
+   "code": "600467",
+   "name": "好当家",
    "height": 2,
    "status": "观察(只看最强)",
-   "reason": "龙头谱系[板块龙头(机器人概念)] 主线[机器人概念] 4只涨停, 封单 0.07亿",
+   "reason": "龙头谱系[板块龙头(农业)] 主线[农业] 5只涨停, 封单 0.20亿；逆市连板(火种观察) 2板",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "600558",
-   "name": "大西洋",
+   "code": "002124",
+   "name": "天邦食品",
    "height": 1,
    "status": "观察(容量)",
-   "reason": "龙头谱系[中军(机器人概念)] 成交 10.1亿 容量核心",
+   "reason": "龙头谱系[中军(农业)] 成交 7.9亿 容量核心",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002148",
+   "name": "北纬科技",
+   "height": 3,
+   "status": "观察(火种)",
+   "reason": "逆市连板(火种观察) 3板",
    "tag": null,
    "bid_pct": null
   }
@@ -227,50 +147,50 @@
  "strike_watch": true,
  "bidrank": [
   {
+   "code": "002187",
+   "name": "广百股份",
+   "height": 2,
+   "bid_pct": 9.04,
+   "turnover": 3.38
+  },
+  {
+   "code": "001358",
+   "name": "兴欣新材",
+   "height": 2,
+   "bid_pct": -0.98,
+   "turnover": 1.63
+  },
+  {
+   "code": "600467",
+   "name": "好当家",
+   "height": 2,
+   "bid_pct": -2.93,
+   "turnover": 1.4140700688055294
+  },
+  {
    "code": "603396",
    "name": "金辰股份",
-   "height": 2,
-   "bid_pct": 8.91,
-   "turnover": 3.5350071847499636
-  },
-  {
-   "code": "002623",
-   "name": "亚玛顿",
-   "height": 4,
-   "bid_pct": 1.33,
-   "turnover": 2.97
-  },
-  {
-   "code": "603536",
-   "name": "惠发食品",
    "height": 3,
-   "bid_pct": -4.06,
-   "turnover": 2.9250204017642902
-  },
-  {
-   "code": "603366",
-   "name": "日出东方",
-   "height": 5,
-   "bid_pct": -3.04,
-   "turnover": 2.3063473870447226
+   "bid_pct": -7.45,
+   "turnover": 1.3726712929286429
   },
   {
    "code": "002148",
    "name": "北纬科技",
-   "height": 2,
-   "bid_pct": 7.05,
-   "turnover": 2.02
+   "height": 3,
+   "bid_pct": 10.06,
+   "turnover": 1.24
   }
  ],
  "regime": {
   "regime": "过渡",
-  "relay": 0.12941176470588237,
-  "max_board": 5,
-  "top1_days": 2,
+  "relay": 0.1891891891891892,
+  "max_board": 4,
+  "top1_days": 1,
   "detail": [
-   "昨日再板率13%",
-   "最高5板",
-   "TOP1连续2日"
+   "昨日再板率19%",
+   "最高4板",
+   "TOP1连续1日"
   ]
  },
  "cycle": {
@@ -278,43 +198,37 @@
   "confidence": 7,
   "gate": "closed",
   "mainlines": [
-   "零售",
+   "影视院线",
+   "农业",
+   "AI应用",
+   "算力",
    "机器人概念",
-   "基础建设",
-   "并购重组",
-   "水产品",
-   "农业"
+   "芯片"
   ],
   "leaders": [
    {
-    "code": "603366",
-    "name": "日出东方",
-    "pid": 5,
+    "code": "605255",
+    "name": "天普股份",
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "600327",
-    "name": "大东方",
-    "pid": 5,
-    "role": "总龙头"
-   },
-   {
-    "code": "601566",
-    "name": "九牧王",
+    "code": "600977",
+    "name": "中国电影",
     "pid": 1,
-    "role": "中军(零售)"
+    "role": "中军(影视院线)"
    },
    {
-    "code": "603135",
-    "name": "中重科技",
+    "code": "600467",
+    "name": "好当家",
     "pid": 2,
-    "role": "板块龙头(机器人概念)"
+    "role": "板块龙头(农业)"
    },
    {
-    "code": "600558",
-    "name": "大西洋",
+    "code": "002124",
+    "name": "天邦食品",
     "pid": 1,
-    "role": "中军(机器人概念)"
+    "role": "中军(农业)"
    }
   ]
  },
@@ -330,12 +244,11 @@
   "prompt_ver": "v3",
   "latency_s": 7.7,
   "degraded": false,
-  "generated_at": "2026-11-13T02:03:38",
-  "slot": "1000"
+  "generated_at": "2026-11-13T02:03:38"
  },
  "stats": {
-  "pool": 463,
-  "boards": 17,
+  "pool": 325,
+  "boards": 8,
   "genes": 0
  },
  "candidates": [],
