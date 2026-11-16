@@ -14,6 +14,7 @@ const { copiedKey, copyStockCode } = useCopyCode()
 
 // 视图切换：净买入 / 买入人数 / 卖出人数（默认净买入 = 看大家往哪换仓）
 const view = ref('net')
+const showInfo = ref(false)   // 说明默认收起，省页面空间
 const viewRows = computed(() => {
   const list = [...rows.value]
   if (view.value === 'buy') list.sort((a, b) => b.buy - a.buy || b.net - a.net)
@@ -32,22 +33,18 @@ function netHtml(n) {
 
 <template>
   <div class="card">
-    <h2>调仓共识说明</h2>
-    <p class="hint">
-      统计全部选手当日买卖，仅展示 A 股（港股已滤除）：买入/卖出人数按选手去重，一人多次只算一人。点击表头或切换排序查看。
-      这是收盘后采集的公开组合调仓，属滞后信息，仅作资金关注度参考，<strong>不构成买卖依据</strong>。
-    </p>
-  </div>
-
-  <div class="card">
     <h2>
       调仓共识
       <span class="badge">A股 Top 20</span>
+      <button class="info-btn" @click="showInfo = !showInfo" :aria-expanded="showInfo" aria-label="查看说明">说明</button>
     </h2>
-    <p class="hint">
-      仅 A 股（沪深/北交所/ETF/可转债，已滤除港股）· 下方按净买入排序 ·
-      全市场当日共 {{ consensus.totalTrades }} 笔调仓 · {{ consensus.totalBuyers }} 人买入 ·
-      数据为最近一次采集快照（盘中不刷新，收盘后更新当日）
+    <p class="compact-meta">
+      {{ consensus.totalTrades }} 笔调仓 · {{ consensus.totalBuyers }} 人买入 · 收盘快照
+      <span class="warn">非买卖依据</span>
+    </p>
+    <p v-if="showInfo" class="info-detail">
+      统计全部选手当日买卖，仅展示 A 股（港股已滤除）；买入/卖出人数按选手去重，一人多次只算一人。
+      数据为收盘后采集的公开组合调仓，属滞后信息，仅作资金关注度参考，<strong>不构成买卖依据</strong>。
     </p>
 
     <div class="tabs" role="tablist" aria-label="调仓排序">
@@ -112,4 +109,17 @@ function netHtml(n) {
 }
 .tabs button.active { color: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); }
 .empty { padding: 28px 8px; text-align: center; color: var(--ink-3); font-size: 13px; }
+/* 紧凑说明区（2026-11-16 优化：两块长说明占半屏 → 一行统计 + 可展开说明） */
+.info-btn {
+  float: right; font-family: var(--mono, monospace); font-size: 10px;
+  padding: 2px 7px; margin-left: 8px; border: 1px solid var(--line, #1d222b);
+  background: transparent; color: var(--ink-3); border-radius: 3px; cursor: pointer;
+}
+.info-btn[aria-expanded="true"] { color: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); }
+.compact-meta { margin: 4px 0 2px; font-size: 11px; color: var(--ink-3); }
+.warn { color: var(--accent, #ff6b35); margin-left: 6px; }
+.info-detail {
+  margin: 8px 0 2px; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  color: var(--ink-3); background: rgba(255,255,255,.03); border-radius: 4px;
+}
 </style>

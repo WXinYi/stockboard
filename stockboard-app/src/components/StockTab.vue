@@ -7,6 +7,7 @@ import { pctHtml } from '../utils/format.js'
 import { onlyAStock } from '../utils/stockMarket.js'
 
 const router = useRouter()
+const showInfo = ref(false)   // 说明默认收起，省页面空间
 const { stockStats: stats, sortedPlayers: sp, isQuality,
         stocksSnapshot, stocksUpdatedAt } = inject('stockData')
 // 规格要求的时点标注（11:30 午间快照 / 15:15 收盘真值），此前缺失
@@ -74,18 +75,18 @@ const { copiedKey, copyStockCode } = useCopyCode()
 
 <template>
   <div class="card">
-    <h2>重仓共识说明</h2>
-    <p class="hint">P3 起选手级持仓明细不再进入静态产物，反向查股票已下线（N6 已接受退化）。本页仅展示全量重仓共识。</p>
-  </div>
-  <div class="card">
     <h2>
       重仓共识
       <span class="badge">A股 Top 20</span>
+      <button class="info-btn" @click="showInfo = !showInfo" :aria-expanded="showInfo" aria-label="查看说明">说明</button>
     </h2>
-    <p class="hint">
-      仅 A 股（沪深/北交所/ETF/可转债，已滤除港股）· 全体采集选手的持仓聚合(含榜单漂移样本) ·
-      <strong v-if="snapshotLabel">{{ snapshotLabel }}</strong><span v-if="stocksUpdatedAt">（{{ stocksUpdatedAt.slice(5,16) }}）</span><span v-else>持仓为最近收盘校准值（盘中不刷新）</span>
-      · 合计仓位为所有人相加，括号内为人均 · 点击表头可切换排序
+    <p class="compact-meta">
+      <strong v-if="snapshotLabel">{{ snapshotLabel }}</strong><span v-if="stocksUpdatedAt">（{{ stocksUpdatedAt.slice(5,16) }}）</span><span v-else>持仓快照（盘中不刷新）</span>
+      · A股 · 点击表头排序
+    </p>
+    <p v-if="showInfo" class="info-detail">
+      仅展示 A 股（沪深/北交所/ETF/可转债，港股已滤除）；全体采集选手持仓聚合（含榜单漂移样本）。
+      合计仓位=所有持有人仓位之和，括号内为人均。P3 起选手级持仓明细不再进入静态产物，反向查股票已下线。
     </p>
       <div>
         <table><thead><tr>
@@ -126,4 +127,16 @@ const { copiedKey, copyStockCode } = useCopyCode()
 .stock-copy:hover { color: var(--accent); }
 .copied-tip { color: var(--down); font-size: 11px; margin-left: 4px; }
 .per-head { color: var(--ink-4); font-size: 10px; margin-left: 5px; white-space: nowrap; }
+/* 紧凑说明区（2026-11-16 优化） */
+.info-btn {
+  float: right; font-family: var(--mono, monospace); font-size: 10px;
+  padding: 2px 7px; margin-left: 8px; border: 1px solid var(--line, #1d222b);
+  background: transparent; color: var(--ink-3); border-radius: 3px; cursor: pointer;
+}
+.info-btn[aria-expanded="true"] { color: var(--accent, #ff6b35); border-color: var(--accent, #ff6b35); }
+.compact-meta { margin: 4px 0 2px; font-size: 11px; color: var(--ink-3); }
+.info-detail {
+  margin: 8px 0 2px; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  color: var(--ink-3); background: rgba(255,255,255,.03); border-radius: 4px;
+}
 </style>
