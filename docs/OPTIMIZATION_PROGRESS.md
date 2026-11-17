@@ -149,7 +149,7 @@
 | # | 项 | 状态 | 备注 |
 |---|---|---|---|
 | 1 | 文档收尾（更正上述结论 + 写入今日收口事实） | ✅ 11-11 完成 | 本文件 |
-| 2 | 掐班告警（cancelled 可见化） | ✅ 11-11 完成 | 独立心跳 workflow + 8 单测；本地 112 tests / 14 YAML；CI 演练 `42985393942` success（识别 4 班）、push 门禁 `42985391053` 112 tests OK |
+| 2 | 掐班告警（cancelled 可见化） | ✅ 11-11 完成，11-17 加固 | 独立心跳 workflow；11-17 改 cron-job.org `repository_dispatch: crawl-cancel-check`，加北京时间窗口过滤、定时班标记过滤、已告警 run id 去重；CI 演练 `42985393942` success（识别 4 班）、push 门禁 `42985391053` 112 tests OK |
 | 3 | 口径专项实证 | ✅ 11-11 完成 | 见上表；结论：只剩 1 高优先正确性问题 |
 | 4 | EOD 拆校准档 `level="eod"` | ✅ 11-11 完成（**明日 15:15 实战待验**） | 只省 `info`；真实接口+真实库对账通过；本地 121 tests、CI 门禁 `42988790474` 121 tests OK；`vars.EM_EOD_LEVEL=full` 可回滚 |
 | 5 | 连接层韧性（Session / timeout / 重试 + env 开关） | ⬜ 待开始 | 抗抖动，加开关灰度 |
@@ -178,7 +178,7 @@
 - `players` 表（含 `_PLAYER_INSERT_SQL`）**没有** `portf_rat` / `rate_max_stk` / `manager_name` / `start_date` / `crawl_date` 列，入库只消费固定字段列表 → `eod` 省略这些字段对数据零影响；合并 `old`（`SELECT *` 含 `updated_at`/`created_at`）也不会带入过期时间戳，SQL 用 `CURRENT_TIMESTAMP` 覆盖。
 - `fail_count` 只在 **全员失败** 时判红（`main.py:473`）。`eod` 的异常判定少一个 `info` 信号（`yld+pos` 两信号 vs `full` 三信号），个别「info 有响应但收益/持仓全空」的组合在 eod 会记为失败、full 会继续写空收益档案 → eod 反而更保守（不写坏数据），不会判红整班。**已知取舍**：明日 EOD 的失败计数可能由 0 变为个位数，属预期。
 - `weekly_return=0.0` 覆盖库内历史值是 `full` 档既有行为，非 `eod` 引入；口径专项已把「真 0% / 源缺失」问题另列待办。
-- 掐班告警两处已知限制：UTC 日期过滤依赖 schedule 在 07:45（北京 15:45）前后同日，极端延迟跨 UTC 日会漏报；只覆盖 `cancelled`，「整天无班次」心跳仍留波 3。
+- 掐班告警 2026-11-17 加固：GitHub schedule 曾延迟到次日 01:28 才跑（run `43918724551`），改为 cron-job.org 北京 15:45 触发 `repository_dispatch: crawl-cancel-check`；脚本只认 `repository_dispatch(crawl/crawl-eod)` 和带 `[cron]` run-name 的 workflow_dispatch，push/普通手动补跑不再误报；北京时间 15:40~16:30 才检查；已告警 run id 落 `.github/state/crawl-cancel-alert.json` 去重。剩余限制：只覆盖 `cancelled`，「整天无班次」心跳仍留波 3；外部 cron-job.org 新 job 与 `trigger_source=cron` 输入需同步配置。
 
 ### 今日验收收口（15:39 EOD 完成）
 

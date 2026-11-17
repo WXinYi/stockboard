@@ -212,8 +212,9 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 | 触发方式 | 说明 |
 |---|---|
-| `workflow_dispatch: crawl.yml` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 20 班**（**首班 09:26**~末班 14:51）。首班与钉钉《竞价跟单快报》(09:26) 同批：快报直连东财实时接口，站点数据必须跟上，否则用户先收到推送、再打开页面却是昨天的数据（2026-09-09 反馈，首班由 09:30 提前，cron-job.org jobId 8167465） |
+| `workflow_dispatch: crawl.yml` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 20 班**（**首班 09:26**~末班 14:51）。**定时班必须传 `inputs.trigger_source=cron`**，run-name 会带 `[cron]` 标记供掐班告警识别；不传则按手动补跑处理。首班与钉钉《竞价跟单快报》(09:26) 同批：快报直连东财实时接口，站点数据必须跟上，否则用户先收到推送、再打开页面却是昨天的数据（2026-09-09 反馈，首班由 09:30 提前，cron-job.org jobId 8167465） |
 | `repository_dispatch: crawl-eod` | 收盘专班，cron-job.org 15:15 触发，必做 Release sync |
+| `repository_dispatch: crawl-cancel-check` | 掐班告警，cron-job.org 北京 15:45 触发 `crawl-cancel-alert.yml`；只统计当日定时班 `cancelled`，北京时间 15:40~16:30 才检查，已告警 run id 落 `.github/state/crawl-cancel-alert.json` 去重。2026-11-17 起替代 GitHub 原生 schedule（曾延迟到次日 01:28） |
 | `push: main` | 每次推送也会跑一遍（**2026-09-21 起有交易日守卫**：非交易日跳过采集/导出/上传/提交，仅保留构建部署；**09-22 延伸至时段**——push 仅在交易时段 09:00-15:15 采集，盘后/夜间/清晨 push 纯发版不采集，时钟统一北京时间；日历解析前端 tradingCalendar.js 单一数据源） |
 | `workflow_dispatch` | 手动触发（Actions 页面 Run workflow） |
 

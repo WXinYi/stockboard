@@ -1,30 +1,34 @@
 name: 采集掐班告警
-# 2026-11-11: concurrency.cancel-in-progress 取消整个 run, cancelled 不触发
-# failure(), 且被取消 run 里未启动的 job 不会再启动(if: cancelled() 救不了)
-# → 现有 alert-on-failure 看不到掐班。11-11 上午 4 班连环 cancelled 无人知晓。
-# 用独立心跳(GitHub 原生 schedule)只读 API + 发钉钉, 不依赖 cron-job.org,
-# 不写仓库、不碰采集/推送链路。UTC 07:45 = 北京 15:45(EOD 15:39 完成后)。
+# 2026-11-17: GitHub 原生 schedule 连续多次延迟到次日凌晨(最新 11-17 01:28),
+# 告警变成“半夜报昨日旧账”。改为 cron-job.org 在北京 15:45 触发
+# repository_dispatch: crawl-cancel-check; 脚本再做北京时间窗口保护。
+# 只统计 cron-job.org 定时采集班，不统计 push / 普通手动补跑。
+# 已告警 run id 落 .github/state/crawl-cancel-alert.json 防重复推送。
 
 on:
-  schedule:
-    - cron: '45 7 * * 1-5'
+  repository_dispatch:
+    types: [crawl-cancel-check]
   workflow_dispatch:
     inputs:
       dry_run:
-        description: '只打印不发送钉钉(演练用)'
+        description: '只打印不发送钉钉、不写去重状态(演练用)'
+        type: boolean
+        default: false
+      force_window:
+        description: '忽略北京时间 15:40-16:30 窗口(补发用)'
         type: boolean
         default: false
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: 检查当日采集班是否被掐
+      - name: 检查当日定时采集班是否被掐
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -32,4 +36,19 @@ jobs:
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: |
           cd jiarenmens
-          python3 scripts/crawl_cancel_alert.py ${{ inputs.dry_run && '--dry-run' || '' }}
+          python3 scripts/crawl_cancel_alert.py ${{ inputs.dry_run && '--dry-run' || '' }} ${{ inputs.force_window && '--force-window' || '' }}
+      - name: 提交告警去重状态
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f .github/state/crawl-cancel-alert.json ]; then
+            git add .github/state/crawl-cancel-alert.json
+          fi
+          if git diff --cached --quiet; then
+            echo "无新增告警状态"
+            exit 0
+          fi
+          git commit -m "chore(alert): 更新掐班告警去重状态 [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"

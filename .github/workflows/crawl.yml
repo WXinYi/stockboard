@@ -1,5 +1,14 @@
 name: 数据采集 + 部署
+run-name: >-
+  ${{
+    github.event_name == 'repository_dispatch' && format('数据采集 + {0}', github.event.action)
+    || github.event_name == 'workflow_dispatch' && inputs.trigger_source == 'cron' && format('数据采集 + [cron] {0}', inputs.force_class)
+    || github.event_name == 'push' && format('数据采集 + push({0})', github.ref_name)
+    || '数据采集 + 手动'
+  }}
 # 由 cron-job.org 通过 repository_dispatch / workflow_dispatch 触发，不用 GitHub schedule。
+# 2026-11-17: workflow_dispatch 定时班必须传 inputs.trigger_source=cron,
+# 掐班告警只认 [cron] 标记的 run-name; 不传则视为手动补跑，不纳入告警。
 #
 # S2 / Commit-R1 起：
 #   选手数据 → player_snapshot.py --rank/--midday/--close（AQ5=A 直取榜单 userid）
@@ -21,6 +30,11 @@ on:
   workflow_dispatch:
     # 盘后补数 / S5 验收：显式覆盖班次（不影响定时 job，它们仍走北京时间判定）
     inputs:
+      trigger_source:
+        description: '触发来源：cron=cron-job.org 定时班（掐班告警只认这个值）'
+        required: false
+        default: 'manual'
+        type: string
       force_class:
         description: '手动覆盖班次（auto = 按北京时间判定）'
         required: false
