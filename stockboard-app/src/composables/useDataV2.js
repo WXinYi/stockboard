@@ -36,10 +36,6 @@ export function useDataV2() {
   }))
 
   const sortKey = ref('total_return')
-  const qualityOnly = ref(false)
-
-  // 优质口径在 P3 已废除（stocks.json 不再有 qh/qtp/qap；players 无 quality 字段）
-  function isQuality() { return false }
 
   // 新契约 player → 页面既有字段名（total_return 等），不引入第二套命名
   function normalize(p) {
@@ -106,7 +102,6 @@ export function useDataV2() {
     list.sort((a, b) => (b[sortKey.value] || 0) - (a[sortKey.value] || 0))
     const pinned = list.filter(p => watchedIds.value.has(p.zh_id))
     const rest = list.filter(p => !watchedIds.value.has(p.zh_id))
-      .filter(p => !qualityOnly.value || isQuality(p))
     const rankMap = {}
     list.forEach((p, i) => { rankMap[p.zh_id] = i + 1 })
     return { pinned, rest, rankMap }
@@ -172,7 +167,7 @@ export function useDataV2() {
 
   return {
     loading, slices, sliceErrors, sliceLoaded,
-    sortKey, qualityOnly, isQuality,
+    sortKey,
     allPlayers, sortedPlayers, fullRankPlayers, playerStyles, playerLookup,
     currentDate, crawlTime, emContract, tradedPlayerIds, tradeConsensus, tradeConsensusA, watchedIds,
     stockStats, stocksSnapshot, stocksUpdatedAt,

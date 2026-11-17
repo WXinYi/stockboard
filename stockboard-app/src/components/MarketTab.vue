@@ -11,10 +11,9 @@ import {
   getLatestTradingDay, getLatestReportDate, isTradingTime,
 } from '../composables/useKplApi.js'
 import { loadCycleData, STAGE_COLORS, STAGE_RULES } from '../utils/emotionCycle.js'
-import { loadBattleData, candTipOf as candTip, reviewVerdict, gateSentence, whyNot } from '../utils/leaderBattle.js'
+import { loadBattleData, candTipOf as candTip, gateSentence, whyNot } from '../utils/leaderBattle.js'
 import Hint from './Hint.vue'
-import { gateTier, statusWord, holdInfo, isMorning, resolveVerdict, sameDataDay, divergenceNote, pxLine, sortPicksFirst, sortReviewRows } from '../utils/stockPicks.js'
-import { normHistory, buildLiveRow, computeSixLive, fetchIndexTrend, parseBidYi } from '../utils/sixEmotion.js'
+import { gateTier, statusWord, isMorning, resolveVerdict, pxLine } from '../utils/stockPicks.js'
 
 defineOptions({ name: 'MarketTab' })
 
@@ -31,22 +30,7 @@ const global = ref(null)
 const institution = ref(null)
 const mood = ref(null)
 const lhb = ref(null)
-// 持仓快照: 仅用于候选「已持仓」标记 + 触价提醒明细(纪律卡已下线 09-07)
-const mine = ref(null)
 const discRule = computed(() => STAGE_RULES[cycle.value?.stage] || null)
-// 触价持仓明细(2026-09-13 从纯计数升级为可点开): 系统估算净持仓为 0 的标"已清仓?"不计入待执行数;
-// net_qty_est 缺失(未知)时保守计入待执行
-// 2026-09-13 用户拍板: 选股页触价提醒先隐藏(净持仓估算误报过多), 恢复改回 true; 明细逻辑保留
-const SHOW_TOUCH = false
-const touchRows = computed(() => (mine.value?.positions || []).filter(p => p.touch))
-const touchPending = computed(() => touchRows.value.filter(p => p.net_qty_est !== 0))
-const touchExited = computed(() => touchRows.value.filter(p => p.net_qty_est === 0))
-// 触线描述: exit_rebound=[反抽区间], exit_break=破位线
-const touchLine = p => Array.isArray(p.exit_rebound) && p.exit_rebound.length
-  ? `反抽线 ${p.exit_rebound.join('~')}`
-  : (p.exit_break != null ? `破位线 ${p.exit_break}` : '触价')
-const showTouchDetail = ref(false)
-const showTouchExited = ref(false)
 // 采集日 vs 决策日: 不一致=今天还没有新交易数据(周末/节假日/push触发班次), 明示不猜测原因
 const crawlDate = ref('')
 const staleDayNote = computed(() => (crawlDate.value && cycleDataDay.value && crawlDate.value !== cycleDataDay.value)
@@ -61,9 +45,8 @@ const coreError = ref(false)
 // 周期引擎拉取失败: 此前与"正在计算"共用一句文案, 失败会被读成"永远在加载"
 const cycleError = ref(false)
 
-async function loadMine(silent = false) {
-  try { mine.value = null } catch (e) { if (!silent) console.error('[MarketTab mine]', e?.message) }
-  // 采集日( core.json date ): 用于"最新采集晚于决策日"的诚实提示, 不猜测节假日
+async function loadCore(silent = false) {
+  // 采集日( today.json date ): 用于"最新采集晚于决策日"的诚实提示, 不猜测节假日
   try {
     const core = await fetchToday()
     crawlDate.value = core?.date || ''
@@ -88,21 +71,9 @@ async function loadCycleBattle(silent = false) {
     cycle.value = cd.cycle
     riseFallToday.value = cd.riseFallToday || null
     cycleDataDay.value = cd.cycle?.date || dayDash
-    // 复核文件与竞价换手并行预取: review 的 prev_broken 供引擎标记"弱转强·炸板回封"
-    const [lb, rv] = await Promise.all([fetchLianbanBid().catch(() => null), Promise.resolve(null)])
-    review.value = rv
-    if (rv?.picks?.length) {
-      const m = {}
-      for (const q of await fetchEmPct(rv.picks.map(p => p.code))) m[q.code] = q.pct
-      reviewPct.value = m
-    }
-    if (rv?.today_wzq?.length) {
-      const m2 = {}
-      for (const q of await fetchEmPct(rv.today_wzq.map(p => p.code))) m2[q.code] = q.pct
-      wzqPct.value = m2
-    }
-    battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd, lb, (rv?.prev_broken || []).map(p => p.code))
-    refreshSix()   // 六情绪实时版: 复用本轮已拉取的 KPL 数据, 不新增盘面请求
+    // 复盘复核/弱转强名单随 P3 原子切换下线（数据源已无生产者），此处只保留连板竞价数据
+    const lb = await fetchLianbanBid().catch(() => null)
+    battle.value = await loadBattleData({ fetchLimitPool, fetchUnsealedPool }, cd, lb, [])
     loadStrikePx() // 候选实时价(一次批量行情, 供"距买点/止损参考")
     cycleError.value = false
   } catch (e) {
@@ -111,24 +82,7 @@ async function loadCycleBattle(silent = false) {
   }
 }
 
-// ── 昨日可买复核: 前一交易日 9:25 选股的可做名单 → 今日实时涨幅逐只判定 ──
-const review = ref(null)
-const reviewPct = ref({})
-const wzqPct = ref({})
-const showReview = ref(false)   // 复盘块默认收起, 不占首屏
-const showMoreReview = ref(false)
-// 今日竞价弱转强(9:25 口径): 回封(现价触板)则标已回封; 排序=最适合买入在前, 默认前5
-const showMoreWzq = ref(false)
-const limOf = c => /^(4|8|92)/.test(c) ? 30 : /^(688|689|300|301)/.test(c) ? 20 : 10
-const wzqRows = computed(() => {
-  const r = review.value
-  if (!r?.today_wzq?.length) return []
-  const rows = r.today_wzq.map(p => {
-    const pct = wzqPct.value[p.code] ?? null
-    return { ...p, pct, w: statusWord(p.status), resealed: pct != null && pct >= limOf(p.code) - 0.5 }
-  })
-  return sortPicksFirst(rows)
-})
+// ── 候选实时价批量行情(东财 ulist; 供出击卡"距买点/止损参考") ──
 async function fetchEmPct(codes) {
   const rows = []
   for (let i = 0; i < codes.length; i += 40) {
@@ -146,21 +100,6 @@ async function fetchEmPct(codes) {
   }
   return rows
 }
-const reviewRows = computed(() => {
-  const r = review.value
-  if (!r?.picks?.length) return []
-  const stage = cycle.value?.stage || r.stage
-  const rows = r.picks.map(p => {
-    const pct = reviewPct.value[p.code] ?? null
-    // 全量输出改版: buyable=false 的昨日候选 → 标「不出手」, 不做买卖判定
-    const buyable = p.buyable ?? (statusWord(p.status).txt !== '只看不买')
-    if (!buyable) return { ...p, pct, tag: '不出手', cls: 'watch', txt: '纪律禁买 · 仅观察' }
-    return { ...p, pct, ...reviewVerdict(pct, p.code, stage) }
-  })
-  return sortReviewRows(rows)
-})
-// 防过期: 复核文件日期须与页面数据日一致, 否则视为旧数据不展示
-const reviewValid = computed(() => review.value && (!cycle.value?.date || review.value.date === cycle.value.date))
 
 // ── 情绪周期(选股依据): cycle 供结论头, battle 供出击 ──
 const cycle = ref(null)
@@ -185,12 +124,6 @@ const premiumLine = computed(() => {
 
 // ── 选股结论头(三层: 池判定 → 仓位上限 → 一句话结论; 口径见 utils/stockPicks.js / leaderBattle.gateSentence) ──
 const verdictTier = computed(() => gateTier(battle.value?.strike?.gate?.cap))
-const sixDominant = computed(() => {
-  const x = review.value?.six
-  // 六情绪日终存档: 数据日 ≠ 实时周期日时不冒充当日结论(实时版见 sixLive)
-  if (!x?.dominant || !sameDataDay(review.value?.date, cycle.value?.date)) return ''
-  return `主导 ${x.dominant}` + (x.note ? ` · ${x.note}` : '')
-})
 // 闸门开≠有可买: 结论必须与实际达标候选数一致(无达标→「仅观察」, 不误导)
 const actCount = computed(() => (battle.value?.strike?.candidates || []).filter(c => statusWord(c.status).txt !== '只看不买').length)
 const noCandidate = computed(() => verdictTier.value.verdict !== '禁买' && actCount.value === 0)
@@ -199,7 +132,6 @@ const verdictShow = computed(() => resolveVerdict(verdictTier.value, actCount.va
 const gateSentenceTxt = computed(() => gateSentence(
   cycle.value?.stage || '', gateMatrix.value?.high, gateMatrix.value?.mid,
   battle.value?.strike?.gate?.cap, noCandidate.value))
-const dvg = computed(() => divergenceNote(sixLive.value?.dominant, verdictShow.value, actCount.value))
 // 存档阶段 vs 实时阶段: 仅同一天才标注(跨日不冒充"今日早盘"); 措辞按快照时刻
 const morningStage = computed(() => {
   const a = auction.value
@@ -225,7 +157,6 @@ const riskSummary = computed(() => {
   return (mainSwitchNote.value || names.length) ? { sw: mainSwitchNote.value, names } : null
 })
 function stWord(c) { return statusWord(c?.status) }
-function holdOf(c) { return holdInfo(c, mine.value?.positions || []) }
 // 09:25 盘前候选(昨日连板·竞价换手前5 优先, 兜底取出击选股榜); 早/盘中换序
 const preRows = computed(() => (auction.value?.bidrank || auction.value?.strike || []).slice(0, 5))
 
@@ -257,25 +188,6 @@ const avoidFull = ref(false)
 const llmExp = ref({})
 function toggleLlmPick(code) { llmExp.value = { ...llmExp.value, [code]: !llmExp.value[code] } }
 
-// ── 六情绪实时版(battle 同源输入 + six_history 历史分位), 打开页面/30s 刷新即最新 ──
-const sixLive = ref(null)
-async function refreshSix() {
-  try {
-    const hist = []
-    const rows = normHistory(hist)
-    if (!rows.length) return
-    const inp = battle.value?._inputs || {}
-    const idxT = await fetchIndexTrend()
-    const live = buildLiveRow({
-      todayPool: inp.todayPool || [], prevFull: inp.prevFull || [], unsealed: inp.unsealed || [],
-      history: rows, mood: { strong: mood.value?.[0]?.strong, df: mood.value?.[0]?.df },
-      cycle: cycle.value, bidAmt: parseBidYi(auction.value?.env?.data?.bid_total),
-      idxTrend: idxT, date: cycleDataDay.value || '',
-    })
-    if (live.date) sixLive.value = computeSixLive(rows, live)
-  } catch (e) { /* 六情绪失败不影响主结论 */ }
-}
-
 // 候选实时价: 东财 ulist 一次批量(≤40只/批), 仅用于"距买点/止损参考"行
 const strikePx = ref({})
 async function loadStrikePx() {
@@ -291,7 +203,7 @@ function pxOf(c) { const q = strikePx.value[c?.code]; return q && q.price != nul
 function pxLineOf(c) { const q = pxOf(c); return q ? pxLine({ mode: c.mode, price: q.price, pct: q.pct ?? 0, code: c.code, avg: q.avg }) : '' }
 
 async function loadAll(silent = false) {
-  loadMine(silent)
+  loadCore(silent)
   try {
     const [l, m, lh, inst, g] = await Promise.all([
       fetchTianTi(silent),
@@ -305,7 +217,6 @@ async function loadAll(silent = false) {
     if (lh) lhb.value = lh
     if (inst) institution.value = inst
     if (g) global.value = g
-    refreshSix()   // mood 就绪后补算一次(与 battle 同源数据, 仍无新增 KPL 请求)
   } catch (e) { if (!silent) console.error('[MarketTab]', e?.message) }
 }
 
@@ -376,13 +287,6 @@ const strikeTop2 = computed(() => strikeAll.value.slice(0, 2))
 const strikeRest5 = computed(() => strikeAll.value.slice(2, 5))
 const strikeBeyond = computed(() => strikeAll.value.slice(5))
 const showAllRest = ref(false)
-const wzqActionable = computed(() => wzqRows.value.filter(r => r.w.txt !== '只看不买'))
-const wzqHold = computed(() => wzqRows.value.filter(r => r.w.txt === '只看不买'))
-const wzqTop5 = computed(() => wzqActionable.value.slice(0, 5))
-const wzqRest = computed(() => wzqActionable.value.slice(5))
-const showWzqHold = ref(false)
-const reviewTop5 = computed(() => reviewRows.value.slice(0, 5))
-const reviewRest = computed(() => reviewRows.value.slice(5))
 // ── 行情速览 ──
 const showBrowse = ref(false)
 const ladderTop5 = computed(() => (ladder.value || []).slice(0, 5))
@@ -418,7 +322,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         <span v-if="riskSummary.sw">🔄 {{ riskSummary.sw }}</span>
         <span v-if="riskSummary.names.length">🚨 高标开板: {{ riskSummary.names.join('、') }}</span>
       </div>
-      <div v-if="dvg" class="pk-warn">⚠️ {{ dvg }}</div>
       <!-- 输入全空时引擎仍会给出阶段, 必须说明该结论不可作为依据(2026-09-15 审计) -->
       <div v-if="cycle?.inputsEmpty" class="pk-warn">⚠️ 行情输入为空（接口可能失败，或今日非交易日）—— 本阶段结论不可作为依据</div>
     </div>
@@ -430,31 +333,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
       <span class="pk-badge">…</span>
       <span class="pk-sub muted">周期数据加载中,稍候给出「可否买入」结论</span>
     </div>
-
-    <!-- ① 持仓触价风控(纪律卡下线后的轻量回补): 可点开看逐只明细; 系统估算已清仓的不计入待执行.
-         2026-09-13 起隐藏(SHOW_TOUCH=false), 误报过多; 逻辑保留随时可恢复 -->
-    <template v-if="SHOW_TOUCH && touchRows.length > 0">
-      <div class="pk-touch" @click="showTouchDetail = !showTouchDetail">
-        ⚠️ {{ touchPending.length }} 只持仓触价待执行(反抽/破位线命中, 按价执行不撤单){{ touchExited.length ? ` · 另 ${touchExited.length} 只系统估算已清仓` : '' }} {{ showTouchDetail ? '▲' : '▼' }}
-      </div>
-      <div v-if="showTouchDetail" class="pk-touch-panel">
-        <div v-for="p in touchPending" :key="p.code" class="pk-touch-row" @click="goStock(p)">
-          <b>{{ p.name }}</b>
-          <span class="tk-line">{{ touchLine(p) }} · 现 {{ p.price }}({{ p.pct > 0 ? '+' : '' }}{{ p.pct }}%)</span>
-          <span class="tk-note">{{ p.note }}</span>
-        </div>
-        <div v-if="touchExited.length" class="pk-touch-toggle" @click="showTouchExited = !showTouchExited">
-          {{ showTouchExited ? '收起已清仓 ▲' : `系统估算已清仓 ${touchExited.length} 只 ▾` }}
-        </div>
-        <template v-if="showTouchExited">
-          <div v-for="p in touchExited" :key="'x' + p.code" class="pk-touch-row exited" @click="goStock(p)">
-            <b>{{ p.name }}</b>
-            <span class="tk-line">{{ touchLine(p) }} · 现 {{ p.price }}({{ p.pct > 0 ? '+' : '' }}{{ p.pct }}%)</span>
-            <span class="tk-note">系统估算净持仓 0(已清仓?) — 若实际仍持有请按纪律执行</span>
-          </div>
-        </template>
-      </div>
-    </template>
 
     <!-- ② 出击 pane(决策流主体; 早盘盘前候选在上, 盘中在下) -->
     <div class="mt-pane">
@@ -470,7 +348,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 
       <section v-if="battle && !battle.empty" class="mt-sec">
         <div class="mt-sec-head">
-          <h3>🎯 今日出击<Hint text="可买 = 按预案直接打 · 待确认 = 分时转强再买 · 只看不买 = 不入场。与持仓重叠会标「已持仓」, 只许对了加仓。"/></h3>
+          <h3>🎯 今日出击<Hint text="可买 = 按预案直接打 · 待确认 = 分时转强再买 · 只看不买 = 不入场。"/></h3>
           <em>{{ battle.strike.gate.stage }} · 上限 {{ battle.strike.gate.cap || '禁买' }}</em>
           <button class="mt-more" @click="open('cycle')">决策详情 ›</button>
         </div>
@@ -493,7 +371,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
               <b>{{ c.name }}</b>
               <span v-if="c.level" class="mt-strike-lv">{{ c.level }}板</span>
               <span class="mt-strike-plates">{{ c.platesTxt }}</span>
-              <span v-if="holdOf(c)" class="pk-held">{{ holdOf(c).txt }}</span>
               <span class="mt-strike-score" :class="{ hi: c.score >= 75 }">{{ c.score }}</span>
               <span class="mt-strike-status">{{ stWord(c).txt }}</span>
               <button class="mt-mini" @click.stop="toggleExp(c.code)">{{ expanded[c.code] ? '收起' : '详情' }}</button>
@@ -518,7 +395,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
             <b class="nm">{{ c.name }}</b>
             <span v-if="c.level" class="lv">{{ c.level }}板</span>
             <span class="nt">{{ c.platesTxt }}</span>
-            <span v-if="holdOf(c)" class="hd">{{ holdOf(c).txt }}</span>
             <i>{{ c.score }}</i>
           </div>
           <template v-if="showAllRest">
@@ -527,7 +403,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
               <b class="nm">{{ c.name }}</b>
               <span v-if="c.level" class="lv">{{ c.level }}板</span>
               <span class="nt">{{ c.platesTxt }}</span>
-              <span v-if="holdOf(c)" class="hd">{{ holdOf(c).txt }}</span>
               <i>{{ c.score }}</i>
             </div>
           </template>
@@ -552,55 +427,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         </div>
       </section>
 
-      <!-- 六情绪定性/板块之争/高标开板 已归 cycle 详情页(选股依据), 首页不再重复 -->
-      <section v-if="reviewValid && review" class="mt-sec">
-        <div class="mt-sec-head">
-          <h3>🌅 今日竞价弱转强<Hint text="昨日分歧股 × 今日 9:25 竞价超预期; 站稳分时均价/放量转强再买, 失败 -3% 止损。属今日可买候选。"/></h3>
-          <em>{{ review.date }} 9:25 竞价口径</em>
-        </div>
-        <div v-if="!wzqRows.length" class="mt-hold">今日无弱转强候选（昨日无分歧股, 或竞价未达 +1.5~7%）</div>
-        <div v-if="!wzqActionable.length && wzqHold.length" class="mt-hold">今日弱转强全为不出手(禁买期, 仅观察)</div>
-        <div v-for="row in wzqTop5" :key="row.code" class="mt-review" @click="goStock(row)">
-          <div class="mt-strike-top wzq-top">
-            <b class="nm">{{ row.name }}</b>
-            <span class="mt-strike-status" :class="'st-' + row.w.cls" style="font-size:10px;padding:1px 6px;">{{ row.w.txt }}</span>
-            <span v-if="row.w.txt === '可买'" class="rv-tag" :class="row.resealed ? 'hold' : 'warn'">{{ row.resealed ? '已回封✅' : '待分时确认' }}</span>
-            <span v-else class="rv-tag watch">不出手</span>
-          </div>
-          <div class="wzq-sub">昨日{{ row.tag }}分歧 · 竞价 {{ row.bid_pct }}%<template v-if="row.pct != null"> · 现 {{ row.pct > 0 ? '+' : '' }}{{ row.pct }}%</template></div>
-          <div v-if="row.w.txt === '可买'" class="mt-review-today rv-warn">分时确认才上：站稳分时均价/放量转强再买，失败 -3% 止损</div>
-          <div v-else class="mt-strike-why">🚫 禁买期弱转强仅观察: 分时转强也不买, 留作情绪回暖观察样本</div>
-        </div>
-        <template v-if="showMoreWzq">
-          <div v-for="row in wzqRest" :key="row.code" class="mt-review" @click="goStock(row)">
-            <div class="mt-strike-top wzq-top">
-              <b class="nm">{{ row.name }}</b>
-              <span class="mt-strike-status" :class="'st-' + row.w.cls" style="font-size:10px;padding:1px 6px;">{{ row.w.txt }}</span>
-              <span v-if="row.w.txt === '可买'" class="rv-tag" :class="row.resealed ? 'hold' : 'warn'">{{ row.resealed ? '已回封✅' : '待分时确认' }}</span>
-              <span v-else class="rv-tag watch">不出手</span>
-            </div>
-            <div class="wzq-sub">昨日{{ row.tag }}分歧 · 竞价 {{ row.bid_pct }}%<template v-if="row.pct != null"> · 现 {{ row.pct > 0 ? '+' : '' }}{{ row.pct }}%</template></div>
-            <div v-if="row.w.txt === '可买'" class="mt-review-today rv-warn">分时确认才上：站稳分时均价/放量转强再买，失败 -3% 止损</div>
-            <div v-else class="mt-strike-why">🚫 禁买期弱转强仅观察: 分时转强也不买, 留作情绪回暖观察样本</div>
-          </div>
-        </template>
-        <div v-if="wzqRest.length" class="mt-strike-toggle" @click="showMoreWzq = !showMoreWzq">
-          {{ showMoreWzq ? '收起 ▲' : `展开其余 ${wzqRest.length} 只 ▾` }}
-        </div>
-        <div v-if="wzqHold.length" class="mt-strike-toggle" @click="showWzqHold = !showWzqHold">
-          {{ showWzqHold ? '收起 ▲' : `展开不出手 ${wzqHold.length} 只 ▾` }}
-        </div>
-        <template v-if="showWzqHold">
-          <div v-for="row in wzqHold" :key="'h'+row.code" class="mt-review" @click="goStock(row)">
-            <div class="mt-strike-top wzq-top">
-              <b class="nm">{{ row.name }}</b>
-              <span class="mt-strike-status watch">只看不买</span>
-              <span class="rv-tag watch">不出手</span>
-            </div>
-            <div class="wzq-sub">昨日{{ row.tag }}分歧 · 竞价 {{ row.bid_pct }}%<template v-if="row.pct != null"> · 现 {{ row.pct > 0 ? '+' : '' }}{{ row.pct }}%</template></div>
-          </div>
-        </template>
-      </section>
       <!-- 大模型独立选股(影子): 每日 09:25 DeepSeek 只看原始竞价数据独立分析, 与引擎结论互不影响.
            卡片常驻: 无输出日也保留入口(占位说明), 候选不可买时照常展示只打标签, 执行权在引擎纪律 -->
       <section class="mt-sec">
@@ -640,44 +466,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
           暂无模型输出 — 每个交易日 09:25 竞价班自动生成，非交易日/上线前的历史日期无此项
         </div>
       </section>
-      <section v-if="reviewValid && review" class="mt-sec">
-        <div class="mt-sec-head">
-          <h3>📋 昨日可买复核<Hint text="昨日 9:25 选股单逐只对今日行情: 封板=持有 · 涨3%+=兑现 · 平盘弱=减半 · 水下=开盘走; 转退潮/冰点=全清。"/></h3>
-          <em>{{ review.prev_day }} 9:25 选股 · {{ review.date }} 执行</em>
-          <button class="mt-more" @click="showReview = !showReview">{{ showReview ? '收起 ▲' : (review.picks.length ? `展开 ${review.picks.length} 只 ▾` : '展开 ▾') }}</button>
-        </div>
-        <template v-if="showReview">
-          <div class="mt-review-guide">封板=持有到尾盘 · 涨3%+=冲高兑现 · 平盘弱=先出一半 · 水下=开盘走;今日转退潮/冰点=全清(只卖不买)。</div>
-          <div v-if="!review.picks.length" class="mt-hold">{{ review.stage }}期无可买（空仓纪律正确）✓</div>
-          <div v-for="row in reviewTop5" :key="row.code" class="mt-review" @click="goStock(row)">
-            <div class="mt-strike-top wzq-top">
-              <b class="nm">{{ row.name }}</b>
-              <span class="mt-strike-lv">{{ row.height }}板</span>
-              <span class="rv-tag" :class="row.cls">{{ row.tag }}</span>
-            </div>
-            <div class="wzq-sub">{{ row.pct == null ? `竞价 ${row.bid_pct ?? '—'}%` : (row.pct > 0 ? '+' : '') + row.pct + '%' }}</div>
-            <div class="mt-strike-logic">昨日：{{ row.reason }}</div>
-            <div class="mt-review-today" :class="'rv-' + row.cls">今日：{{ row.txt }}</div>
-          </div>
-          <template v-if="showMoreReview">
-            <div v-for="row in reviewRest" :key="row.code" class="mt-review" @click="goStock(row)">
-              <div class="mt-strike-top wzq-top">
-                <b class="nm">{{ row.name }}</b>
-                <span class="mt-strike-lv">{{ row.height }}板</span>
-                <span class="rv-tag" :class="row.cls">{{ row.tag }}</span>
-              </div>
-              <div class="wzq-sub">{{ row.pct == null ? `竞价 ${row.bid_pct ?? '—'}%` : (row.pct > 0 ? '+' : '') + row.pct + '%' }}</div>
-              <div class="mt-strike-logic">昨日：{{ row.reason }}</div>
-              <div class="mt-review-today" :class="'rv-' + row.cls">今日：{{ row.txt }}</div>
-            </div>
-          </template>
-          <div v-if="reviewRest.length" class="mt-strike-toggle" @click="showMoreReview = !showMoreReview">
-            {{ showMoreReview ? '收起 ▲' : `展开其余 ${reviewRest.length} 只 ▾` }}
-          </div>
-        </template>
-        <div v-else-if="!review.picks.length" class="mt-hold">{{ review.stage }}期无可买（空仓纪律正确）✓</div>
-      </section>
-      <!-- 失败与"加载中"分开说: 引擎拉取失败时不能显示成永远在加载(2026-09-15 静默审计 G4) -->
+            <!-- 失败与"加载中"分开说: 引擎拉取失败时不能显示成永远在加载(2026-09-15 静默审计 G4) -->
       <div v-if="cycleError" class="mt-hold" style="padding:20px 0;text-align:center;">
         ⚠️ 周期数据加载失败（非加载中）— <a href="javascript:void(0)" @click="retryCycle">点此重试</a>
       </div>
@@ -776,9 +565,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .pk-empty b { font-size: 13.5px; color: var(--accent); }
 .pk-empty p { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 
-/* ── 已持仓标 ── */
-.pk-held { font-size: 9.5px; font-weight: 800; color: var(--ink); background: var(--gold); border-radius: 5px; padding: 1px 6px; flex: none; white-space: nowrap; }
-
 /* ── 今日出击 ── */
 .mt-strike-banner { font-size: 12px; color: var(--ink-3); background: var(--bg-3); border: 1px solid #e8edf3; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; line-height: 1.6; }
 .mt-defense { color: var(--up); font-weight: 520; }
@@ -813,7 +599,6 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .mt-slim .nm { font-weight: 600; color: var(--ink); flex: none; }
 .mt-slim .lv { font-size: 10px; color: var(--gold); font-weight: 800; flex: none; }
 .mt-slim .nt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 11px; }
-.mt-slim .hd { font-size: 9.5px; font-weight: 800; color: var(--ink); background: var(--gold); border-radius: 5px; padding: 1px 6px; flex: none; }
 .mt-slim i { font-style: normal; color: var(--ink-3); font-size: 11px; }
 .mt-strike-toggle { text-align: center; font-size: 12px; color: var(--ink-3); padding: 8px 0 2px; cursor: pointer; user-select: none; }
 .mt-strike-toggle:active { opacity: .6; }

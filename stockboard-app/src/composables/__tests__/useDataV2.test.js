@@ -132,9 +132,10 @@ describe('useDataV2 · P3 4 契约数据层', () => {
     expect(d.stocksSnapshot.value).toBe('close')
   })
 
-  it('优质口径已废除: isQuality 恒 false', () => {
+  it('已下线的优质口径不再暴露 API（P3 废除, 2026-11-17 清理）', () => {
     const d = useDataV2()
-    expect(d.isQuality({ days: 999 })).toBe(false)
+    expect(d.isQuality).toBeUndefined()
+    expect(d.qualityOnly).toBeUndefined()
   })
 
   it('分片失败可辨: sliceErrors 标记且抛错', async () => {

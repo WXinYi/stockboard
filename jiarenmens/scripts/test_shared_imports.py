@@ -38,10 +38,8 @@ class TestSharedModules(unittest.TestCase):
 
     def test_quotes_and_state(self):
         from src.notify.quotes import fetch_quotes, tencent_auction_amt
-        from src.notify.watchdog_state import load_watchdog_pushed
         self.assertEqual(fetch_quotes([]), {})
         self.assertTrue(callable(tencent_auction_amt))
-        self.assertIsInstance(load_watchdog_pushed("1999-01-01"), set)
 
     def test_atomic_helpers(self):
         from src.utils.atomic import _atomic_json, _atomic_text
