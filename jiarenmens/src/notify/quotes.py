@@ -87,7 +87,7 @@ def tencent_auction_amt(code: str):
     """腾讯分时首行 0930 行 = 09:25 集合竞价成交打印 → 竞价成交额(元), 取不到返回 None。
     口径同 scripts/lianban_bid_hs.py tencent_auction(09-03 双源验证); 分时接口只回当天,
     历史日期/盘外自然拿不到 → 调用方降级用 KPL 行。"""
-    pfx = "sh" if code.startswith("6") else ("bj" if code[0] in "48" else "sz")
+    pfx = _market(code)  # 唯一真源(92→bj 先于 9→sh); 2026-09-05 事故: 自写映射把 920xxx 当沪市
     url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={pfx}{code}"
     try:
         with urllib.request.urlopen(url, timeout=15) as resp:

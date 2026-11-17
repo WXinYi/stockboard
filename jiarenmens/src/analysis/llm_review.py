@@ -23,6 +23,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from src.utils.market import market_prefix
+
 PROMPT_VER = "v2"
 MODEL_DEFAULT = "deepseek-flash"
 API_BASE_DEFAULT = "https://api.deepseek.com"
@@ -195,7 +197,7 @@ def _qt_snap(syms):
 
 
 def _sym_of(code):
-    return ("sh" if code[0] in "65" else "bj" if code[0] in "48" else "sz") + code
+    return market_prefix(code) + code
 
 
 def _flat_rows(info):

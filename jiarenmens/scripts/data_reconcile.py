@@ -54,6 +54,7 @@ os.environ["NO_PROXY"] = os.environ["no_proxy"] = ",".join(
 
 import requests  # noqa: E402
 from src.spiders.xuangubao import fetch_broken_pool  # noqa: E402
+from src.utils.market import market_prefix  # noqa: E402
 
 BJ_TZ = ZoneInfo("Asia/Shanghai")
 NOW = datetime.now(BJ_TZ)
@@ -218,7 +219,7 @@ def fetch_bidding_his(day):
 
 def tencent_auction_amt(code):
     """腾讯分时首行 0930 = 09:25 集合竞价成交 → 金额(元); 口径同 export_json._tencent_auction_amt"""
-    pfx = "sh" if code.startswith("6") else ("bj" if code[0] in "48" else "sz")
+    pfx = market_prefix(code)
     try:
         r = requests.get(f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={pfx}{code}",
                          timeout=15, headers={"User-Agent": "Mozilla/5.0"})

@@ -28,6 +28,7 @@ os.environ.setdefault("no_proxy", os.environ["NO_PROXY"])
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.spiders.auction_spider import KPLSpider  # noqa: E402
+from src.utils.market import market_prefix  # noqa: E402
 
 DB = ROOT / "data" / "auction.db"
 
@@ -71,7 +72,7 @@ def fetch_lianban(spider, prev):
 
 def tencent_auction(code):
     """腾讯分时首行 '0930 价 累计量(手) 累计额' = 09:25 集合竞价成交打印 → (价, 额)"""
-    pfx = "sh" if code.startswith("6") else ("bj" if code[0] in "48" else "sz")
+    pfx = market_prefix(code)
     url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={pfx}{code}"
     with urllib.request.urlopen(url, timeout=15) as resp:
         rows = json.load(resp)["data"][pfx + code]["data"]["data"]

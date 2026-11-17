@@ -18,9 +18,16 @@ from pathlib import Path
 
 DB = Path(__file__).resolve().parents[1] / "data" / "auction.db"
 
+# 让 `python scripts/llm_picks_review.py` 也能 import src.*（脚本目录在 sys.path[0]，不含仓库根）
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.utils.market import market_prefix  # noqa: E402
+
 
 def sym(code):
-    return ("sh" if code[0] in "65" else "bj" if code[0] in "48" else "sz") + code
+    return market_prefix(code) + code
 
 
 def ohlc(code, d):

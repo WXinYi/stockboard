@@ -34,6 +34,7 @@ import src.analysis.stage_candidates as sc  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts"))
 from auction_scan import BOARD_LIMIT, normalize_bkjjbl  # noqa: E402
 from src.spiders.auction_spider import KPLSpider  # noqa: E402
+from src.utils.market import market_prefix  # noqa: E402
 SPIDER = KPLSpider()
 BOARD_SCAN_LIMIT = 30
 
@@ -158,7 +159,7 @@ def replay(days_n=120, refresh_his=False):
 # ────────────────────────── ② OHLC + 真实收益标签 ──────────────────────────
 
 def sym(code):
-    return ("sh" if code[0] in "65" else "bj" if code[0] in "48" else "sz") + code
+    return market_prefix(code) + code
 
 
 def fetch_ohlc(codes, d0="2026-03-01", d1="2026-09-12"):
