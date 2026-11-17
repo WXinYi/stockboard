@@ -178,7 +178,7 @@
 - `players` 表（含 `_PLAYER_INSERT_SQL`）**没有** `portf_rat` / `rate_max_stk` / `manager_name` / `start_date` / `crawl_date` 列，入库只消费固定字段列表 → `eod` 省略这些字段对数据零影响；合并 `old`（`SELECT *` 含 `updated_at`/`created_at`）也不会带入过期时间戳，SQL 用 `CURRENT_TIMESTAMP` 覆盖。
 - `fail_count` 只在 **全员失败** 时判红（`main.py:473`）。`eod` 的异常判定少一个 `info` 信号（`yld+pos` 两信号 vs `full` 三信号），个别「info 有响应但收益/持仓全空」的组合在 eod 会记为失败、full 会继续写空收益档案 → eod 反而更保守（不写坏数据），不会判红整班。**已知取舍**：明日 EOD 的失败计数可能由 0 变为个位数，属预期。
 - `weekly_return=0.0` 覆盖库内历史值是 `full` 档既有行为，非 `eod` 引入；口径专项已把「真 0% / 源缺失」问题另列待办。
-- 掐班告警 2026-11-17 加固：GitHub schedule 曾延迟到次日 01:28 才跑（run `43918724551`），改为 cron-job.org 北京 15:45 触发 `repository_dispatch: crawl-cancel-check`；脚本只认 `repository_dispatch(crawl/crawl-eod)` 和带 `[cron]` run-name 的 workflow_dispatch，push/普通手动补跑不再误报；北京时间 15:40~16:30 才检查；已告警 run id 落 `.github/state/crawl-cancel-alert.json` 去重。剩余限制：只覆盖 `cancelled`，「整天无班次」心跳仍留波 3；外部 cron-job.org 新 job 与 `trigger_source=cron` 输入需同步配置。
+- 掐班告警 2026-11-17 加固：GitHub schedule 曾延迟到次日 01:28 才跑（run `43918724551`），改为 cron-job.org job `8880763` 北京 15:45 触发 `repository_dispatch: crawl-cancel-check`；同日 20 个 `crawl.yml` 定时 job 已统一加 `inputs.trigger_source=cron`，run-name 带 `[cron]` 供告警识别。脚本只认 `repository_dispatch(crawl/crawl-eod)` 和带 `[cron]` 的 workflow_dispatch，push/普通手动补跑不再误报；北京时间 15:40~16:30 才检查；已告警 run id 落 `.github/state/crawl-cancel-alert.json` 去重。剩余限制：只覆盖 `cancelled`，「整天无班次」心跳仍留波 3。
 
 ### 今日验收收口（15:39 EOD 完成）
 
