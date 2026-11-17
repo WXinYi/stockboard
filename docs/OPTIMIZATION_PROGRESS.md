@@ -7,7 +7,7 @@
 
 生产链路稳定：数据采集、前端 4 契约、watchdog 即时推送、午/尾盘格局推送、掐班告警均已上线并通过 CI 与生产核验。当前没有阻塞上线的 bug；剩余是明日自然班观察和规格证据收尾。
 
-当前代码 HEAD：`f76a8b4e7b3`（全量复测问题收口）。最近 CI：代码门禁 `44045910912` success；部署班 `44045910944` success；生产 bundle 已更新为 `index-CNk4sxs3.js` / `index-ChNhDtGK.css`。
+验证基线：`f76a8b4e7b3`（全量复测问题收口；当前代码以 main 最新提交为准，本行不随每次提交刷新）。最近 CI：代码门禁 `44045910912` success；部署班 `44045910944` success；生产 bundle 已更新为 `index-CNk4sxs3.js` / `index-ChNhDtGK.css`。
 
 ## 当前页面
 
@@ -40,12 +40,11 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 
 | 时间/频率 | 触发 | 目标 |
 |---|---|---|
-| 09:25 | cron-job.org `workflow_dispatch: auction.yml` | 竞价扫描 + 推送 + 发版 |
+| 09:25 | cron-job.org `workflow_dispatch: auction.yml` | 竞价扫描 + 推送 + 发版（含 LLM 影子选股，内嵌 auction_scan） |
 | 09:26–14:51 共 20 班 | cron-job.org `workflow_dispatch: crawl.yml`，body 含 `inputs.trigger_source=cron` | 市场切片 + 选手 rank/midday/market 快照 |
 | 15:15 | cron-job.org `repository_dispatch: crawl-eod` | close 全量快照 + Release sync |
 | 15:45 | cron-job.org job `8880763`，`repository_dispatch: crawl-cancel-check` | 掐班告警，external trigger，去重状态落 `.github/state/crawl-cancel-alert.json` |
 | 09:26–15:01 每 5 分钟 | cron-job.org `repository_dispatch: watchdog` / 09:30 `watchdog-open` | 关注选手即时钉钉 |
-| 10:03 | cron-job.org `repository_dispatch: llm-1000` | 大模型盘中选股影子运行 |
 
 `crawl.yml` 的 20 个定时 job 已统一带 `trigger_source=cron`，run-name 显示 `[cron]`；掐班告警只认这些定时班与 `crawl-eod`，push/手动补跑不再误报。
 

@@ -1,9 +1,13 @@
-"""关注选手名单 —— 唯一真源（AQ2=A / T2.1.1）。
+"""关注选手名单 —— 唯一真源。
 
-从 ``jiarenmens/main.py:46-57`` **原样迁入**，含顺序语义：顺序 = 置顶顺序。
-前端 ``useData.js`` 的 ``FALLBACK_WATCHED`` 是 ``core.json`` 尚无
-``watchedPlayerIds`` 时使用的冻结副本（只是语义说明，本模块不另建第二份名单，
-以免出现双真源）。名单变更只改这里。
+顺序语义：顺序 = 置顶顺序。消费方：
+- 采集端 ``player_snapshot.py``：名单成员**无条件强制插入** ``players.json``
+  并标 ``watched=true``（无论在不在首班榜内）。
+- ``watchdog.py``：盯盘推送按本名单轮询。
+- 前端 ``useDataV2.js`` 的 ``FALLBACK_WATCHED`` 仅当 players.json 的
+  ``watched`` 字段整体缺失时兜底，正常路径永远用数据里的 ``watched=true``。
+
+本模块不另建第二份名单，以免出现双真源。名单变更只改这里。
 """
 WATCHED_PLAYERS = [
     ("900456476", "狼之行一"),         # 满仓单票每日龙头接力(9天新号, 观察验证中; 同名老号 900298267 勿混)
