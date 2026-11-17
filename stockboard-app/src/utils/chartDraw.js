@@ -104,6 +104,11 @@ function fmtTime(item) {
 // 分时双轴(参考东财: 左轴=价格, 右轴=涨跌幅度%): 5 等分, 上界涨停 upPx / 下界跌停 downPx, 昨收居中, 两轴同 y
 // 返回 up/down = 实际采用的上下界(upPx/downPx 缺失时 ±10% fallback), 绘制端 yMin/yMax 须与此同源, 否则刻度错位/NaN
 export function priceTicksTrend(upPx, downPx, prevClose, rect) {
+  // 昨收缺失/非正 → 涨跌幅度无基准: 返回空刻度 + null 上下界(调用方据此跳过绘制),
+  // 不用 0/1 之类占位值伪造坐标(缺失≠零)
+  if (typeof prevClose !== 'number' || !isFinite(prevClose) || prevClose <= 0) {
+    return { left: [], right: [], up: null, down: null }
+  }
   const fallback = prevClose * 0.1
   const up = typeof upPx === 'number' && upPx > 0 ? upPx : prevClose + fallback
   const down = typeof downPx === 'number' && downPx > 0 ? downPx : prevClose - fallback

@@ -19,3 +19,15 @@ export function mergeSection(oldVal, res) {
   }
   return { value: base, staleFields }
 }
+
+// 数组型 section(如个股"所属板块")的同类规则(2026-11-17 复核 P0-3)。
+//
+// 背景: KPL 在非交易时段/无数据时会回 errcode=0 + info=[], 接口层如实返回 [];
+// 原写法 `if (res) boards.value = res` 对空数组同样为真 → 把已有板块清空,
+// 等于把"本轮没取到"显示成"该股没有板块"。板块归属日内是静态的, 保留旧值是无损的。
+// 规则: 新值非空数组才覆盖; 新值为空数组时保留旧值; 两者都空则返回空数组(真实"无板块")。
+export function mergeList(oldVal, res) {
+  if (Array.isArray(res) && res.length) return res
+  if (Array.isArray(oldVal) && oldVal.length) return oldVal
+  return Array.isArray(res) ? res : (Array.isArray(oldVal) ? oldVal : [])
+}

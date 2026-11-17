@@ -21,4 +21,22 @@ describe('bidToPoints 竞价序列→SVG点', () => {
   it('空序列返回空', () => {
     expect(bidToPoints([], 100)).toEqual({ line: [], bars: [] })
   })
+
+  // 2026-11-17 复核 P1-12: 昨收为 0/缺失时 (up-down)=0 → y 全 NaN
+  it('昨收非法(0/null/NaN)返回空序列, 不产出 NaN 坐标', () => {
+    const bid = [{ time: '0915', price: 101, side: '1', cumVol: 100 }]
+    for (const pc of [0, null, undefined, NaN, -1]) {
+      const out = bidToPoints(bid, pc)
+      expect(out, String(pc)).toEqual({ line: [], bars: [] })
+    }
+  })
+
+  it('合法昨收下所有坐标都是有限数', () => {
+    const { line, bars } = bidToPoints(
+      [{ time: '0915', price: 101, side: '1', cumVol: 100 }, { time: '0925', price: 99, side: '0', cumVol: 0 }],
+      100,
+    )
+    for (const pt of line) expect(Number.isFinite(pt.y)).toBe(true)
+    for (const b of bars) expect(Number.isFinite(b.h)).toBe(true)
+  })
 })

@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.spiders.auction_spider import KPLSpider  # noqa: E402
 from src.analysis.emotion_cycle import compute_cycle  # noqa: E402
+from src.utils.atomic import atomic_text  # noqa: E402
 
 BJ_TZ = ZoneInfo("Asia/Shanghai")
 STATE_PATH = ROOT / "data" / ".cycle_push_state.json"
@@ -36,19 +37,33 @@ def state_key(date_str: str, session: str) -> str:
     return f"{date_str}|{session}"
 
 
-def already_sent(key: str, path: Path = STATE_PATH) -> bool:
+def _load_sent(path: Path = STATE_PATH) -> dict:
+    """读状态 → {key: sent_at}。兼容旧格式(单个 "key" 字段, 无 "sent")。"""
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get("key") == key
+        d = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return False   # 文件缺失/损坏 → 当作未推过, 宁可多推不漏推
+        return {}   # 文件缺失/损坏 → 当作未推过, 宁可多推不漏推
+    sent = d.get("sent")
+    sent = dict(sent) if isinstance(sent, dict) else {}
+    if d.get("key"):                      # 旧格式: 迁移进来, 不丢历史去重
+        sent.setdefault(d["key"], d.get("sent_at") or "")
+    return sent
+
+
+def already_sent(key: str, path: Path = STATE_PATH) -> bool:
+    return key in _load_sent(path)
 
 
 def mark_sent(key: str, path: Path = STATE_PATH) -> None:
+    """按 key 累加(而非覆盖单键): midday/eod 交错补跑时不会互相抹掉对方。
+    原子写(tmp+os.replace): 截断文件会让去重失效 → 重复推送。"""
     try:
+        sent = _load_sent(path)
+        sent[key] = datetime.now(BJ_TZ).isoformat(timespec="seconds")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "key": key, "sent_at": datetime.now(BJ_TZ).isoformat(timespec="seconds"),
-        }, ensure_ascii=False), encoding="utf-8")
+        atomic_text(path, json.dumps({
+            "key": key, "sent_at": sent[key], "sent": sent,   # 保留 key/sent_at 供旧读者兼容
+        }, ensure_ascii=False))
     except Exception as e:
         # 状态写不进去不影响本次已送达的推送, 但下一通道可能重复 → 留可见注解
         print(f"::warning::写入推送去重状态失败(不影响本次推送): {e}", file=sys.stderr)

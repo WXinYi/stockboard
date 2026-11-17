@@ -4,6 +4,8 @@
 export function bidToPoints(bid, prevClose, w = 220, h = 64) {
   const n = bid.length
   if (!n) return { line: [], bars: [] }
+  // 昨收缺失/非正 → 涨停~跌停轴无定义, 返回空序列让宿主显示占位(否则 (up-down)=0 → y 全 NaN)
+  if (typeof prevClose !== 'number' || !isFinite(prevClose) || prevClose <= 0) return { line: [], bars: [] }
   const up = prevClose * 1.1, down = prevClose * 0.9   // 涨停/跌停(近似, 详细板规则可后续接 calcLimitPx)
   const xw = n > 1 ? w / (n - 1) : 0
   const yp = (px) => (up - px) / (up - down) * (h - 8)

@@ -22,7 +22,7 @@ def setup_logger(name: str = "stockboard", level: int = logging.INFO) -> logging
     logger.addHandler(console_handler)
 
     log_dir = Path(__file__).parent.parent.parent / "logs"
-    log_dir.mkdir(exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler(log_dir / "spider.log", encoding='utf-8')
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter)

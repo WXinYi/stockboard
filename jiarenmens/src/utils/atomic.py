@@ -4,8 +4,9 @@
 **逐行等价提取**（不是重写）：先写同目录 ``.tmp``，再 ``os.replace``。
 导出/写盘中断不会留下被 ``git add -f`` 固化的截断文件。
 
-Sprint 1 仅 **ADD** 本模块供 3 个新脚本 import；**不 rewire** 任何既有调用方
-（``export_json.py`` 等仍用其自身实现），rewire 属 S2 / Commit-R1 范围。
+现状(2026-11-17 复核)：``export_json.py`` 已随 P3 删除，本模块是**唯一**的原子写实现；
+``player_snapshot.py`` / ``contract_probe.py`` / ``export_market.py`` 均已 rewire，
+``watchdog.py`` / ``cycle_push.py`` 的去重状态也在 2026-11-17 起改为原子写。
 """
 import json
 import os

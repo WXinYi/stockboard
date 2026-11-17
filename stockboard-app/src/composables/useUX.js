@@ -40,7 +40,8 @@ export function useDataRefresh(onNewData) {
       // 首屏传入 loadData() 已取到的 today 快照，避免再发一次请求；定时探测才走网络。
       let today = snapshot
       if (!today) {
-        const resp = await fetch(`${import.meta.env.BASE_URL}data/latest/today.json`, { cache: 'no-cache' })
+        // 红线③: data/*.json 一律 no-store(与 loader.js / 下方 auction 探测同口径)
+        const resp = await fetch(`${import.meta.env.BASE_URL}data/latest/today.json`, { cache: 'no-store' })
         today = await resp.json()
       }
       const newTime = today.updatedAt || today.date || ''

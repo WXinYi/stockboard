@@ -37,6 +37,26 @@ class TestPushDedup(unittest.TestCase):
         self.tmp.write_text("not-json", encoding="utf-8")
         self.assertFalse(already_sent(state_key("2026-11-11", "eod"), self.tmp))
 
+    def test_多场次互不覆盖_midday与eod交错补跑(self):
+        """单 key 覆盖会导致: 先推 midday → 推 eod → midday 再跑被判"未推"重复推送。"""
+        mark_sent(state_key("2026-11-11", "midday"), self.tmp)
+        mark_sent(state_key("2026-11-11", "eod"), self.tmp)
+        self.assertTrue(already_sent(state_key("2026-11-11", "midday"), self.tmp))
+        self.assertTrue(already_sent(state_key("2026-11-11", "eod"), self.tmp))
+        self.assertFalse(already_sent(state_key("2026-11-12", "midday"), self.tmp))
+
+    def test_旧格式单key状态仍可读_升级不丢历史(self):
+        import json
+        self.tmp.write_text(json.dumps({"key": "2026-11-11|eod", "sent_at": "2026-11-11T15:45:00+08:00"}),
+                            encoding="utf-8")
+        self.assertTrue(already_sent(state_key("2026-11-11", "eod"), self.tmp))
+        self.assertFalse(already_sent(state_key("2026-11-11", "midday"), self.tmp))
+
+    def test_原子写不留tmp残留(self):
+        mark_sent(state_key("2026-11-11", "eod"), self.tmp)
+        self.assertFalse(Path(str(self.tmp) + ".tmp").exists())
+        self.assertTrue(self.tmp.exists())
+
     def test_状态含交易日与可读时间(self):
         import json
         mark_sent(state_key("2026-11-11", "eod"), self.tmp)

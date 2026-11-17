@@ -117,6 +117,21 @@ describe('priceTicksTrend', () => {
     expect(right.map(t => t.label)).toEqual(['+10.00%', '+5.00%', '0.00%', '-5.00%', '-10.00%'])
     expect(left.map(t => t.y)).toEqual(right.map(t => t.y))
   })
+
+  // 2026-11-17 复核 P1-12: prevClose=0 时 pctSpan=0/0=NaN, 刻度输出 "+NaN%"
+  it('昨收非法时返回空刻度与 null 上下界(不伪造 0 基准)', () => {
+    for (const pc of [0, null, undefined, NaN]) {
+      const r = priceTicksTrend(11, 9, pc, { y: 0, height: 100 })
+      expect(r, String(pc)).toEqual({ left: [], right: [], up: null, down: null })
+    }
+  })
+
+  it('正常昨收时上下界与刻度一致(回归保护)', () => {
+    const r = priceTicksTrend(11, 9, 10, { y: 0, height: 100 })
+    expect(r.up).toBe(11)
+    expect(r.down).toBe(9)
+    expect(r.left).toHaveLength(5)
+  })
 })
 
 describe('priceTicks (K线)', () => {

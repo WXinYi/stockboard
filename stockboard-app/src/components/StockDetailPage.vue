@@ -5,6 +5,7 @@ import { useStockDetail } from '../composables/useStockDetail.js'
 import { usePullRefresh } from '../composables/usePullRefresh.js'
 import { calcMA, calcBOLL, calcMACD, calcKDJ, calcRSI, calcWR, calcVOLMA, calcFractals, calcBis, calcZhongshu, calcChanSignals, calcWaves, calcDivergence, VIEW_MAX_BARS } from '../utils/indicators.js'
 import { loadTencentPankou, fmtHand } from '../utils/pankou.js'
+import { mergeList } from '../utils/sectionMerge.js'
 import PankouPanel from './PankouPanel.vue'
 import BidAuctionCard from './BidAuctionCard.vue'
 import LimitGeneCard from './LimitGeneCard.vue'
@@ -309,7 +310,8 @@ watch(code, () => {
 async function loadBoards(silent = false) {
   try {
     const res = await fetchBoards(code.value, silent)
-    if (res) boards.value = res
+    // 空数组 = 本轮无数据(KPL 非交易时段 info=[])，不是"该股无板块" → 不覆盖已有列表
+    boards.value = mergeList(boards.value, res)
     boardsFailed.value = false
   } catch (e) { boardsFailed.value = true }   // 不阻塞, 但页面要能看出"没取到"
   boardsLoading.value = false

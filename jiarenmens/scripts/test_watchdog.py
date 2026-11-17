@@ -16,8 +16,6 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import watchdog  # noqa: E402
-from src.notify import watchdog_state as _wd_state  # noqa: E402
-from src.notify.watchdog_state import load_watchdog_pushed  # noqa: E402
 
 
 def _t(code, dr, cnt, price=10.0, name="测试股"):
@@ -152,30 +150,14 @@ class TestTradingWindow(unittest.TestCase):
         self.assertTrue(watchdog.in_trading_window(self._dt(0, "1100")))    # 午休前正常
 
 
-class TestDingTalkSharedDedup(unittest.TestCase):
-    def test_load_watchdog_pushed(self):
-        with tempfile.TemporaryDirectory() as td:
-            f = Path(td) / "wd.json"
-            self.assertEqual(load_watchdog_pushed("2026-09-17"), set())   # 文件缺失=兜底
-            f.write_text(json.dumps({"date": "2026-09-17",
-                                     "pushed": {"900461598": {"600371": {"买入": 1}}}}),
-                         encoding="utf-8")
-            old = _wd_state.WATCHDOG_STATE
-            try:
-                _wd_state.WATCHDOG_STATE = f
-                self.assertEqual(load_watchdog_pushed("2026-09-17"),
-                                 {("900461598", "600371", "买入")})
-                self.assertEqual(load_watchdog_pushed("2026-09-18"), set())  # 跨日=兜底
-            finally:
-                _wd_state.WATCHDOG_STATE = old
-
-
 class TestVisibilityPath(unittest.TestCase):
     def test_state_path_points_at_tracked_file(self):
         """回归(2026-09-18): STATE 曾多拼一层 jiarenmens → CI 解析到不存在的路径,
         隐藏选手从不被识别(每班白拉), 可见性状态也从未被持久化。"""
         repo = Path(__file__).resolve().parents[2]
-        self.assertEqual(_wd_state.WATCHDOG_STATE,
+        # watchdog_state.py（日报去重模块）已随日报下线删除；
+        # 这里改为断言**在跑的**常量 watchdog.STATE_FILE，保住原回归意图。
+        self.assertEqual(Path(watchdog.STATE_FILE),
                          repo / "jiarenmens" / "data" / ".watchdog_state.json")
         import src.utils.visibility as vis
         self.assertEqual(vis.STATE,
@@ -333,3 +315,30 @@ class TestFlashSecondPageSameDayOnly(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class TestStateAtomicWrite(unittest.TestCase):
+    """2026-11-17 复核 P1-5: 状态非原子写 → 截断 → 已推集合丢失 → 全量重推钉钉。"""
+
+    def test_save_state_原子写_无tmp残留且可回读(self):
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "st.json"
+            st = watchdog.fresh_state("2026-11-17")
+            st["pushed"]["900456476"] = {"600000": {"买入": 1}}
+            watchdog.save_state(st, f)
+            self.assertFalse(Path(str(f) + ".tmp").exists(), "不得残留 .tmp")
+            self.assertEqual(watchdog.load_state("2026-11-17", f)["pushed"],
+                             {"900456476": {"600000": {"买入": 1}}})
+
+    def test_save_state_新建目录也能写(self):
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "nested" / "st.json"
+            watchdog.save_state(watchdog.fresh_state("2026-11-17"), f)
+            self.assertTrue(f.exists())
+
+    def test_截断状态文件退化为全新状态_不抛错(self):
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "st.json"
+            f.write_text('{"date":"2026-11-17","pushed":{"900456476"', encoding="utf-8")
+            st = watchdog.load_state("2026-11-17", f)
+            self.assertEqual(st["pushed"], {})
+            self.assertEqual(st["date"], "2026-11-17")

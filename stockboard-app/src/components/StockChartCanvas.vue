@@ -101,7 +101,8 @@ function drawTrend() {
   const t = props.trend
   const quote = props.quote || {}
   const prevClose = quote.prevClose
-  if (!t.length || typeof prevClose !== 'number' || !ctx) return
+  // prevClose 非正时 ±10% 轴会退化为 0 宽 → 分时坐标全 NaN, 直接不画(宿主显示占位)
+  if (!t.length || typeof prevClose !== 'number' || !(prevClose > 0) || !ctx) return
   const w = canvasRef.value.clientWidth, h = canvasRef.value.clientHeight
   // 东财式布局: 双轴标签叠在绘图区内侧边缘(见 drawTrendAxis), 绘图区拉通全宽 — 移动端折线不过窄;
   // 均价/最新信息行由宿主 HTML 渲染在画布上方(sd-tinfo), 不占画布

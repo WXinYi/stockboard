@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeSection } from '../sectionMerge.js'
+import { mergeSection, mergeList } from '../sectionMerge.js'
 
 // 2026-09-15 静默审计 G5: 静默轮询失败不得把上一次的好数据清空
 describe('mergeSection (对象型 section 静默失败合并)', () => {
@@ -40,5 +40,41 @@ describe('mergeSection (对象型 section 静默失败合并)', () => {
   it('旧值字段比新值多时不被删除', () => {
     const { value } = mergeSection({ keep: 1, other: 2 }, { keep: 3 })
     expect(value).toEqual({ keep: 3, other: 2 })
+  })
+})
+
+// 2026-11-17 复核 P0-3: 个股"所属板块"是数组型 section，
+// KPL 非交易时段回 errcode=0 + info=[]，空数组不得把已有板块清空。
+describe('mergeList (数组型 section 空结果不覆盖)', () => {
+  const old = [{ code: 'BK001', name: '半导体' }, { code: 'BK002', name: '国产芯片' }]
+
+  it('新值为非空数组 → 用新值', () => {
+    const next = [{ code: 'BK003', name: '算力' }]
+    expect(mergeList(old, next)).toEqual(next)
+  })
+
+  it('新值为空数组 → 保留旧值(不显示成"无板块")', () => {
+    expect(mergeList(old, [])).toEqual(old)
+  })
+
+  it('旧值为空 + 新值空 → 返回空数组(真实"无板块")', () => {
+    expect(mergeList([], [])).toEqual([])
+    expect(mergeList(null, [])).toEqual([])
+  })
+
+  it('新值为 null/undefined(接口层未给数组) → 保留旧值', () => {
+    expect(mergeList(old, null)).toEqual(old)
+    expect(mergeList(old, undefined)).toEqual(old)
+  })
+
+  it('首屏无旧值但新值可用 → 用新值', () => {
+    expect(mergeList(null, old)).toEqual(old)
+  })
+
+  it('两次连续空响应不会把首屏结果吃掉', () => {
+    let v = mergeList(null, old)
+    v = mergeList(v, [])
+    v = mergeList(v, [])
+    expect(v).toEqual(old)
   })
 })

@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.config.watched import WATCHED_PLAYERS  # noqa: E402 (AQ2=A: 名单唯一真源)
+from src.utils.atomic import atomic_text  # noqa: E402 (状态非原子写会丢当日去重集合)
 from src.spiders.api_detail import crawl_player_all_data, _call_api  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
 from src.utils import visibility  # noqa: E402
@@ -132,8 +133,10 @@ def load_state(date_str: str, path: Path = STATE_FILE) -> dict:
 
 
 def save_state(st: dict, path: Path = STATE_FILE) -> None:
+    """原子落盘(tmp+os.replace): 中途被杀不会留下截断 JSON。
+    截断 → load_state 解析失败 → 当日已推集合丢失 → 下一班全量重推钉钉。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic_text(path, json.dumps(st, ensure_ascii=False, indent=1))
 
 
 def decide_pushes(trades_today: list, pushed_player: dict):
