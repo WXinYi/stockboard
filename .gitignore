@@ -78,3 +78,7 @@ jiarenmens/data/.watchdog_changed
 # 共识飙升推送的基线接力(上一交易日 stocks.json, 进 actions/cache, 不进 git)
 jiarenmens/data/.consensus_baseline.json
 jiarenmens/data/em_tokens.json
+
+# 本地编辑器/代理配置与 specs（红线: 不进 git；此前仅靠"不要 git add -A"的约定）
+.codebuddy/
+.workbuddy/
