@@ -9,14 +9,14 @@ on:
       - 'jiarenmens/**/*.py'
       - 'stockboard-app/src/**'
       - 'scf/**'
-      - '.github/workflows/test.yml'
+      - '.github/workflows/*.yml'
       - 'pyproject.toml'
   pull_request:
     paths:
       - 'jiarenmens/**/*.py'
       - 'stockboard-app/src/**'
       - 'scf/**'
-      - '.github/workflows/test.yml'
+      - '.github/workflows/*.yml'
   workflow_dispatch:
 
 concurrency:

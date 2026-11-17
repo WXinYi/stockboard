@@ -1,41 +1,26 @@
 <script setup>
-import { computed, inject, ref, onActivated, onDeactivated, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { computed, inject, ref, onActivated, onDeactivated, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTableSort } from '../composables/useTableSort.js'
 import { useCopyCode } from '../composables/useCopyCode.js'
 import { pctHtml } from '../utils/format.js'
 import { onlyAStock } from '../utils/stockMarket.js'
+import { snapshotLabel, formatBeijingShort } from '../utils/formatBeijing.js'
 
 const router = useRouter()
-const showInfo = ref(false)   // 说明默认收起，省页面空间
-const { stockStats: stats, sortedPlayers: sp, isQuality,
-        stocksSnapshot, stocksUpdatedAt } = inject('stockData')
-// 规格要求的时点标注（11:30 午间快照 / 15:15 收盘真值），此前缺失
-const snapshotLabel = computed(() => {
-  if (stocksSnapshot.value === '1130') return '11:30 午间快照'
-  if (stocksSnapshot.value === 'close') return '15:15 收盘真值'
-  return ''
-})
-function navigateToPlayer(id) { router.push('/player/' + id) }
+const showInfo = ref(false)
+const stockData = inject('stockData')
+const { stockStats: stats, stocksSnapshot, stocksUpdatedAt, sliceLoaded, sliceErrors, loading } = stockData
+const refresh = inject('refreshData', () => {})
 
-// 📈 跳转股票详情页(自建详情, 页内含 H5 嵌套入口)
-function openStockDetail(c, n) { router.push({ path: '/stock/' + c, query: { name: n } }) }
+const label = computed(() => snapshotLabel(stocksSnapshot.value) || '持仓快照（盘中不刷新）')
+const timeText = computed(() => formatBeijingShort(stocksUpdatedAt.value))
+const failed = computed(() => !!sliceErrors.value.stocks)
+const showLoading = computed(() => loading.value.stocks || !sliceLoaded.value.stocks)
 
-const stockSearch = ref('')
-const lookedUpHolders = ref(null)
-const allPlayers = computed(() => [...sp.value.pinned, ...sp.value.rest])
-
-// ── 共识口径: 仅全体(2026-11-08 用户拍板, 优质口径移除) ──
-// stocks.json 仍导出双口径(qh/qtp/qap 优质三列保留在数据里备用), 前端只消费全体四列。
-// 历史: 09-23 上线优质口径(当日下线"幽灵共识"); 11-07 修 qh 恒定导出事故; 11-08 拍板只留全体
-// —— 优质口径本质是长线配置榜, 与本页短线共识定位不符(回测: 高手持仓次日跟随为负)。
-// 2026-11-16 用户要求：只看 A 股，去掉港股（5 位代码）。数据仍全量，仅展示层过滤。
+// 只看 A 股；数据契约保留全量，展示层过滤可回退
 const viewStats = computed(() => onlyAStock(stats.value))
 
-// ── 滚动位置恢复(09-23): KeepAlive 保状态但不保滚动 —— 详情返回后窗口滚动回到跳转前位置
-// (共识列表不再设内部滚动容器, 单滚动条; 之前的双滚动条与内部 scrollTop 丢失问题一并消除) ──
-// ⚠️ 监听只在激活期挂载(09-23 修): KeepAlive 停用后监听器若残留, 会在其它页面滚动时
-// 污染 savedScrollY —— 返回本页时会恢复到错误位置。
 const savedScrollY = ref(0)
 function onSaveScroll() { savedScrollY.value = window.scrollY }
 onActivated(() => {
@@ -46,31 +31,9 @@ onDeactivated(() => window.removeEventListener('scroll', onSaveScroll))
 onBeforeUnmount(() => window.removeEventListener('scroll', onSaveScroll))
 
 const { sorted: sortedStats, toggle: tog, indicator: ind } = useTableSort(viewStats, 'tp')
-
-function pct(v) {
-  const n = parseFloat(v)
-  if (isNaN(n)) return '—'
-  return n >= 0 ? `+${n.toFixed(2)}%` : `${n.toFixed(2)}%`
-}
-
-function lookupStock() {
-  const q = stockSearch.value.trim()
-  if (!q) { lookedUpHolders.value = null; return }
-  // stockStats 是全量 code→name 映射（stocks.json），支持按股票名称反查
-  const codeToName = {}
-  for (const s of stats.value) codeToName[s.code] = s.name
-  const holders = allPlayers.value.filter(p => {
-    return (p.stocks || []).some(code => {
-      // code.includes 天然容忍省略前导零（01810.includes('1810')），无需额外处理
-      if (code.includes(q)) return true
-      return (codeToName[code] || '').includes(q)
-    })
-  })
-  lookedUpHolders.value = holders.sort((a, b) => (b._total_position || 0) - (a._total_position || 0))
-}
-
-// ── 股票名称 → 点击跳详情页; 名称后复制图标 → 复制代码到剪贴板 ──
 const { copiedKey, copyStockCode } = useCopyCode()
+
+function openStockDetail(c, n) { router.push({ path: '/stock/' + c, query: { name: n } }) }
 </script>
 
 <template>
@@ -78,56 +41,71 @@ const { copiedKey, copyStockCode } = useCopyCode()
     <h2>
       重仓共识
       <span class="badge">A股 Top 20</span>
-      <button class="info-btn" @click="showInfo = !showInfo" :aria-expanded="showInfo" aria-label="查看说明">说明</button>
+      <button class="info-btn" @click="showInfo = !showInfo" :aria-expanded="showInfo"
+              aria-controls="stocks-info" aria-label="查看重仓共识说明">说明</button>
     </h2>
     <p class="compact-meta">
-      <strong v-if="snapshotLabel">{{ snapshotLabel }}</strong><span v-if="stocksUpdatedAt">（{{ stocksUpdatedAt.slice(5,16) }}）</span><span v-else>持仓快照（盘中不刷新）</span>
+      {{ label }}<span v-if="timeText">（{{ timeText }} 北京时间）</span>
       · A股 · 点击表头排序
     </p>
-    <p v-if="showInfo" class="info-detail">
-      仅展示 A 股（沪深/北交所/ETF/可转债，港股已滤除）；全体采集选手持仓聚合（含榜单漂移样本）。
+    <p v-if="showInfo" id="stocks-info" class="info-detail">
+      仅展示 A 股（沪深/北交所/ETF/可转债，港股已滤除）；全体采集选手持仓聚合。
       合计仓位=所有持有人仓位之和，括号内为人均。P3 起选手级持仓明细不再进入静态产物，反向查股票已下线。
     </p>
-      <div>
-        <table><thead><tr>
-        <th>#</th><th>股票</th><th>代码</th>
-        <th style="cursor:pointer;" @click="tog('h')">持有人{{ ind('h') }}</th>
-        <th style="cursor:pointer;" @click="tog('tp')" title="合计仓位=所有持有人仓位之和；括号内为人均">合计仓位{{ ind('tp') }}</th>
-        <th style="cursor:pointer;" @click="tog('ap')">平均盈亏{{ ind('ap') }}</th>
-      </tr></thead>
-        <tbody>
-          <tr v-for="(s, i) in sortedStats.slice(0,20)" :key="s.code">
-            <td>{{ i + 1 }}</td>
-            <td>
-              <strong class="stock-name" @click="openStockDetail(s.code, s.name)" :title="'点击查看详情 ' + s.name">{{ s.name }}</strong>
-              <button class="stock-copy" @click.stop="copyStockCode(s.code)" title="复制代码" :aria-label="'复制代码 ' + s.code">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
-              <span v-if="copiedKey === s.code" class="copied-tip">✓ 已复制</span>
-            </td>
-            <td style="color:var(--ink-3);">{{ s.code }}</td>
-            <td>{{ s.h }}人</td>
-            <td>
-              <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp/s.h) + '%' }"></span></span>
-              {{ s.tp.toFixed(0) }}%<span class="per-head">人均 {{ (s.tp/s.h).toFixed(0) }}%</span>
-            </td>
-            <td v-html="pctHtml(s.ap/s.h)"></td>
-          </tr>
-        </tbody>
-      </table>
+
+    <div v-if="showLoading" class="state-line">正在读取持仓快照…</div>
+    <div v-else-if="failed" class="state-line error">
+      持仓数据加载失败，<button type="button" @click="refresh()">重试</button>
     </div>
+    <template v-else>
+      <div v-if="!sortedStats.length" class="empty">当日暂无 A 股重仓共识数据。</div>
+      <div v-else class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>股票</th><th>代码</th>
+              <th tabindex="0" role="button" @click="tog('h')" @keydown.enter="tog('h')">持有人{{ ind('h') }}</th>
+              <th tabindex="0" role="button" title="合计仓位=所有持有人仓位之和；括号内为人均"
+                  @click="tog('tp')" @keydown.enter="tog('tp')">合计仓位{{ ind('tp') }}</th>
+              <th tabindex="0" role="button" @click="tog('ap')" @keydown.enter="tog('ap')">平均盈亏{{ ind('ap') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(s, i) in sortedStats.slice(0, 20)" :key="s.code">
+              <td>{{ i + 1 }}</td>
+              <td>
+                <button class="stock-name" @click="openStockDetail(s.code, s.name)"
+                        :title="'点击查看详情 ' + s.name" :aria-label="'查看详情 ' + s.name">{{ s.name }}</button>
+                <button class="stock-copy" @click.stop="copyStockCode(s.code)" title="复制代码" :aria-label="'复制代码 ' + s.code">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <span v-if="copiedKey === s.code" class="copied-tip">✓ 已复制</span>
+              </td>
+              <td style="color:var(--ink-3);">{{ s.code }}</td>
+              <td>{{ s.h }}人</td>
+              <td>
+                <span class="progress-bar"><span class="fill" :style="{ width: Math.min(100, s.tp / s.h) + '%' }"></span></span>
+                {{ s.tp.toFixed(0) }}%<span class="per-head">人均 {{ (s.tp / s.h).toFixed(0) }}%</span>
+              </td>
+              <td v-html="pctHtml(s.ap / s.h)"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-/* 下划线标识可点击 → 跳详情页 */
 .stock-name { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(41,128,185,.45); }
 .stock-name:hover { color: var(--accent); }
 .stock-copy { border: none; background: none; cursor: pointer; color: var(--ink-4); padding: 0 3px; vertical-align: middle; }
 .stock-copy:hover { color: var(--accent); }
 .copied-tip { color: var(--down); font-size: 11px; margin-left: 4px; }
 .per-head { color: var(--ink-4); font-size: 10px; margin-left: 5px; white-space: nowrap; }
-/* 紧凑说明区（2026-11-16 优化） */
+.state-line { padding: 18px 0; text-align: center; font-size: 12px; color: var(--ink-3); }
+.state-line.error { color: var(--down, #e74c3c); }
+.state-line button { margin-left: 6px; cursor: pointer; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 3px; font-size: 11px; padding: 2px 8px; }
 .info-btn {
   float: right; font-family: var(--mono, monospace); font-size: 10px;
   padding: 2px 7px; margin-left: 8px; border: 1px solid var(--line, #1d222b);

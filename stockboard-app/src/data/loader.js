@@ -18,6 +18,14 @@ export function peekJson(path) {
   return _cache[path] || null
 }
 
+async function reloadJson(path) {
+  const resp = await fetch(`${BASE}${path}`, { cache: 'no-store' })
+  if (!resp.ok) throw new Error(`加载 ${path} 失败: HTTP ${resp.status}`)
+  const data = await resp.json()
+  _cache[path] = data
+  return data
+}
+
 export function clearDataCache() {
   for (const k of Object.keys(_cache)) delete _cache[k]
 }
@@ -27,6 +35,10 @@ export const fetchPlayers = () => getJson('data/latest/players.json')
 export const fetchStocks = () => getJson('data/latest/stocks.json')
 export const fetchToday = () => getJson('data/latest/today.json')
 export const fetchMarket = (name) => getJson(`data/latest/${name}.json`)
+
+export const reloadPlayers = () => reloadJson('data/latest/players.json')
+export const reloadStocks = () => reloadJson('data/latest/stocks.json')
+export const reloadToday = () => reloadJson('data/latest/today.json')
 
 // 保留：竞价 / 连板竞价仍由 auction.yml 独立生产（single-writer，F5）
 export const fetchAuction = () => getJson('data/latest/auction.json')

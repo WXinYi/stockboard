@@ -8,7 +8,6 @@ import FlowTab from './components/FlowTab.vue'
 import PlayerDetail from './components/PlayerDetail.vue'
 import StockDetailPage from './components/StockDetailPage.vue'
 import StockH5Page from './components/StockH5Page.vue'
-import AuctionTab from './components/AuctionTab.vue'
 import InfoDetail from './components/InfoDetail.vue'
 
 const routes = [
@@ -20,7 +19,6 @@ const routes = [
   { path: '/rankings', component: RankingsTab, meta: { keepAlive: true } },
   { path: '/stocks', component: StockTab, meta: { keepAlive: true } },
   { path: '/flow', component: FlowTab, meta: { keepAlive: true } },
-  { path: '/auction', component: AuctionTab },
   { path: '/player/:zh_id', component: PlayerDetail },
   { path: '/stock/:code', component: StockDetailPage },
   { path: '/stock/:code/h5', component: StockH5Page },

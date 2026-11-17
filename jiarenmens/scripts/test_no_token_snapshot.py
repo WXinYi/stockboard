@@ -226,8 +226,31 @@ class TestTradeConsensus(unittest.TestCase):
 
     def test_today_doc默认带空共识_保持向后兼容(self):
         d = ps.build_today_doc("2026-11-16", "2026-11-16T15:15:00+08:00", ["u1"])
-        self.assertEqual(d["tradeConsensus"], {"totalTrades": 0, "totalBuyers": 0, "stocks": []})
+        self.assertEqual(d["tradeConsensus"], {
+            "totalTrades": 0, "totalBuyers": 0,
+            "aTotalTrades": 0, "aTotalBuyers": 0, "stocks": [],
+        })
         self.assertEqual(d["tradedPlayerIds"], ["u1"])
+
+    def test_A股口径统计独立于全市场(self):
+        trades_by = {
+            "u1": [{"stock_code": "002524", "bs": "B"}, {"stock_code": "01810", "bs": "B"}],
+            "u2": [{"stock_code": "600000", "bs": "B"}, {"stock_code": "002524", "bs": "S"}],
+            "u3": [{"stock_code": "03690", "bs": "B"}],
+        }
+        c = ps.aggregate_trade_consensus(trades_by)
+        self.assertEqual(c["totalTrades"], 5)
+        self.assertEqual(c["totalBuyers"], 3)
+        self.assertEqual(c["aTotalTrades"], 3)
+        self.assertEqual(c["aTotalBuyers"], 2)
+
+    def test_token版player_trades日期也走紧凑格式(self):
+        c = ps.EmClient(spider=object(), tokens={"ctToken": "x", "utToken": "y"})
+        with patch.object(ps._api_detail, "_call_api_new", return_value={"pages": []}) as call:
+            c.player_trades("900001", "u1", "2026-11-16", "2026-11-16", 1)
+        args = call.call_args.args[1]
+        self.assertEqual(args["beginDate"], "20261116")
+        self.assertEqual(args["endDate"], "20261116")
 
     def test_player_trades保留完整字段(self):
         data = {"pages": [{"bizDate": "20261116", "stkCode": "002524",

@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { fetchPlayers, fetchStocks, fetchToday } from '../data/loader.js'
+import { fetchPlayers, fetchStocks, fetchToday, reloadPlayers, reloadStocks, reloadToday } from '../data/loader.js'
 
 /**
  * P3 / AQ3=B 新数据层：只消费 4 个契约（players / stocks / today / market）。
@@ -20,6 +20,7 @@ const FALLBACK_WATCHED = new Set([
 ])
 
 const SLICE_LOADER = { players: fetchPlayers, stocks: fetchStocks, today: fetchToday }
+const SLICE_RELOADER = { players: reloadPlayers, stocks: reloadStocks, today: reloadToday }
 
 export function useDataV2() {
   const loading = ref({ players: false, stocks: false, today: false })
@@ -27,6 +28,7 @@ export function useDataV2() {
     players: ref(null), stocks: ref(null), today: ref(null),
   }
   const sliceErrors = ref({})
+  const inflight = {}
   const sliceLoaded = computed(() => ({
     players: slices.players.value != null,
     stocks: slices.stocks.value != null,
@@ -77,6 +79,18 @@ export function useDataV2() {
   const tradedPlayerIds = computed(() => new Set(slices.today.value?.tradedPlayerIds || []))
   // 2026-11-16 调仓共识：today.json.tradeConsensus（买卖人数/笔数按股票聚合）
   const tradeConsensus = computed(() => slices.today.value?.tradeConsensus || null)
+  // A 股口径统计由数据层提供（aTotalTrades/aTotalBuyers）；老数据缺字段时回退全市场口径
+  const tradeConsensusA = computed(() => {
+    const c = tradeConsensus.value
+    if (!c) return null
+    return {
+      ...c,
+      totalTrades: c.aTotalTrades ?? c.totalTrades,
+      totalBuyers: c.aTotalBuyers ?? c.totalBuyers,
+      fullMarketTrades: c.totalTrades,
+      fullMarketBuyers: c.totalBuyers,
+    }
+  })
 
   const watchedIds = computed(() => {
     const fromData = allPlayers.value.filter(p => p.watched).map(p => p.zh_id)
@@ -118,15 +132,32 @@ export function useDataV2() {
     await Promise.all([...new Set(names)].map(async (name) => {
       const r = slices[name]
       if (!r || r.value) return
+      if (inflight[name]) return inflight[name]
       loading.value[name] = true
-      try {
-        r.value = await SLICE_LOADER[name]()
-        sliceErrors.value = { ...sliceErrors.value, [name]: false }
-      } catch (e) {
-        sliceErrors.value = { ...sliceErrors.value, [name]: true }
-        throw e
-      } finally { loading.value[name] = false }
+      inflight[name] = (async () => {
+        try {
+          r.value = await SLICE_LOADER[name]()
+          sliceErrors.value = { ...sliceErrors.value, [name]: false }
+        } catch (e) {
+          sliceErrors.value = { ...sliceErrors.value, [name]: true }
+          throw e
+        } finally {
+          loading.value[name] = false
+          delete inflight[name]
+        }
+      })()
+      return inflight[name]
     }))
+  }
+
+  // 刷新：先拉全部成功，再一次性替换 slices；任一分片失败保留旧数据
+  async function reloadSlices(names) {
+    const unique = [...new Set(names)].filter(n => slices[n] && SLICE_RELOADER[n])
+    const next = await Promise.all(unique.map(n => SLICE_RELOADER[n]()))
+    unique.forEach((n, i) => {
+      slices[n].value = next[i]
+      sliceErrors.value = { ...sliceErrors.value, [n]: false }
+    })
   }
 
   // R5#5：只等 today（最小分片，最早拿 emContract）
@@ -143,8 +174,8 @@ export function useDataV2() {
     loading, slices, sliceErrors, sliceLoaded,
     sortKey, qualityOnly, isQuality,
     allPlayers, sortedPlayers, fullRankPlayers, playerStyles, playerLookup,
-    currentDate, crawlTime, emContract, tradedPlayerIds, tradeConsensus, watchedIds,
+    currentDate, crawlTime, emContract, tradedPlayerIds, tradeConsensus, tradeConsensusA, watchedIds,
     stockStats, stocksSnapshot, stocksUpdatedAt,
-    ensureSlices, loadData, clearSlices,
+    ensureSlices, reloadSlices, loadData, clearSlices,
   }
 }

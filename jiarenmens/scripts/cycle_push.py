@@ -2,7 +2,7 @@
 """
 超短格局定时推送(搭现有钉钉管道的便车):
   午盘 13:05  crawl.yml 内调用  --session midday   → 上午战况 + 午后关注
-  收盘前 14:45 cycle-eod.yml 调用 --session eod     → 尾盘格局 + 尾盘纪律 + 明日竞价观察名单
+  尾盘 14:48  crawl.yml 内调用  --session eod       → 尾盘格局 + 尾盘纪律 + 明日竞价观察名单
 
 数据: 实时涨停池(带涨停时间/封单) + 实时涨跌炸板 → 注入周期引擎(当日口径)。
 用法:
@@ -10,10 +10,9 @@
   python scripts/cycle_push.py --session midday --dry-run
   python scripts/cycle_push.py --session eod --force    # 忽略去重状态手动补推
 
-2026-11-11 去重: 尾盘同时由 crawl.yml 尾盘窗口与 cycle-eod.yml 专班触发,
-cycle_push.py 原先无任何状态, 同一交易日可能推 2-3 条几乎相同的钉钉。
-现按 (交易日, session) 幂等, state 落 data/.cycle_push_state.json 并随数据提交
-持久化, 两个通道谁先推谁写状态, 后到者跳过。--dry-run 不受状态影响。
+2026-11-17 去重: 按 (交易日, session) 幂等, state 落 data/.cycle_push_state.json,
+由 crawl.yml 提交步骤精确 add 后随数据提交持久化; 后到班跳过。--dry-run 不受状态影响。
+任何异常(接口/计算/推送)统一写失败标志并返回非零, 避免被 continue-on-error 静默吞掉。
 """
 import argparse
 import json
@@ -206,45 +205,49 @@ def build_markdown(res: dict, session: str) -> str:
     return "\n".join(lines)
 
 
+def _fail(args, tag, err):
+    try:
+        Path(args.fail_flag).write_text(f"{tag}格局推送失败: {err}\n", encoding="utf-8")
+    except Exception:
+        pass
+    print(f"❌ {tag}格局推送失败: {err}", file=sys.stderr)
+    return 1
+
+
 def main():
     ap = argparse.ArgumentParser(description="超短格局定时推送")
     ap.add_argument("--session", choices=["midday", "eod"], required=True)
     ap.add_argument("--dry-run", action="store_true", help="只打印不推送(不受去重状态影响)")
     ap.add_argument("--force", action="store_true", help="忽略去重状态, 手动补推用")
     ap.add_argument("--fail-flag", default="/tmp/cycle_push_failed",
-                    help="推送失败时写标志文件(workflow 在数据步骤之后再据此判红: "
-                         "既不因推送故障阻断落库/部署, 也不让失败无声无息)")
+                    help="任一环节失败时写标志文件(workflow 据此判红, 不让失败无声无息)")
     args = ap.parse_args()
-
-    spider = KPLSpider()
-    rt = fetch_rt_today(spider)
-    res = compute_cycle(rt["date"], persist=False, rt_today=rt)
-    res["_rt_rows"] = rt["rows"]
-    text = build_markdown(res, args.session)
-    # 午盘顺便附加 A 股共识（调仓 + 重仓），数据缺失时该函数返回空串、不影响原推送
-    if args.session == "midday":
-        text += build_consensus_markdown()
-    if args.dry_run:
-        print(text)
-        return 0
-    key = state_key(res["date"], args.session)
-    if not args.force and already_sent(key, STATE_PATH):
-        print(f"[cycle_push] {res['date']} {args.session} 已推送过, 跳过(多通道去重)")
-        return 0
-    from src.notify.dingtalk import DingTalk
     tag = "午盘" if args.session == "midday" else "尾盘"
+
     try:
+        spider = KPLSpider()
+        rt = fetch_rt_today(spider)
+        res = compute_cycle(rt["date"], persist=False, rt_today=rt)
+        res["_rt_rows"] = rt["rows"]
+        text = build_markdown(res, args.session)
+        if args.session == "midday":
+            consensus = build_consensus_markdown()
+            if consensus:
+                print("[cycle_push] 午盘共识段:\n" + consensus)
+            text += consensus
+        if args.dry_run:
+            print(text)
+            return 0
+        key = state_key(res["date"], args.session)
+        if not args.force and already_sent(key, STATE_PATH):
+            print(f"[cycle_push] {res['date']} {args.session} 已推送过, 跳过(多通道去重)")
+            return 0
+        from src.notify.dingtalk import DingTalk
         resp = DingTalk().send_markdown(f"超短格局 {res['date']} {tag}", text)
         print(f"📣 已推送: {resp}")
         mark_sent(key, STATE_PATH)
     except Exception as e:
-        # 钉钉挂/被限流/keyword 被拒 = 该班推送没送到; 写标志文件 + 非零退出, 让失败可见
-        try:
-            Path(args.fail_flag).write_text(f"{tag}格局推送失败: {e}\n", encoding="utf-8")
-        except Exception:
-            pass
-        print(f"❌ {tag}格局推送失败: {e}", file=sys.stderr)
-        return 1
+        return _fail(args, tag, e)
     return 0
 
 

@@ -23,6 +23,10 @@ permissions:
   actions: read
   contents: write
 
+concurrency:
+  group: cancel-alert-state-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -50,5 +54,28 @@ jobs:
             exit 0
           fi
           git commit -m "chore(alert): 更新掐班告警去重状态 [skip ci]"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin HEAD:"${GITHUB_REF_NAME}"
+          for i in 1 2 3; do
+            if git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin HEAD:"${GITHUB_REF_NAME}"; then
+              echo "✅ 告警状态已提交"
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            echo "⚠️ 告警状态推送失败，重试 $i/3..."
+            sleep 5
+          done
+          echo "❌ 告警状态推送失败"; exit 1
+
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [check]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

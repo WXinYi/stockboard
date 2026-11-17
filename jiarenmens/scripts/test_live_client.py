@@ -75,8 +75,8 @@ class TestEmClientUsesRealProtocol(unittest.TestCase):
         method, args, tokens = m_call.call_args[0]
         self.assertEqual(method, ps.V2_TRADES_HANDLER)
         self.assertEqual(args["ctToken"], TOKENS["ctToken"])
-        self.assertEqual(args["beginDate"], DATE)
-        self.assertEqual(args["endDate"], DATE)
+        self.assertEqual(args["beginDate"], DATE.replace("-", ""))
+        self.assertEqual(args["endDate"], DATE.replace("-", ""))
         self.assertEqual(args["pageNum"], 1)
         self.assertEqual(args["pageSize"], ps.RANK_PAGE_SIZE)  # 固定 1 页，不取历史 40 条
         self.assertEqual(len(rows), 1)

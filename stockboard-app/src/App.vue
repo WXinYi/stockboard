@@ -1,12 +1,12 @@
 <script setup>
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { clearDataCache } from './data/loader.js'
 import { useDataV2 } from './composables/useDataV2.js'
 import { useRelativeTime } from './composables/useRelativeTime.js'
 import { useDataRefresh } from './composables/useUX.js'
 import { getLatestTradingDay } from './composables/useKplApi.js'
 import { MARKET_SECTION_TITLES } from './utils/sectionTitles.js'
+import { formatBeijingShort } from './utils/formatBeijing.js'
 import NavBar from './components/NavBar.vue'
 import PullToRefresh from './components/PullToRefresh.vue'
 import StockSearch from './components/StockSearch.vue'
@@ -19,14 +19,11 @@ provide('stockData', stockData)
 const refreshTick = ref(0)
 provide('refreshTick', refreshTick)
 
-const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices, clearSlices } = stockData
+const { currentDate, loading, fullRankPlayers, crawlTime, loadData, ensureSlices, reloadSlices } = stockData
 const { relativeTime } = useRelativeTime()
 const crawlTimeRelative = computed(() => relativeTime(crawlTime.value))
 // 数据时点显式化：today.json.updatedAt 是唯一真源（R5#1/#8）
-const crawlTimeShort = computed(() => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(crawlTime.value || '')
-  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : ''
-})
+const crawlTimeShort = computed(() => formatBeijingShort(crawlTime.value))
 
 const route = useRoute()
 const router = useRouter()
@@ -36,7 +33,6 @@ const pageTitles = {
   rankings: '排行榜',
   stocks: '重仓共识',
   flow: '调仓共识',
-  auction: '竞价抢筹',
 }
 const marketSectionTitles = MARKET_SECTION_TITLES
 const pageTitle = computed(() => {
@@ -52,21 +48,25 @@ const isStockDetail = computed(() => route.path.startsWith('/stock/'))
 const isDetailPage = computed(() => isPlayerDetail.value || isStockDetail.value || route.path.startsWith('/info/') || route.path.startsWith('/board/') || route.path.startsWith('/market/'))
 
 const refreshing = ref(false)
+const refreshError = ref('')
 const showSearch = ref(false)
 
 async function refreshData() {
   if (refreshing.value) return
   refreshing.value = true
+  refreshError.value = ''
   dismiss()
-  clearDataCache()
-  clearSlices()
   try {
-    await Promise.all([loadData(), ensureRoute()])
+    const key = route.path.startsWith('/player/') ? '/player' : route.path
+    await reloadSlices([...new Set(['today', ...(ROUTE_SLICES[key] || [])])])
     refreshTick.value++
+  } catch (e) {
+    refreshError.value = '刷新失败，已保留上次数据，请稍后重试'
   } finally {
     refreshing.value = false
   }
 }
+provide('refreshData', refreshData)
 
 const initialLoading = computed(() => loading.value.today && !isDetailPage.value && !refreshing.value)
 
@@ -97,7 +97,11 @@ const tradingDay = ref('')
 const crawlDay = computed(() => (currentDate.value || '').slice(0, 10))
 
 onMounted(async () => {
-  await loadData()          // R5#5：只等 today.json（最小分片，最早拿 emContract）
+  try {
+    await loadData()        // R5#5：只等 today.json（最小分片，最早拿 emContract）
+  } catch {
+    refreshError.value = '首次加载失败，请点击刷新重试'
+  }
   ensureRoute()
   initCheck({ date: currentDate.value, updatedAt: crawlTime.value })
   getLatestTradingDay().then(d => { if (d && d.length === 8) tradingDay.value = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` }).catch(() => {})
@@ -111,17 +115,17 @@ onMounted(async () => {
       <div class="header-row">
         <div class="header-left">
           <span class="brand-mark" aria-hidden="true">SB</span>
-          <button v-if="isDetailPage" class="back-btn" @click="goBack()">←</button>
+          <button v-if="isDetailPage" class="back-btn" @click="goBack()" aria-label="返回上一页">←</button>
           <span class="header-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
-          <button v-if="!isDetailPage" class="refresh-btn" title="搜索股票" @click="showSearch = true">🔍</button>
+          <button v-if="!isDetailPage" class="refresh-btn" title="搜索股票" aria-label="搜索股票" @click="showSearch = true">🔍</button>
           <span v-if="crawlTime" class="header-time-label">数据时点</span>
           <span v-if="crawlTime" class="header-time" :title="crawlTime">{{ crawlTimeShort || crawlTimeRelative }}</span>
           <span v-if="fullRankPlayers.length" class="header-badge">{{ fullRankPlayers.length }} 名选手</span>
           <span v-if="loading.today" class="skeleton" style="width:32px;height:10px;display:inline-block;vertical-align:middle;"></span>
           <button class="refresh-btn" :class="{ spinning: refreshing }"
-                  @click="refreshData()" :disabled="refreshing" title="刷新最新数据">⟳</button>
+                  @click="refreshData()" :disabled="refreshing" title="刷新最新数据" aria-label="刷新最新数据">⟳</button>
         </div>
       </div>
     </header>
@@ -130,6 +134,10 @@ onMounted(async () => {
 
     <div v-if="updateAvailable" class="update-banner" @click="refreshData()">
       📊 检测到新采集 · 正在自动刷新（点击手动重刷）
+    </div>
+    <div v-if="refreshError" class="error-banner" role="alert">
+      {{ refreshError }}
+      <button type="button" @click="refreshData()">重试</button>
     </div>
 
     <main class="main-content" :class="{ 'detail-page': isDetailPage, 'stock-page': isStockDetail }">

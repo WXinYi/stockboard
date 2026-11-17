@@ -1,7 +1,10 @@
 export function useRelativeTime() {
   function relativeTime(dateStr) {
     if (!dateStr) return ''
-    const d = new Date(dateStr.replace(' ', 'T') + ':00')
+    const raw = String(dateStr).trim().replace(' ', 'T')
+    const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(raw)
+    const hasSeconds = /\d{2}:\d{2}:\d{2}/.test(raw)
+    const d = new Date(hasZone || hasSeconds ? raw : `${raw}:00`)
     if (isNaN(d.getTime())) return dateStr
     const now = Date.now()
     const diff = now - d.getTime()

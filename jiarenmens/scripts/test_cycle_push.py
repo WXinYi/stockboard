@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """尾盘/午盘推送幂等状态单测: 同一交易日同一场次只推一次。"""
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -116,6 +118,23 @@ class TestMainDedup(unittest.TestCase):
         rc = self._run(["--session", "eod"])
         self.assertEqual(rc, 1)
         self.assertFalse(already_sent(self.key, self.tmp), "失败不能占住状态, 否则尾盘彻底不推")
+
+    def test_非钉钉异常也写失败标志(self):
+        self.base_patches[2] = patch.object(
+            self.cp, "fetch_rt_today", side_effect=RuntimeError("KPL挂了"))
+        flag = self.tmp.with_suffix(".failed")
+        rc = self._run(["--session", "eod", "--fail-flag", str(flag)])
+        self.assertEqual(rc, 1)
+        self.assertIn("KPL挂了", flag.read_text(encoding="utf-8"))
+
+    def test_午盘共识段打印到日志可事后核对(self):
+        self.base_patches.append(patch.object(
+            self.cp, "build_consensus_markdown", return_value="CONSENSUS-MARK"))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = self._run(["--session", "midday", "--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn("CONSENSUS-MARK", buf.getvalue())
 
 
 if __name__ == "__main__":

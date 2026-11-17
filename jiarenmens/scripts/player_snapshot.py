@@ -305,7 +305,7 @@ class EmClient:
         """D3：单页 + ``beginDate=endDate=当日`` 当日过滤，不取历史 40 条。"""
         self.calls.append(("trades", zh_id, begin_date, end_date, page))
         args = self._base_args(zh_id, user_id)
-        args.update({"beginDate": begin_date, "endDate": end_date,
+        args.update({"beginDate": _compact_date(begin_date), "endDate": _compact_date(end_date),
                      "pageNum": page, "pageSize": RANK_PAGE_SIZE})
         data = _api_detail._call_api_new(V2_TRADES_HANDLER, args, self._tokens) or {}
         out = []
@@ -611,11 +611,36 @@ def aggregate_trade_consensus(trades_by):
         e["net"] = e["buy"] - e["sell"]
         stocks.append(e)
     stocks.sort(key=lambda e: (-e["net"], -e["buy"], e["code"]))
-    total_trades = sum(len(rows or []) for rows in trades_by.values())
-    total_buyers = sum(1 for rows in trades_by.values()
-                       if any(str(r.get("bs", "") or "").upper() == "B"
-                              for r in (rows or []) if isinstance(r, dict)))
-    return {"totalTrades": total_trades, "totalBuyers": total_buyers, "stocks": stocks}
+
+    def valid_rows(rows):
+        out = []
+        for r in (rows or []):
+            if not isinstance(r, dict):
+                continue
+            if not str(r.get("stock_code", "") or ""):
+                continue
+            if str(r.get("bs", "") or "").upper() not in ("B", "S"):
+                continue
+            out.append(r)
+        return out
+
+    def is_a(code):
+        code = str(code or "")
+        return len(code) == 6 and code.isdigit()
+
+    def buyers(rows):
+        return sum(1 for rs in rows
+                   if any(str(r.get("bs", "") or "").upper() == "B" for r in rs))
+
+    all_valid = [valid_rows(rows) for rows in trades_by.values()]
+    a_valid = [[r for r in rows if is_a(r.get("stock_code"))] for rows in all_valid]
+    return {
+        "totalTrades": sum(len(rows) for rows in all_valid),
+        "totalBuyers": buyers(all_valid),
+        "aTotalTrades": sum(len(rows) for rows in a_valid),
+        "aTotalBuyers": buyers(a_valid),
+        "stocks": stocks,
+    }
 
 
 def build_stocks_doc(date, snapshot, updated_at, stats):
@@ -636,7 +661,8 @@ def build_today_doc(date, updated_at, traded_ids, prev_today=None, trade_consens
             "tradedPlayerIds": sorted(set(list(prev.get("tradedPlayerIds", [])) + list(traded_ids))),
             "emContract": em,
             "tradeConsensus": trade_consensus if trade_consensus is not None
-                              else {"totalTrades": 0, "totalBuyers": 0, "stocks": []}}
+                              else {"totalTrades": 0, "totalBuyers": 0,
+                                    "aTotalTrades": 0, "aTotalBuyers": 0, "stocks": []}}
 
 
 def patch_players_today(doc, updated_at, trade_counts, yield_by_player=None,

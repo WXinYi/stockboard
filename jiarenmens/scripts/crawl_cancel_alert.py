@@ -191,7 +191,7 @@ def main() -> int:
         print("当日取消班均已告警过，跳过重复推送")
         return 0
 
-    text = build_message(len(todays), bad, repo, today)
+    text = build_message(len(todays), new_bad, repo, today)
     print(text)
     if args.dry_run:
         print("[dry-run] 不发送钉钉，也不写去重状态")

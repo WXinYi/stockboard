@@ -138,7 +138,13 @@ class TestExactContractFields(unittest.TestCase):
         # 2026-11-16 调仓共识页：today.json 新增 tradeConsensus（方案 C），精确集合同步扩展
         self.assertEqual(set(doc), {"date", "updatedAt", "tradedPlayerIds", "emContract", "tradeConsensus"})
         tc = doc["tradeConsensus"]
-        self.assertEqual(set(tc), {"totalTrades", "totalBuyers", "stocks"})
+        required = {"totalTrades", "totalBuyers", "stocks"}
+        allowed = required | {"aTotalTrades", "aTotalBuyers"}
+        self.assertTrue(required <= set(tc) <= allowed,
+                        f"tradeConsensus 字段异常: {sorted(tc)}")
+        if "aTotalTrades" in tc:
+            self.assertIsInstance(tc["aTotalTrades"], int)
+            self.assertIsInstance(tc["aTotalBuyers"], int)
         for s in tc["stocks"]:
             self.assertEqual(set(s), {"code", "name", "buy", "sell",
                                       "buyTrades", "sellTrades", "net", "lastTime"})

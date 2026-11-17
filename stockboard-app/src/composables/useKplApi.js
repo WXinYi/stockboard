@@ -61,12 +61,28 @@ function getJson(url, silent) {
   return requestJson(signal => fetch(url, { signal }), silent, url)
 }
 
-// ---- 交易时段判定: 周一至五 09:30-11:30 / 13:00-15:00 (本地时间) ----
+function beijingNow() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date())
+    const v = t => Number(parts.find(p => p.type === t)?.value || 0)
+    const y = v('year'), m = v('month'), d = v('day')
+    return { y, m, d, minutes: v('hour') * 60 + v('minute'), date: new Date(y, m - 1, d) }
+  } catch {
+    const now = new Date()
+    return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate(),
+             minutes: now.getHours() * 60 + now.getMinutes(), date: now }
+  }
+}
+
+// ---- 交易时段判定: 周一至五 09:30-11:30 / 13:00-15:00 (北京时间) ----
 export function isTradingTime() {
-  const now = new Date()
-  const d = now.getDay()
-  if (d === 0 || d === 6) return false
-  const t = now.getHours() * 60 + now.getMinutes()
+  const now = beijingNow()
+  const day = now.date.getDay()
+  if (day === 0 || day === 6) return false
+  const t = now.minutes
   return (t >= 570 && t <= 690) || (t >= 780 && t <= 900)
 }
 
@@ -107,7 +123,7 @@ export async function getLatestTradingDay() {
       }
     }
   } catch (e) { /* fallthrough */ }
-  return rollback(new Date())
+  return rollback(beijingNow().date)
 }
 
 // 最近已过的财报报告期 (3-31/6-30/9-30/12-31) — 机构增仓接口用

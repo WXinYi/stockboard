@@ -4,9 +4,12 @@ vi.mock('../../data/loader.js', () => ({
   fetchPlayers: vi.fn(),
   fetchStocks: vi.fn(),
   fetchToday: vi.fn(),
+  reloadPlayers: vi.fn(),
+  reloadStocks: vi.fn(),
+  reloadToday: vi.fn(),
 }))
 
-import { fetchPlayers, fetchStocks, fetchToday } from '../../data/loader.js'
+import { fetchPlayers, fetchStocks, fetchToday, reloadPlayers, reloadStocks, reloadToday } from '../../data/loader.js'
 import { useDataV2 } from '../useDataV2.js'
 
 const PLAYERS = {
@@ -42,6 +45,9 @@ describe('useDataV2 · P3 4 契约数据层', () => {
     fetchToday.mockResolvedValue(TODAY)
     fetchPlayers.mockResolvedValue(PLAYERS)
     fetchStocks.mockResolvedValue(STOCKS)
+    reloadToday.mockResolvedValue(TODAY)
+    reloadPlayers.mockResolvedValue(PLAYERS)
+    reloadStocks.mockResolvedValue(STOCKS)
   })
 
   it('R5#5: loadData 只等 today，不预拉 players/stocks', async () => {
@@ -136,5 +142,31 @@ describe('useDataV2 · P3 4 契约数据层', () => {
     const d = useDataV2()
     await expect(d.ensureSlices(['players'])).rejects.toThrow('boom')
     expect(d.sliceErrors.value.players).toBe(true)
+  })
+
+  it('single-flight: 并行加载同一分片只发一次请求', async () => {
+    const d = useDataV2()
+    await Promise.all([d.ensureSlices(['today']), d.ensureSlices(['today'])])
+    expect(fetchToday).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloadSlices 失败时保留旧数据', async () => {
+    const d = useDataV2()
+    await d.ensureSlices(['today'])
+    const old = d.slices.today.value
+    reloadToday.mockRejectedValueOnce(new Error('boom'))
+    await expect(d.reloadSlices(['today'])).rejects.toThrow('boom')
+    expect(d.slices.today.value).toBe(old)
+  })
+
+  it('tradeConsensusA 使用 A 股口径统计', async () => {
+    fetchToday.mockResolvedValue({ ...TODAY, tradeConsensus: {
+      totalTrades: 10, totalBuyers: 5, aTotalTrades: 7, aTotalBuyers: 4, stocks: [],
+    } })
+    const d = useDataV2()
+    await d.loadData()
+    expect(d.tradeConsensusA.value.totalTrades).toBe(7)
+    expect(d.tradeConsensusA.value.totalBuyers).toBe(4)
+    expect(d.tradeConsensusA.value.fullMarketTrades).toBe(10)
   })
 })
