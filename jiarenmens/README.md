@@ -1,151 +1,73 @@
-# StockBoard - 股票数据看板
+# StockBoard 采集端
 
-个人超短决策看板：跟踪东财模拟炒股大赛选手持仓，叠加情绪周期引擎给出每日选股结论。
+当前生产链路由 cron-job.org 触发 GitHub Actions，采集端只负责生成静态 JSON 和发钉钉；不再使用 `main.py` / `export_json.py` / `notify_daily.py` 作为生产入口。
 
-## 功能（页面名以线上导航为准）
+## 生产入口
 
-- **选股首页** `/market` — 今日定性一句话 + 可买/禁买结论、🎯 今日出击、接力盈亏仪表、持仓触价提醒明细
-- **竞价抢筹** `/auction` — 09:25 竞价结论、出击选股存档、昨日连板·竞价换手 TOP5
-- **抄作业** `/copy` — 选手调仓信号/卖出预警/疑似清仓（导航不暴露，URL 直达保留）
-- **排行榜** `/rankings` — 选手按总/年/月/周/日收益、净值多维排序
-- **重仓共识** `/stocks` — 按加权仓位发现市场重仓方向
-- **盯盘推送** — watchdog 每交易日 5 分钟轮询关注选手（09:30~09:35 开盘 50 秒/轮冲刺），新操作即时钉钉
+| 脚本 | 用途 |
+|---|---|
+| `scripts/player_snapshot.py --rank/--midday/--close` | 生成 `players.json` / `stocks.json` / `today.json`；midday/close 走 no-token 12 worker |
+| `scripts/em_contract_probe.py --live` | 写 `today.json.emContract`，控制前端 EM 直连是否可用 |
+| `scripts/export_market.py --market-only` | 生成 4 个市场切片 JSON |
+| `scripts/cycle_push.py --session midday/eod` | 午盘/尾盘格局 + A 股共识钉钉推送 |
+| `scripts/watchdog.py` | 关注选手即时钉钉；单独 workflow，每 5 分钟 |
+| `scripts/crawl_cancel_alert.py` | 每日 15:45 检查定时采集班是否被掐 |
+| `scripts/release_db.py` | `auction.db` / 历史 `crawl_data.db` 的 Release 三层存储同步 |
+| `scripts/fetch_db.py` | 从 Release 恢复/查询历史数据库，供回测与本地排障 |
 
-数据由 cron-job.org 触发的 GitHub Actions **每交易日 20+ 班**自动采集（首班 09:26、收盘专班 15:15），SQLite 持久化走 Release 三层存储——全链路见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
+详细调度、数据契约和运维见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)；当前状态与待办见 [`docs/OPTIMIZATION_PROGRESS.md`](../docs/OPTIMIZATION_PROGRESS.md)。
 
-## 数据持久化（2026-08-31 起）
+## 数据输出
 
-`crawl_data.db` **不再进 git**，持久化走 GitHub Release 三层存储（热层 40 采集日 / 温层 12 周滚动 / 冷层永久），完整方案与运维手册见 [`docs/DATA_PIPELINE.md`](../docs/DATA_PIPELINE.md)。
+生产目录：`../stockboard-app/public/data/latest/`
 
-`auction.db` 同样迁往 Release 热层（2026-09-06 起，tag `auction-state`）：竞价/宽度/炸板/六情绪**多个 workflow 共写**，每班开跑前 `--what auction --download-latest` 恢复（latest 失败自动回退最新日期快照），班内 sha256 变更才上传（`--what auction --upload-latest`，另存当日快照留 **30 天**(09-09 由 7 提升) + 周快照留 26 周——当前周随每班刷新、周切换自然冻结为周末状态；bid_pool 竞价档案不可重采）。上传失败让 run 失败（宁可停，不可静默丢档）。本地工作区文件在迁移后原样保留，仅新 clone 需要：
+| 文件 | 结构 |
+|---|---|
+| `players.json` | `{date, rankTime, players[]}` |
+| `stocks.json` | `{date, snapshot, updatedAt, stats[]}` |
+| `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}` |
+| 市场切片 | `hot_rank.json` / `lianban_bid.json` / `broken_pool.json` / `market_breadth.json` |
+
+`tradeConsensus` 按股票聚合当日买/卖，人数按选手去重，笔数不去重，方向未知不猜测；每班全量覆盖，不做并集。
+
+## 关注名单
+
+单一真源：`src/config/watched.py`（当前 9 人）。修改名单时只改这里；必要时同步前端 `stockboard-app/src/composables/useDataV2.js` 的 `FALLBACK_WATCHED` 冻结兜底。
+
+`HIDDEN_UIDS` 保留隐藏号的 zh→userId 映射，只用于 `watchdog.fetch_hidden_trades()` 的 rtV2 流水通道；旧条目可保留但不再遍历时无害。
+
+## 本地开发
+
+系统 `python3` 是 3.9，跑全量会因 `dict | None` 报 import error；使用 Python 3.10+，本机建议 3.12：
 
 ```bash
-python3 scripts/fetch_db.py --latest          # 热层(最近40采集日) → data/crawl_data.db
-python3 scripts/fetch_db.py --auction         # auction-state 热层 → data/auction.db
-python3 scripts/fetch_db.py --month 2026-07   # 单月冷层
-python3 scripts/fetch_db.py --list            # 查看可用归档
+cd /Users/xywang/stockboard/jiarenmens
+/opt/homebrew/bin/python3.12 -m unittest discover -s scripts -p 'test_*.py'
+/opt/homebrew/bin/python3.12 -m py_compile scripts/*.py
 ```
 
-⚠️ 每次 CI run 开头都会从热层恢复 db——本地手动跑 `export_json.py` 前先确保库已恢复（`fetch_db.py --latest`），空库导出会产出退化数据。
-
-导出原子性（2026-09-06）：export_json 全部 JSON 写入走 `_atomic_json/_atomic_text`（写 `.tmp` 后 `os.replace`），进程中断不再留截断文件；index.json 读取加防护，损坏时从 positions 表重建 dates 而非让后续每班导出停摆。
-
-## 快速开始
-
-生产链路全自动（cron-job.org → Actions → Pages），日常无需手动跑任何东西。本地开发：
+如需恢复历史库做回测：
 
 ```bash
-# 前端(Vue, 在 stockboard-app/)
-cd stockboard-app && npm ci && npm run dev
-
-# 采集端本地试跑(不碰生产; 库不在先 fetch_db 恢复)
-cd jiarenmens && pip install -r requirements.txt
-python scripts/fetch_db.py --latest        # 恢复主库(空库导出会产出退化数据)
-python main.py --checkpoint-reset --test   # 测试模式只采 10 人
+python scripts/fetch_db.py --latest          # Release 热层 → data/crawl_data.db
+python scripts/fetch_db.py --auction         # auction-state 热层 → data/auction.db
+python scripts/fetch_db.py --month 2026-07
+python scripts/fetch_db.py --list
 ```
 
-`scripts/dashboard.py` / `dashboard.html` 是 7 月代的旧 HTML 看板，仅留档，不再是生产出口。
+## 数据口径红线
 
-## 命令行参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--limit` | 500 | 每类数据获取数量 |
-| `--workers` | 20 | 并发数 |
-| `--test` | - | 测试模式（只处理 10 个） |
-| `--no-skip` | - | 不跳过已有数据 |
-| `--checkpoint-reset` | - | 重置进度记录 |
-
-## 项目结构
-
-```
-stockboard/
-├── main.py                    # 数据采集入口
-├── requirements.txt           # 依赖
-├── data/
-│   ├── checkpoint.json        # 进度记录
-│   ├── crawl_data.db          # SQLite 数据库(运行时从 Release 热层恢复, 永不进 git, 见 docs/DATA_PIPELINE.md)
-│   ├── auction.db             # 竞价/情绪/涨停池（auction/auction-label/crawl/cycle-eod 四 workflow 共写，Release 热层托管）
-│   ├── analysis.db            # 周期引擎判定（本地独享不提交；09-21 已解除历史误跟踪）
-│   ├── intraday.db            # 盘中监控数据（已停用，本地独享）
-│   ├── archive/               # fetch_db.py 回测产物（gitignore，勿 git add -A 误提交）
-│   └── dashboard.html         # 生成的看板页面
-├── scripts/
-│   ├── auction_scan.py        # 竞价扫描：出击选股Top5 + 昨日连板·竞价换手Top5 钉钉推送（存量评分漏斗与 V5 已 09-06 整链删除）
-│   ├── cycle_push.py          # 午盘/尾盘格局钉钉推送（每日三推之二/三）
-│   ├── cycle_brief.py         # 当前超短格局报告 CLI
-│   ├── backfill_emotion.py    # 市场宽度/涨停池历史回补
-│   ├── release_db.py          # ★ crawl_data.db ↔ GitHub Release 三层存储(热/温/冷)
-│   ├── prune_crawl_db.py      # 保留窗口外采集日删除 + VACUUM（封顶 db 体积）
-│   ├── fetch_db.py            # ★ 回测取数 CLI：Release 归档 → 本地(--latest/--week/--month/--range)
-│   ├── intraday_monitor.py    # 盘中实时监控（已停用，代码保留）
-│   ├── dashboard.py           # 看板生成脚本
-│   └── ...
-└── src/
-    ├── config.py              # 配置
-    ├── spiders/               # 数据获取模块（auction_spider 含 KPL 实时盘口/涨停池）
-    ├── storage/               # 存储模块
-    ├── analysis/              # 分析模块
-    │   ├── auction_env.py     # 竞价环境检查 + 强势板块选择(原漏斗的两个活函数)
-    │   ├── emotion_cycle.py   # ★ 超短情绪周期引擎（六段/主线/龙头谱系）
-    │   └── stage_candidates.py# 阶段候选池（周期→战法模式→候选）
-    └── utils/                 # 工具函数
-```
-
-## 超短情绪周期系统（2026-08 新增）
-
-围绕「情绪周期 → 主线 → 龙头谱系 → 阶段候选」的超短决策辅助，交付形态是**钉钉每日三推**（09:25 竞价 / 13:05 午盘 / 14:40 尾盘，搭现有 crawl/auction workflow 便车）。
-
-- **周期引擎** `src/analysis/emotion_cycle.py`：六段量化判定（冰点/启动/发酵/高潮/分歧/退潮）。⚠️ 涨停池 `PidType=5` 是"≥5板"封顶桶，真实连板高度按个股逐日连续在池反推。阈值在 `CYCLE_CFG`，**待回测校准**。
-- **存量评分漏斗与 V5 已整链删除**（2026-09-06）：`auction_funnel.py`/`screen_v5`/v5_results 等回测表/打标(`--label`)全部移除，出击名单的"周期闸门"语义由 `stage_candidates.py`(Python) 与 `leaderBattle.js`(JS) 镜像实现；`env_check`/`board_select` 迁至 `src/analysis/auction_env.py` 继续服役。
-- **数据**：`market_breadth`（250 天涨停/炸板率）与 `limit_pool` 全字段（涨停时间/封单/主力净额）由 `backfill_emotion.py` 回补。⚠️ `auction-label.yml`(涨停池回补班) 收盘只续 `--pool` **不含宽度**（2026-09-05 发现宽度停在 8/28 致 9/4 误判"分歧"），宽度日常更新已挂 `crawl.yml` 收盘班（≥15:00 班次），**盘中班另以 `--breadth-rt` 高频刷新当日行**（captured_at 标记采样时刻，让盘中周期/六情绪判定用今日实时口径而非昨日顺延，09-18 上线；09-21 补丁: 时刻统一北京时间、北京过 15:05 收盘后不写回，防 push/晚间班次复活 His 定稿标记），`cycle_brief.py` 计算前另有断档自愈兜底。**2026-09-09 加固**：该班原单日+`continue-on-error` → His 当日未定稿(`errcode=1020`)时静默 0 行、次日不回头（09-07/08 漏补事故）；现改 **7 天滚动窗口**(幂等)+`--strict`(末尾工作日 0 条且窗口内其它日有数据→非零退出)+末尾日无数据重试 3×60s，断档可见且次日自愈；历史盲区已用 `--pool 2025-09-01 2026-06-30` 补齐。
-- **常用命令**：
-  ```bash
-  python scripts/cycle_brief.py                        # 当前格局报告
-  python scripts/cycle_push.py --session eod --dry-run # 尾盘推送试跑
-  python scripts/backfill_emotion.py --breadth         # 宽度数据回补
-  ```
-
-## 我的持仓数据链（原「纪律卡」；纪律卡 UI 已 2026-09-07 下线）
-
-纪律卡执法页（今日定性→仓位上限/盘前五数/冰点确认菜单/价位表执法）已按用户拍板下线，前端仅余下线注释与轻量回补。`my_positions.json` 数据链保留，供选股首页「已持仓」标记与触价提醒明细：
-
-数据链（每班自动刷新）：
-```
-jiarenmens/data/my_positions.json   # 手编配置: 价位表/板块归属/weekly_focus, 每周复盘更新
-  └─ export_json.py: build_my_positions()   # rtV2 调仓轧差 + GetPlateInfo_w38(HisLimitResumption) 板块统计 + 腾讯行情
-       └─ stockboard-app/public/data/latest/my_positions.json   # 前端 loader.fetchMyPositions
-```
-板块名为 KPL 概念聚类（每日漂移，如"算力(液冷)"），配置里写关键词即可（包含匹配）；`其他`/`ST板块` 桶不参与判定。调仓核对为近 120 笔轧差估算，盘支持当日回转（T+0）。
-
-## 出击列表选股（2026-09-05 升级）
-
-**09:29 钉钉推送换血（2026-09-06）**：竞价班推送从"评分漏斗候选池 + V5 首枪"换成 **🎯出击选股 Top5（strike_pool 9:26 口径存档，与盘面页出击 Tab 同源）+ 🪜昨日连板·今日竞价换手 Top5**（口径同 `build_lianban_bid`/`lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯 0930 补算，`rank_lianban_bid` 纯函数+单测）；09:31 开盘确认**已整链移除（2026-09-10，用户拍板"拿到数据直接发版"）**——auction job 提交 auction.json 后立即 build+部署，约 09:28 上线，不再搭 crawl 便车（09:32）晚 7 分钟，也不再在 09:25-09:32 之间让线上竞价页显示昨日数据；`--confirm` 入口及 E 层确认函数**已随之一并删除**。存量评分漏斗与 V5 首枪当日先停跑、随后**整链删除**（漏斗评分/涨停基因/全池竞价分时采集、v5_results/candidates/candidate_results 等回测表、`--label`/`--v5-report`/`--backfill-factors` 入口全移除）——每交易日省去数百请求，auction.db 热层 2.19MB→0.7MB。页面『观察(容量)』= 龙头谱系中军（JS/Python 两端都有），与 V5 无关。前端同步：auction.json 去掉 `candidates`/`watch`/`rejected`，新增 `strike`/`strike_watch`/`bidrank`；竞价页（AuctionTab）换出击选股+连板换手两段，盘面页竞价迷你卡改显出击前2。`--dry-run` 语义收紧：不推钉钉**且不写生产 auction.json**（演练不覆盖前端快照）。
-
-选股首页「🎯 今日出击」Tab = 唯一出击展示位（周期详情页已移除该模块；该页原称「盘面页」，2026-09 更名选股，路由仍为 /market）：阶段闸门×九宫格 → 四池候选（龙头谱系/阶段扩展/半路/退潮火种）→ 评分排序（`leaderBattle.js` computeStrike，纯规则可回测）。每只候选带 定位标签（龙头/中军/补涨/跟风，跟风强制回避）、买点三件套（`candTipOf` 共用函数）、按闸门换算的建议仓位；启动期含首板试错池（早封+主力净买），退潮期火种入候选。Python 对偶 `src/analysis/stage_candidates.py` 同步候选范围与状态语义。
-
-特殊标记「🔥 竞价换手TOP5」= 昨日连板股中今晨 9:25 竞价实际换手率前五（口径同 `scripts/lianban_bid_hs.py`：KPL turnover_ratio 优先，0值腾讯分时 0930 首行÷流通市值补算）：
-```
-export_json.py: build_lianban_bid()   # limit_pool 昨日连板(pid≥2) × bid_pool 竞价换手
-  └─ stockboard-app/public/data/latest/lianban_bid.json   # 前端经 loadBattleData 注入 computeBattle 标 c.bidTop
-```
-
-战法蒸馏（2026-09-05，源自 `~/.claude/skills/short-term-hot-money-agent` 8 套游资框架）：换手连板优于缩量板（≥2板 换手<3% 降12分标"缩量板·换手未检验"，≥5% 加分，刺客）；接力盈利仪表（昨日涨停股今日可得涨幅均值，banner 显示"接力者赚钱/亏损"，刺客）；反核观察（总龙头深水≤-5% 时仅核心可评估、严禁后排，陈小群）；尾盘修复（14:30 后核心承接+主力净买 → 先手小仓标注，92科比）。Python 对偶 `_apply_shrink_filter` 同步缩量板降级。每次进入页面（onMounted/onActivated）与盘中轮询都会重新按实时池子选股。
-
-六情绪建模（2026-09-05，涅槃框架 v1）：`src/analysis/six_emotions.py` 六变量各归一为 0-100 历史分位数（对自身 255 天排名，零硬编码阈值）——市场=情绪分/跌停/破板率，投机=涨停/高度/晋级率/破板率/炸板/昨高位续板率，板块=主线家数/高度/扩散/成交，整体三层=3日均值分位+主线连任/切换。主导条件按优先级：退潮防守→板块情绪极强→投机情绪极强→市场强但板块不强→分歧但情绪不差→混沌观察，各配战术偏向。历史验证：主导条件有次日预测力排序（板块极强 61.6 > 投机极强 54.8 > 分歧不差 51.9 > 其他 ~36），并正确复现 8月末主升→9/1 高潮→9/4 退潮。数据经 strike_review.json `six` 字段上页面（出击Tab"🌡六情绪定性"、周期页 hero "🌡"行）；命令行回放：`python -m src.analysis.six_emotions [YYYY-MM-DD]`（近12日明细+历史主导分布）。v1.1 升级：市场情绪补 指数趋势（腾讯日K懒加载 index_daily 表，落后自动补）与 竞价金额（mood_daily.raw）两分量；阈值全面自校准——主导条件改用分数自身四分位（p30/p40/p50/p75/p90），样本增长自动漂移，无需人工重校；退潮防守新增动量崩塌条件（投机 ≤ 自身3日均值-30），修正 3 日均值滞后导致的高潮转退潮误判。周期页 cy-hero 已整合六情绪行（.cy-six）。**浏览器实时版(09-07)**：`stockboard-app/src/utils/sixEmotion.js` 与本文件成对维护（逐日同管线：原始分量→历史分位→加权→3日整体→四分位阈值→主导），历史基准由 `export_json.build_six_history` 输出 `six_history.json`（255 天×15 分量，收盘后刷新）；对拍回归：`scripts/six_parity_fixture.py` 按日截断生成参考（⚠️ 须同时改 six_emotions.DB 与 emotion_cycle.DB，否则 load_pool 仍读全库），前端 `sixParity.test.js` 逐日断言——改公式/阈值两边同步+重生成夹具同批提交。页面显示「实时/最近快照」标注。v1.2（2026-09-06）：连板高度改用周期引擎同款"连续在池反推"真实高度（pid_type 5 板封顶曾把 6/7/8 板压平，主升期 8/27-9/1 实际 6/7/6/7）；指数分量补拉改腾讯双主机同构（web.ifzq.gtimg.cn 主 + proxy.finance.qq.com 备——东财 push2his 掐非浏览器 TLS 不可用），失败 stderr 告警不再静默；全部逐日 O(n²) 扫池改一次遍历聚合。v1.3：新增主导条件「混沌过渡」（退潮尾声→新周期试错初期的两极分化：涨停≥p75 未收缩 + 跌停/炸板高分位报警 + 高度从峰回落 1-2 级未崩 + 跌停/涨停≤0.25 排除血洗），255 天仅 8/31 一例命中（用户盘面核实的过渡日，此前被动量崩塌规则骑线误判为退潮防守）；退潮防守另加跌停历史极值（≥p95）独立触发——一致性跌停潮（7/17 涨停32/跌停192）里炸板少/破板率中等，spec 无跌停分量会漏判成"混沌观察"，极值触发后 7/17、7/20、1/15、3/3 四个血洗日全部归位。
-
-「📋 昨日可买复核」（2026-09-05；**执行日锚定 09-07 修**）：每天复核前一交易日 9:25 选股的"可做"名单——`export_json.build_strike_review` 产出 `latest/strike_review.json`（可做名单+今日竞价涨幅），前端结合东财实时涨幅逐只判定：封板→持有（尾盘一致转分歧兑现）/ +3%以上→持有·冲高兑现（卖在一致）/ 0~3%→减半（弱于预期）/ 水下→开盘走（低于预期即卖）/ 今日周期转退潮冰点→清仓（只卖不买）。判定函数 `reviewVerdict` 在 leaderBattle.js（纯函数）。复核区带使用说明文案。**执行日锚定(09-07)**：盘中交易日(bid_pool 已有当日行)→执行日=今日(昨日池=limit_pool<今日)，复核口径=「昨日 9:25 选股 · 今日执行」；非交易日/盘前回落最近交易日——此前被 limit_pool 最新日(昨日)钉住，文件永远滞后一天、被前端数据日守卫隐藏。**全量输出改版(09-07)**：选股板块一律全量输出、不可出手标「不出手」——① stage_candidates 弱转强改为**全阶段产出**(启动/发酵/分歧→可做(弱转强)；高潮/退潮/冰点→观察(弱转强·禁买期))；② build_strike_review 复核 picks 不再只收「可做」(附 buyable 标记，前端对非可买标「不出手」)；③ today_wzq 全量保留，存档缺弱转强条目时由 `_synthesize_wzq` 按同口径补齐(断板∪烂板∪精确炸板 × 竞价+1.5~7%)。「🌅 今日竞价弱转强」块：strike_review.json 附 `today_wzq`（当日 9:25 弱转强名单，优先读当日存档、无档用当日竞价重算），逐只显示 昨日分歧类型/竞价涨幅/实时涨幅，回封标“已回封✅”否则“待分时确认”（-3% 止损提示）；退潮/高潮期显示不开放说明。顺手修复：stage_candidates 退潮期补涨误标"可做"（违反禁买铁律）。
-
-选股当时存档（2026-09-05）：auction.db 新表 `strike_pool(date,stage,picks,created_at)`，竞价班（auction_scan 5.8 段）用 `stage_pool(当日周期, bid_date=当日)` 的 9:26 口径名单原样落库；复核优先读存档（审计口径"当时说了什么"），无存档回退重算（规则演进口径），`src` 字段区分"当时存档/重算"并在复核区标题展示。`stage_pool` 新增 `bid_date` 参数支持盘前口径。
-
-弱转强候选（2026-09-05，陈小群）：昨日分歧 + 今日竞价超预期(+1.5~7%)。分歧池 = 断板（前日涨停昨日未封，limit_pool 差集）∪ 烂板（收盘封单/盘中最高封单 <0.15，当日最弱档——绝对阈值不可用，封单全天被消化是常态，09-01 分布校准）。Python `stage_pool` 在 启动/发酵/分歧 产出"可做(弱转强)"（进 9:26 存档与复核）；JS 端对"昨日烂板今日回封"加 6 分标"弱转强·烂板回封"（分歧转一致）。炸板池已接入（选股宝源 `src/spiders/xuangubao.py`，`limit_up_broken?date=` 支持任意历史日期）：`scripts/backfill_broken.py` 归档至 auction.db `broken_pool` 表（07-15 起 46 个交易日 1141 条），crawl.yml 收盘班每天写**最近 7 个交易日**滚动窗口（幂等自愈）。**2026-09-17 加固**：原实现只取 `limit_pool` 最大值这"一天"、且把 0 行当成功写入——选股宝当日炸板池收盘后未定稿时返回空 `data`，脚本 DELETE 后写 0 行、退出码 0，次日 `MAX(date)` 已翻篇不再回头（crawl.yml 守卫 grep `⚠️` 也看不见），累计 09-07/08、09-14~09-16 共 **5 天静默缺口**（与 09-09 `limit_pool` 漏补同族，见 docs/DATA_PIPELINE.md）。现改为：滚动窗口 + 末尾日无数据重试 3×60s + **空返回不删旧数据** + 落后超一个交易日才打 `⚠️`（正常态=当前尚未定稿的那天由次日补上，不报噪）；`--strict` 供手动回补判红，CI 一次性补齐走 `backfill-pool-history.yml` 的 `broken_days`（默认 30 个交易日）。分歧池 = 断板 ∪ 烂板 ∪ 精确炸板；strike_review.json 附 `prev_broken`，前端经 `loadBattleData(…, prevBroken)` 对炸板回封标 "弱转强·炸板回封"(+6分)。
+1. midday/close 的 no-token payload 不带 `ctToken` / `utToken` / `randomCode` / `deviceId`。
+2. EM rtV2 调仓日期必须 `YYYYMMDD`，客户端过滤仍用 `YYYY-MM-DD`。
+3. 缺失值写 `null` / `None`，不能用 0 冒充。
+4. A 股=6 位数字，港股=5 位；展示层过滤，数据层保留全量。
+5. 榜单默认每榜 300 人，`EM_RANK_LIMIT=500` 可回滚；全天请求数按实测 7005 次口径收口。
+6. 数据文件被 ignore 但已跟踪，提交必须 `git add -f <具体文件>`，不要 `git add -A`。
+7. `crawl.yml` 的 `concurrency.cancel-in-progress: false` 不能改回 `true`。
 
 ## 技术栈
 
-- 采集端：Python 3.11+ + SQLite，纯请求模式（requests/aiohttp），无需浏览器
-- 前端：Vue 3 + Vite + PWA（`stockboard-app/`），图表自绘 SVG、无图表库依赖
-- 调度与部署：cron-job.org + GitHub Actions + GitHub Pages；长期数据走 GitHub Release 三层存储
-
-## License
-
-MIT
+- Python 3.11+（本机用 3.12 跑测试）
+- SQLite 用于历史库/auction.db；页面生产链路消费静态 JSON
+- GitHub Actions + cron-job.org + GitHub Pages
+- 钉钉 webhook 统一走 `src/notify/dingtalk.py`

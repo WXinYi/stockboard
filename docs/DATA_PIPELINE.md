@@ -1,657 +1,151 @@
-# StockBoard 数据管道全景文档（取数 / 存数 / 长期存储方案）
+# StockBoard 数据管线（当前状态）
 
-> 用途：交接文档 + 日常运维手册 + **实施进度实时登记**（见 §0）。2026-08-30 梳理，08-31 开始实施。
-> 涉及目录：`jiarenmens/`（采集端 Python）、`stockboard-app/`（前端 Vue）、`.github/workflows/`（调度）。
+> 最后更新：2026-11-17（北京时间）。本文件只描述**当前生产链路**与必要运维点；历史事故和过程见 `git log`。
+> 代码仓库：<https://github.com/WXinYi/stockboard>；生产站点：<https://wxinyi.github.io/stockboard/>。
 
----
+## 1. 全链路一句话
 
-## §0 实施进度（随时更新，交接先看这里）
+cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` → GitHub Pages 部署；watchdog 和格局推送直接发钉钉，不依赖页面刷新。
 
-| 事项 | 状态 | 说明 |
+当前生产不再跑 `main.py` / `export_json.py` / `notify_daily.py` / `prune_crawl_db.py`。核心产物是 4 契约 + 4 市场切片；`auction.db` 仍通过 Release 热层在竞价/市场类 workflow 间共享。
+
+## 2. 当前调度
+
+| 时间/频率 | 触发方式 | workflow | 作用 |
+|---|---|---|---|
+| 09:25 | cron-job.org `workflow_dispatch` | `auction.yml` | 竞价扫描、出击选股、钉钉推送、发版 |
+| 09:26–14:51，20 班 | cron-job.org `workflow_dispatch crawl.yml`，body 含 `inputs.trigger_source=cron` | `crawl.yml` | 市场切片 + rank/midday/market 快照 |
+| 15:15 | cron-job.org `repository_dispatch: crawl-eod` | `crawl.yml` | close 全量快照 + 收盘数据定稿 |
+| 15:45 | cron-job.org job `8880763`，`repository_dispatch: crawl-cancel-check` | `crawl-cancel-alert.yml` | 掐班告警 |
+| 09:26–15:01 每 5 分钟 | cron-job.org `repository_dispatch: watchdog` | `watchdog.yml` | 关注选手即时钉钉 |
+| 09:30 | cron-job.org `repository_dispatch: watchdog-open` | `watchdog.yml` | 开盘冲刺，50 秒/轮至 09:35 |
+
+`crawl.yml` 的 20 个定时 job 已统一带 `trigger_source=cron`，run-name 显示 `[cron]`；掐班告警只认这些定时班和 `crawl-eod`，不统计 push / 普通手动补跑。GitHub 原生 schedule 已停用（曾延迟到次日凌晨）。
+
+## 3. `crawl.yml` 现行流程
+
+### 3.1 守卫与班次
+
+- 交易日历单一真源：`stockboard-app/src/utils/tradingCalendar.js`。
+- 非交易日跳过采集/提交，只保留部署；push 触发仅在 09:00–15:15 采集，盘后/夜间 push 只发版。
+- 班次判定：
+  - `crawl-eod` → `close`
+  - 09:25–09:35 → `rank`
+  - 11:29–11:40 → `midday`
+  - 其它 → `market`
+- 核心时段（09:15–09:45、11:15–11:45）若落入 `market`，输出 `::warning::` 提示 cron 漂移/排队。
+- `concurrency: pages-${{ github.ref }}`，`cancel-in-progress: false`：后续 market 班排队，不掐正在跑的 midday/close。
+
+### 3.2 数据步骤
+
+| 步骤 | 命令/脚本 | 说明 |
 |---|---|---|
-| 文档 | ✅ 完成 | 本文件；含实施调试记录 |
-| ① 存量数据上云 | ✅ **完成并验证** | Release `db-state`：crawl-latest.db.gz 22.1MB（trades 203100 / positions 166045 / players 23192，范围 2026-07-22~08-30，integrity ok）；`db-m2026-07`：5.4MB。匿名 `curl -L` 下载实测通过。`db-m2026-08` 已按设计于 9 月首个收盘 run 封版（2026-09-21 核实 tag 在位） |
-| ② crawl.yml 改造 | ✅ **全链路实战验证通过** | 09-01 15:52 run 完成首次真实 sync：热层(09-01, trades 207046) + 温层 db-w2026-W36 + 冷层 db-m2026-08(159315 trades) 全部就位，manifest integrity ok。⚠️ 同时发现并修复调度缺口（闸门 15:10 > cron 末班 14:51，08-31 db 丢一天，见事故记录②）：新增 `crawl-eod` 收盘专班 + 14:45 兜底闸门。**09-02 15:15 专班首跑 repository_dispatch success**——首次由专用 cron 自动触发收盘 sync，链路闭合 |
-| ③ fetch_db.py 回测取数 | ✅ **端到端验证通过** | `--list` / `--latest`(85MB 全量) / `--month 2026-07`(43785 trades, integrity ok) / `--range` 合并 全部实测；大陆 SSL 掐流已用 3 次退避重试 + curl 兜底解决 |
-| ⑤ players 导出收窄 | ✅ **远端已验证** | 23192 个/92MB → 5133 个（优质 3901 ∪ 当日持仓/调仓 ∪ name_map 引用）；08-31 01:07 run 后远端目录实测 5133，core.json 完整(quality 3895)。之后每日导出自动淘汰跌榜冻结选手 |
-| ④ 恢复降级链 | ✅ 完成(2026-09-13) | 热层下载失败不再直接断链：三级降级 **热层→温层最新周快照→actions/cache 副本**(`release_db.py --download-fallback`)。三条配套：**①库龄闸门** `MAX(crawl_date)≤今天-4 天`(4 天窗口自然拒绝春节/国庆长假缺口，周一用周五库放行)，超龄照旧宁可停；**②降级必发钉钉告警**(来源+库龄)；**③降级来源写 marker→`core.json.db_restore`→选股页红条提示**。cache 副本与 Release 相互独立(限流时仍可用)，每成功班打包入 `actions/cache`(key 前缀 `crawl-db-`)。全链耗尽仍 exit 1(宁可停不可断链)。单测 `test_release_db.py` 5 例 |
-| ④ git 历史重写(filter-repo) | ✅ 完成(2026-09-06) | 已执行并强推：pack 387→172MiB、`.git` 398MB→200MB，详见下方待办 C |
-| ⑦ Build Vue 提速 | ✅ **上线并双分支验证** | dist 壳按代码指纹缓存，数据班跳过 npm ci+vite 全量构建（原慢班 Build Vue 可达 425s）。09-05 两次 push 触发实测：cache-miss 全量构建分支 ✅ / cache-hit rsync 拼接分支 ✅，详见 A2 |
-| 观察期 ⑥ | ✅ **观察期结束(5/5天全过) + 追加日 09-09 ✅** | 观察期 09-02~09-08 五天全部通过；09-09 定时任务第5/5次(末次)继续全绿：主链路 eod #574 success、热层 18:15 更新、Pages 四 JSON 日期=09-09、竞价 #30(09:25) + 涨停池回补 #19(15:05) 均 success、manifest integrity ok (trades 214304, range 07-29~09-09)。定时自检任务到期结束，详细逐日记录见 B |
-| ⑧ 对账巡检（本地工具） | ✅ 脚本完成 / ⏸ 不进 CI（09-14 拍板） | `data_reconcile.py`：现场重拉原始接口 + 生产页 DOM，核对选股页 6 模块，❌→钉钉告警。**用户拍板巡检不加到生产环境**，仅手动本地跑，crawl.yml 不改动。同批修复：stage_candidates 弱转强/首板"昨日"锚 off-by-one（9:26 盘前班名单恒旧一个交易日，巡检⑤实锤）、`_synthesize_wzq` bid_pct 存字符串（与 09-14 早盘竞价班崩溃同类隐患）、MarketTab llm 卡 UTC 时戳直显 + snapTxt 切位错（恒判"早盘曾判"） |
+| 榜单快照 | `player_snapshot.py --rank --live` | 每榜 300 人（5 榜 × 75 次分页），写 `players.json` / `today.json` / `stocks.json` 基础字段 |
+| 契约哨兵 | `em_contract_probe.py --live` | 写 `today.json.emContract`，浏览器 EM 直连是否可用 |
+| 午盘快照 | `player_snapshot.py --midday --live --no-token` | 12 worker，2N 次 rtV2 调用 |
+| 收盘快照 | `player_snapshot.py --close --live --no-token` | 12 worker，3N 次 rtV2 调用 |
+| 市场切片 | `export_market.py --market-only` | 写 `hot_rank/lianban_bid/broken_pool/market_breadth.json` |
+| 格局推送 | `cycle_push.py --session midday/eod` | 13:00–13:25 / 14:40–15:00，钉钉正文与失败标志 |
+| auction.db | `release_db.py --what auction --download-latest/--upload-latest` | 每班恢复，sha 变更才上传，带 baseline-sha 并发守卫 |
 
----
+`SB_DATA_V2=0` 时不产出 4 契约，用于灰度回滚。`midday/close` 的 no-token payload 不带 `ctToken/utToken/randomCode/deviceId`。
 
-## 待办清单（按优先级，含验收标准；随进度更新）
+### 3.3 部署与提交
 
-### A.【✅ 已完成】首次 sync 上传验证 — 09-01 15:52 run（09-01 复核通过）
+- 数据班只精确提交：`players/stocks/today/hot_rank/lianban_bid/broken_pool/market_breadth.json` + `jiarenmens/data/.cycle_push_state.json`。
+- 提交信息：`📊 数据更新 YYYY-MM-DD [skip ci]`。
+- 推送冲突：`git -c rebase.autoStash=true pull --rebase -X theirs`，最多重试 3 次；`-X theirs` 在 rebase 中表示保留本班重放提交（最新采集数据）。
+- dist 壳按前端源码指纹缓存；代码未变时只 `rsync` 拼接最新 `public/data`。
+- 任一格局推送环节异常写 `/tmp/cycle_push_failed`，班次末尾检查并判红。
 
-- Release 三层全部就位：热层 `db-state` crawl-latest.db.gz 22.5MB（trades 207046，range 含 09-01，integrity ok）；温层 `db-w2026-W36`；冷层 `db-m2026-08`（159315 trades，08-01~08-30）——**月初自动封版按设计触发**。
-- 复核中发现**调度缺口**（见事故记录②）：闸门 15:10 高于 cron 末班 14:51，08-31 的 db 数据从未持久化而丢失一天。已修复：`crawl-eod` 收盘专班事件 + 14:45 兜底闸门。
+## 4. 静态数据契约
 
-### A2.【✅ 已完成】Build Vue 提速：dist 壳缓存 + 数据拼接（09-05 上线并验证）
+生产目录：`stockboard-app/public/data/latest/`。
 
-- **问题**：每 10 分钟一班全量重跑 `npm ci && npm run build`，而变的只有 `public/data`。Build Vue 步骤实测波动 9s~425s（如 09-04 13:30 班 814s 总耗时中 Build Vue 占 425s），npm 下载缓存已命中仍慢——瓶颈在 node_modules 全量重装 + vite 打包 + 拷贝数千选手小文件的 I/O，且随 runner 负载抽签。
-- **改造**（crawl.yml，commit `bc0a66a9fb`）：`actions/cache@v4` 按 `hashFiles(src/** + index.html + vite.config.js + package-lock.json)` 缓存 dist 壳；cache-hit 数据班只跑 `rsync -a --delete public/data/ → dist/data/`（`--delete` 与 export_json 的跌榜清理语义一致），Setup Node/Build Vue 全部跳过；cache-miss 自动回退全量构建并重建缓存。
-- **验证**（09-05 周六，两次 push 触发 + 线上核对）：
-  - #479（miss 分支）：恢复 dist 壳 0s → Build Vue 9s 全量构建 → 拼接 skipped → **Post 缓存保存 success**，run 342s ✅
-  - #480（hit 分支）：恢复 dist 壳 1s → Setup Node/Build Vue **双双 skipped** → 拼接最新数据 1s，run 358s ✅
-  - Pages 部署指向 #480（e0b0b6e8c4），线上 summary.json date=2026-09-05 正常 ✅
-- **预期**：慢班（如 13:30 型）总耗时 13.6min → ~7min（省下整个 Build Vue 段），快班持平；方差消除。采集+导出 ~5.5min 成为新主导段。
-- **边界**：缓存 key 不含数据（数据走 rsync），代码 push 后第一班自动全量重建；长假 >7 天缓存被驱逐也只多花一次全量构建。
-
-### B.【连续 5 个交易日】观察期每日检查（09-02 ~ 09-08）
-
-每天收盘 run 后核对四项：
-1. `crawl-latest.manifest.json` 行数较昨日单调不减、date_range 尾部=当日；
-2. 页面选手数据模块正常（重仓共识/抄作业有数据，quality ~3900 量级）；
-3. 钉钉日报正常（无重复推送、无漏推）；
-4. 周五出现当周温层 tag；**配好 cron-eod 后每日 15:15 的收盘专班 run 应含"上传 Release 存储"步骤 success**。
-
-任一异常 → 先查 Actions 日志，再按 §8 运维手册处理。
-
-- ✅ **09-02（第1天）**：三 manifest 符合预期；钉钉推送仅 2 次（14:55 修复上线基线 + 15:20 尾盘班），远端 state 键全为 str（`_k` 生效）；crawl-eod 15:15 首跑 success。上午曾发生事故③（state 不落盘→每班重复推送且全无 🆕），14:45 修复上线后恢复正常。
-- ✅ **09-03（第2天）**：16:00 ZCode 定时自检通过——① crawl.yml 当天全 success（run #448-457，15:15 专班含在内）；② Pages 线上 summary/core/changes_summary 数据日期=09-03（当日调仓 3142 笔：新增 1263/清仓 1070），auction.json=09-03 09:25 生成；③ 热层 db-state 15:20 回传（crawl-latest.db.gz 23.5MB），温层 W36 同步更新；④ auction 09:25 扫描 + auction-label 15:05 打标均 success。manifest 复核：integrity ok，trades 216944（较 09-01 单调递增），date_range 尾部=09-03，当日 trades 3989 / positions 3172（与 09-02 量级一致）。注：钉钉推送项无法从定时任务侧直接核对（不在手机端即可见），由用户日常确认。
-- ✅ **09-04（第3天，周五）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #478 success（白天有 3 个 run 被 concurrency 取消：#473/474/476，后续 run 均 success，manifest 逐日 fingerprint 与 09-03 完全一致确认无数据缺口）；② Pages summary/core/changes_summary 数据日期=09-04（当日调仓 3260 笔：新增 1302/清仓 1115），auction.json=09-04 09:25；③ 热层 15:24 回传（23.9MB），温层 W36 15:25 同步；④ 竞价 09:25（run #25）+ 打标 15:05（run #16）均 success。manifest：integrity ok，trades 221030，date_range 尾部=09-04，当日 trades 4086 / positions 3236。**周五当周温层 tag `db-w2026-W36` 在位且当日更新**（待办 B 第4条满足）。
-- ✅ **09-07（第4天，周一）**：16:00 定时自检通过，两处附带事件——① 主链路 eod 专班 #528 15:15 success、热层 15:19 回传(18.1MB)；白天 14:30 班 #525 在"下载热层库"步骤瞬时失败(18s 即败, Release 资产下载断链)，次班 #526 自愈，无数据影响；manifest integrity ok，trades 218035，range 07-27~09-07（头部滚动出 40 采集日窗口致总数较周五 221030 递减 2995，核算=剪除 07-22~24 的 14710 − 新增 09-05/06/07 的 11715，符合设计；周末 09-05/06 亦有采集落库 3844/3841）；② **竞价线 09:25 主推送发出但内容降级**：周期引擎不可用('2026-09-07' is not in list)→出击选股 0 条→strike_pool 无存档→09:31 确认补推按设计显式失败(#26)；10:18 手动重试 #27 同因失败；10:59 用户自修(e_confirm row_factory TypeError, commit 97b23ff49b)后 dispatch #28 补推成功，其后 11:38/12:31 又连推两次 9:26 推送增强(竞价实测情绪/当下周期预判)。属用户 weekend 迭代中的自发现问题，非管道故障；另注意今日 crawl 班次事件已变为 workflow_dispatch(#519-527)，仅 eod 仍 repository_dispatch（cron-job.org 触发方式疑已切换，待确认）。Pages：summary/core/changes date=09-07，auction.json=09-07 但 generated_at=10:59(重试班覆盖)。
-- ✅ **09-08（第5天，周二）**：16:00 定时自检通过——① crawl.yml 当天 15:15 专班 run #553 success、热层 15:21 回传；白天 12 班 workflow_dispatch + 2 班 push 全 success（其中 #541/#546 为 push 触发的班次被后续 dispatch 并发取消，属正常）；② Pages summary/core/changes_summary 数据日期=09-08；③ 竞价 09:25 run #29 success + 涨停池回补 #18 15:05 success。manifest：integrity ok，trades 218434，range 07-28~09-08。**观察期 5/5 天全过，观察期结束**。
-- ✅ **09-09（追加日，定时任务第5/5次即末次运行）**：16:00 定时自检通过——① crawl 白天多班 push+workflow_dispatch 全 success，eod 专班 #574 15:15 success、热层 18:15 再更新（18:11 班 #580 又回传一次）；② Pages 四 JSON 日期=09-09，auction.json=09-09 09:25；③ 竞价 #30(09:25) + 涨停池回补 #19(15:05) 均 success；manifest integrity ok，trades 214304，range 07-29~09-09（头部继续滚动剪窗）。**5 次定时自检任务到此全部完成**，后续监控若需要可再挂新任务。
-
-### C.【✅ 已完成】④ git 历史重写（filter-repo）— 09-06 执行
-
-- 实测剔除：`crawl_data.db`（276 blob/12.4GB 未压缩）+ `auction.db`（51 blob/322MB）两路径全历史；pack 387→172MiB，本地 `.git` 398MB→**200MB**（含 gc + 删 6 个 7-8 月旧临时分支）。
-- 完整性：fsck 干净、逐提交 tree 比对零差异、仅剔 16 个剔除两库后变空的纯数据提交；新历史首 run 绿（含 run 内提交+推送闭环）。
-- 切换：强推镜像 `main`+`tags`（最小化，未发布本地旧分支）→ 本地 `fetch --tags --force` + `reset --hard` → `reflog expire` + `gc --prune=now`。
-- 回滚：`/tmp/sb-backup.git` 完整原始镜像（**临时文件，重启即失**——09-06 晚后重写即既成事实）；全部历史提交 SHA 已重写，旧 SHA 引用仅作考古。
-- 顺带：远端现在只剩 `main` 一个分支。08-31 记的"772MB"为当时快照，09-06 执行前实测 398MB（多次 gc 已缩）。
-
-### D.【安全】PAT 更换
-
-WXinYi 的 classic PAT 出现过在会话/配置记录中，稳定运行后建议 GitHub → Settings → Developer settings → Tokens 里 **revoke 并换新**；日常 CI 全部用仓库自带 GITHUB_TOKEN，本地调试才需要 PAT。
-
-### E.【可选优化】后续观察项
-
-- ~~W36 周档缺 08-31~~ → ✅ 08-31 已回填并刷入 W36/M08（见事故记录 ②-b）
-- ~~`summary.json`（117KB 全量参照）前端已不 fetch，观察一个月后可考虑停写，进一步减小每次提交体积~~ → ✅ **已停写（2026-09-21）**，配套 notify_daily 日期源改 core.json、verify_slices 摘除对拍块（见 §3.3）；
-- 温层 `--retain-weeks 12` 与 prune 40 采集日的衔接：若出现周档覆盖不到的边角日期（跨月边界），用 `fetch_db.py --range` 合并月档兜底。
-
----
-
-### 📌 cron-job.org 收盘专班 — ✅ 已配置（09-01，jobId 8364216）
-
-`StockBoard 收盘sync 15:15`：工作日 15:15（Asia/Shanghai）发 `repository_dispatch: crawl-eod`，触发的 run 无条件执行 Release sync（真收盘数据，含尾盘竞价）。API 用法沉淀在 `~/.claude/reference/cron-job-org-api.md`。兜底：14:45 闸门保证专班失效时末班车也能落盘。
-
-**盘中班次**：20 个 job 逐个 `workflow_dispatch crawl.yml`（`{"ref":"main"}`），首班 jobId **8167465**（2026-09-09 由 09:30 改为 09:26）、末班 8239185（14:51）；其余 09:45~14:40 每 10–20 分钟一班。改时间用 `PATCH /jobs/{id}`（可只传改动字段，如 `{"job":{"title":…,"schedule":{…}}}`）。
-
----
-
-### ⚠️ 事故记录（08-31 凌晨，已修复，后人必读）
-
-**空库导出污染页面**：迁移切换当晚，一次白天逻辑的 run 在 db 已移出 git、热层下载又被"白天跳过"闸门挡住的情况下，用**空库**跑了 export_json，产出退化数据（index 2148 人/quality 886/无持仓变动）提交并部署。
-
-- **根因**：白天跳过下载的设计假设"白天 run 不需要历史库"，但 export_json 的持仓变动/卖出预警/高手判定全部依赖 40 日历史，空库导出即数据污染。
-- **修复**（commit `🐛 白天run也必须恢复热层`）：**每次 run 一律恢复热层**（下载失败且无本地 db 才终止）；只有"上传"保留收盘闸门(当时≥15:10, 后降为14:45)。`--download-latest` 加 3 次退避重试。
-- **教训**：改存储架构时，"读路径"（每次 run 都要）和"写路径"（收盘一次）必须分开考虑闸门。
-
-**② 收盘 sync 闸门高于 cron 末班，08-31 db 数据丢失一天（09-01 复核时发现，已修复）**
-
-- **现象**：09-01 复核首日 sync 时发现热层 trades 无 2026-08-31 行（08-30 直接跳 09-01），温层 W36 只含 09-01。
-- **根因**：sync 闸门设为 ≥15:10，但 cron-job.org 末班 dispatch 是 14:51（08-29 前的课表含晚间班次，08-31 起被裁剪）——**收盘 sync 从未被 cron 自动触发过**。08-31 的采集数据只存在于当天 runner 临时磁盘，run 结束即蒸发。恰逢迁移切换当晚，巧合掩盖了问题；09-01 的 sync 只是碰巧被 15:52 的一次 push 触发。
-- **修复**：①新增 `crawl-eod` 事件类型（专用收盘 cron 15:15 触发，无条件 sync）；②兜底闸门降为 ≥14:45（末班车也能落盘）。两条路独立生效。
-- **代价**：~~08-31 的 positions/trades 快照无法回补~~ → **09-01 已回填完成**（见下 ②-b）
-- **教训**：时间闸门必须对照**实际触发源的时刻表**校验；"理论上会有一班车"不等于"课表里有这一班"。
-
-**②-b 08-31 断档已回填（09-01 完成）**
-
-源接口只反映当前、无法重采 08-31，但**每次 run 的导出 JSON 都进了 git**——用 08-31 最后一次导出（commit `e35897d2ef`，北京 14:57）完成重建：
-- 工具：`scripts/backfill_positions.py --commit <sha> --date <日>`（通用化，未来断档可复用）。从 git archive 解出当时 players/*.json，`p` 数组→positions、`t` 中 td==当日→trades（字段与 schema 一一对应），先删后插幂等，并给 149 名"当日新面孔"补最小 players 档案（外键/名称查询需要）
-- 回填量：positions 3054 行 + trades 1760 行；integrity ok；采集日恢复连续（07-22~09-01）
-- **三层已刷新**：热层（208808 trades）、温层 W36（08-31~09-01）、冷层 M08（08-01~08-31 完整封版）——一年后回测 `fetch_db.py --month 2026-08` 可完整取到 08-31
-- 局限：快照时点为 14:57（差收盘 3 分钟）；update_time/position_value 等无源字段置空/0；players 表未回填历史收益（回测读各日 index.json）
-- 防复发：`release_db.py` 已加**内容指纹跳过**——已完成月/周内容不变则跳过上传（冷层不再每晚全量重传，5 年后每晚真实上传恒定 ~25MB）；回填改变指纹时对应归档自动重传
-
-**③ state 键类型混存致 save_state 崩溃：state 不落盘 → 每班重复推送 + 全无 🆕（09-02 发现，已修复）**
-
-- **现象**：09-02 每班 run（15 分钟一班）都推送钉钉（当天 8+ 次），且所有调仓都不带 🆕；`last_notify_state.json` 的 git 提交停在 09-01。
-- **根因**：三级连锁。①旧代码写的 seen 键是 int（db 自增 `_id`）；② `_k` 修复上线后新键是 str，`_trade_line` 把 str 加进含 int 的集合，`save_state` 的 `sorted(v)` 抛 `TypeError: '<' not supported between 'str' and 'int'`；③钉钉消息在 save_state **之前**发出，且 workflow 该步骤 `continue-on-error: true` → 异常被静默吞掉。state 永远没写盘 → `sent_date` 永远停在昨天 → `same_day` 永远 False → 跳过条件永不满足（每班都推）+ 永远按"当日首条基线"处理（永不标 🆕）。
-- **修复**：键一律 `str()`——加载时 `{str(x) for x in v}` 归一旧 int 键，写入时 `str(t.get("_k") or t.get("_id"))`。**09-02 自检确认生产生效**：修复上线后全天仅推送 2 次，远端 state 键全为 str。
-- **教训**：①"推送成功但状态没落盘"是最危险的静默失败（下次还重复推），`continue-on-error` 步骤必须在日志里能看出它失败了——本例靠 state 文件的 git 提交时间线反推；②给持久化结构的键换类型时，必须考虑与旧数据的**混合读取**，不是只保证新写入正确。
-
-**④ 首班"下载热层库"缺 GITHUB_TOKEN：匿名 API 被限流 → 整班静默秒挂（09-09 用户反馈"钉钉推送了但排行页还是昨天数据"，已修复）**
-
-- **现象**：09-09 09:30 首班 #554 失败在"下载热层库"，其后 20 个步骤全 skipped，当天第一份 09-09 数据直到 09:51 才提交（前一份是 09-08 15:21）。用户在 09:26 收到钉钉《竞价跟单快报》（直连东财实时接口）后打开页面，看到的自然是 09-08。
-- **根因**：该步骤漏写 `env: GITHUB_TOKEN`（上一行"下载 auction.db 热层"有，它没有）→ `_opt_token()` 返回空 → 匿名调 `GET /releases/tags/db-state`，撞上 60 次/小时/IP 的匿名限额 → `get_release()` 拿 403 返回 None → `_download_asset_to_db` **直接 return 1 且不打印任何东西** → 步骤 0.15 秒 exit 1。日志里只有一行"❌ 热层下载失败"，无法定位。
-- **修复**：① 该步骤补 `GITHUB_TOKEN`（顺带补 db_upload.yml 的同类步骤）；② `release_db.py`：非 200 打 stderr 日志并重试（限流是瞬时的），资产缺失时打印现有资产名，不再静默返回。
-- **教训**：①"公开仓可匿名读"是给本机用的，CI 里一律带 token——runner 出口 IP 共享，匿名额度随时被别的 workflow 吃光；②**静默失败比失败更贵**：这个 bug 从 09-01 迁移起就存在，只是首次撞上限流，代价是一天数据晚到 20 分钟。
-- **同时做了**：首班从 09:30 提前到 09:26（cron-job.org jobId 8167465，见 2.1），并在页面页脚显式标注"数据日期 + 采集时刻"，让快照时点一眼可辨。
-
-**⑤ 并发班次抢推数据 commit → rebase 冲突 3 连败、该班部署跳过（09-23 14:30 run #836，已修复）**
-
-- **现象**：#836（14:30 dispatch 班）失败在「提交数据」，钉钉失败告警触发、该班 deploy 跳过；此前 14:10~14:46 连续 5 个 crawl run 被并发取消。21 分钟后 #839（14:51）成功，数据/部署自愈无缺口（EOD 班全量重采覆盖了丢失的盘中快照）。
-- **根因**：用户 14:14 推代码触发 push 班 #834，把定时班 #835 挤到 14:30 才跑到提交步骤；#835 在 14:30:29 抢先推出数据 commit 后 11 秒被已启动的 #836 并发取消。#836 的 checkout 基点（启动时刻锁定）不含该 commit，自班提交后 `git pull --rebase` 重放到它身上——同批 JSON 全文件改写必冲突；重试时 rebase 中间态未清理，第 2/3 次连 pull 都进不去，3 连败。
-- **修复**（crawl/auction/llm-1000 三个 workflow 同批）：① `git pull --rebase` → `git pull --rebase -X theirs`——rebase 语义中 theirs=被重放的本班提交，冲突一律以**本班（最新采集）**为准；空仓沙箱 6 场景 27 断言验证：文本 modify/modify、add/add、删改、rename/rename、二进制冲突全部自动以本班解决，且上游代码 commit 原样保留。② 每次重试前 `git rebase --abort` 兜底清残留中间态，防"后两轮重试连 pull 都进不去"。
-- **残余风险**：①push 非数据文件的上游提交不会被 -X 影响（冲突路径 ⊆ 本班提交路径）；②`jiarenmens/data/hot_rank.db`（二进制，auction 班提交）若与 crawl 班撞车，实测同样本班赢，无双输形态。
-- **教训**：①并发 group 只保证"同时只有一个 run"，不保证 run 之间 commit/push 的先后——**凡是"长任务后 push"的 workflow 都隐式假设自己是最新基点**，盘中推代码会挤压班次时序把它打破；②重试循环里失败后的现场清理与重试本身同样重要，否则重试是空转。
-
-**⑥ 节假日幽灵数据：无守卫的 auction 系 workflow 把假日回放写进库（09-25 中秋实锤，09-27 修复）**
-
-- **现象**：09-25（周五，中秋休市）crawl 班被交易日守卫正确拦停（全天空壳，✅ 设计内）；但 **auction.yml（竞价扫描 09:25）和 auction-label.yml（涨停池回补 15:05）没有守卫**照常执行——KPL His 对假日**静默回放上一交易日数据**（不报 1020），竞价的 bid_pool/board_bid/mood_daily/strike_pool 写入 09-25 幽灵行并提交了假日 `auction.json`（date=09-25 假"当日竞价"页）；回补的 7 天窗口把 limit_pool 写入 09-25 共 52 条（=09-24 回放）。幽灵行随热层上传，周期引擎页挂出一条不存在的"09-25 交易日"。
-- **根因**：①两个 workflow 缺交易日守卫（09-21 守卫只加给了 crawl 系）；②`backfill_emotion.trading_days()` 只滤周末不查节假日日历——**国庆后首个交易日（10-08）的 7 天窗口会一次性污染 10-01~10-07 整个黄金周**，比 09-25 单日更严重；③KPL His 假日回放是静默的（`nontrading` 标记只在显式 1020 时置位），脚本层防不住，必须日历过滤。
-- **修复**（09-27）：①auction.yml / auction-label.yml 补与 crawl.yml 同款交易日守卫（非交易日跳过全部数据步骤、只保留部署）；②`trading_days()` 接入 tradingCalendar.js 日历过滤（解析失败退回周末近似并打印告警，与守卫语义一致）；③新增 `scripts/purge_auction_date.py` + `auction-db-maintenance.yml`（手动 dispatch，dry-run 默认、--apply 删后按 sha 门上传热层）清理存量 09-25 幽灵行 460 行，并把线上 auction.json 回退到 09-24 版；④单测覆盖：09-25 跳过、09-28（周一）放行、国庆窗口 10-01..10-07 全滤净、10-08 正常。
-- **教训**：①给"写库+上传"类 workflow 加守卫必须一次配齐，只守 crawl 会留下假日旁路；②**滚动自愈窗口会跨假日**——窗口内逐日循环必须逐日判交易日，否则自愈机制自己变成污染源；③上游 API 对假日的"静默回放"（返回旧数据不报错）比显式报错危险得多，凡"按日期抓数"的接口都要用本地日历兜一道。
-
-**⑦ auction.db 热层覆盖竞争：多班"下载→改→传"互相抹除写入（09-24 llm 首例、09-30/10-08 复发，10-08 根治）**
-
-- **现象**：10-08 节后首日巡检发现热层 `bid_pool/mood_daily/strike_pool/llm_review` 的当日行全部缺失（bid_pool 停在 09-29，说明 09-30 的竞价写库同样被吃），同层 `market_breadth` 的当日行却在——采集班的版本活了下来。竞价班/大模型班的当日写库每天都被后续采集班抹掉，前端无损（读 JSON）但 DB 回测层持续丢数据。
-- **根因**：四个 workflow（crawl/auction/llm-1000/auction-label）对 auction.db 都是"每班下载热层→本地修改→上传"，原 sha 门只防"自己没改"，**不防"下载后远端已被别人更新"**——旧基线上传会把别人的写入整段覆盖。时序（10-08 实测还原）：09:25 竞价写入并上传 → 09:26 采集班在 09:26:30 下载的是旧基线、09:31 传回覆盖 → 10:00 llm 写入上传(10:02) → 又被 10:00 采集班(基线 10:00:45、上传 10:05)覆盖。
-- **修复**（10-08）：`release_db.py` 新增 `--baseline-sha-file` 乐观并发检查——上传前重拉一次远端热层与本班下载时的基线 sha 对比：不一致（远端已被他人更新）→ 跳过本次上传并打日志（让新写入存活）；拉取失败 → 跳过（宁可少传一行 breadth，不可覆盖竞价/llm 数据）；基线文件缺失 → 保持原行为放行（向后兼容）。五个调用方（crawl/auction/llm-1000/auction-label/maintenance）全部接线。守卫只加在 `--what auction` 路径，crawl_data.db 的三层 sync 有自己的内容指纹机制不受影响。
-- **验证**：决策单测 6 用例 + cmd 端到端 3 分支（过期→上传函数零调用/一致→三件套正常上传/不带基线→原行为）两轮全过；生产实弹预演用真实远端内容（09-29 快照 vs 当前热层，双源交叉确认）两分支真实命中；YAML×12 + bash -n 全绿。
-- **残余**：守卫是"后写让位"语义——两个写者撞车时输家跳过、其独有数据仍会丢（如 crawl 09:26 的 breadth 快照时刻），但 breadth 每班重写今日行、无信息损失；竞价/llm 数据互不重叠且时序错开，实际不再互吃。
-
-### 同批基建升级（09-23，与事故⑤同批提交）
-
-- **push 竞态加固**：见事故⑤。
-- **actions 升版清 Node20 弃用告警**（此前每班 run 都带 warning）：checkout v4→v5、setup-python v5→v6、setup-node v4→v5、cache 三兄弟 v4→v5、upload-pages-artifact v3→v5（v4 起不再打包 dotfile，dist 无依赖 dotfile 已核实）、deploy-pages v4→v5、wrangler-action v3→v4。均为 node24 原生运行时，`with:` 输入无变化（release notes 逐一核对；setup-node v5 的自动包管理器缓存需 `packageManager` 字段，本项目无此字段不触发）。
-- **runner 钉版**：25 处 `runs-on: ubuntu-latest` → `ubuntu-24.04`。GitHub 官方通告 ubuntu-latest 将于 2026-10-19 起迁往 Ubuntu 26，钉版保住现状，待有空在 26 镜像冒烟后再放开。
-- **未动**：`node-version: '20'`（构建工具链，Node 20 已 EOL 但 vite 8 构建正常，属后续独立事项，避免同批引入构建链变量）。
-
-### 调试记录（db_upload.yml 首次上云踩坑，供后人参考）
-
-1. **同一 commit 删库导致 checkout 无 db** → init 工作流改为"优先热层恢复，否则从 git 历史最后一个含 db 提交检出"（`git rev-list | cat-file -e` 探测）。
-2. **读操作强制要 token** → `release_db.py` 拆分 `_token()`（写）/`_opt_token()`（读，公开仓匿名 GET）。**注意**：`_opt_token()` 只是给本机调试留的后路，**CI 步骤必须显式传 `GITHUB_TOKEN`**——匿名读撞限额会让整个 run 秒挂（见事故④）。
-3. **actions/checkout@v4 默认 shallow**（fetch-depth:1）→ rev-list 查不到历史，init 工作流加 `fetch-depth: 0`。
-4. **cd 子目录后 git pathspec 失效**：`cd jiarenmens` 后 `git rev-list -- jiarenmens/data/...` 相对 cwd 解析不到 → fatal，`bash -e` 直接终止步骤。git 命令必须在仓库根目录执行。
-5. 本机 keychain 里的 GitHub token 属于另一账号（无本仓写权限），不可用；改用仓库 GITHUB_TOKEN 跑 init。
-
-### 环境备忘
-
-- 仓库实测为 **public**（`private=false`），Release 资产可匿名下载（已验证）；用户配置标注"私有"以 API 实测为准。
-- WXinYi 的 classic PAT 已提供（用于 API 调试与 gh CLI）。**安全建议**：该 token 已出现在会话记录中，稳定运行后建议在 GitHub → Settings → Developer settings 里 revoke 并换新。
-- 大陆直连 GitHub：API 域名偶发 SSL 瞬断（重试可过），S3 资产主机（objects.githubusercontent.com 302 跳转后）对 Python urllib 的 TLS 指纹掐流较狠，curl 通常能过 → fetch_db/release_db 均已带重试，fetch_db 另有 curl 兜底。
-- 回测归档产物在 `jiarenmens/data/archive/`（已 .gitignore），勿 `git add -A` 误提交（08-31 曾误提交 2 个 19MB 文件，已及时移除）。
-
----
-
-## 一、全流程总览（✅ 08-31 起为现状）
-
-```
-cron-job.org (交易日 20 班/天, 首班 09:26, 末班 14:51, 全部 workflow_dispatch)
-        │ repository_dispatch: crawl-eod (15:15 收盘专班)
-        ▼
-GitHub Actions crawl.yml (job: crawl)
-        │
-        ├─ ① 午盘格局推送   (13:00–13:20 窗口, cycle_push.py --session midday)
-        ├─ ② 下载热层库     release_db.py --download-latest (每次run必做, 3次重试;
-        │      失败且无本地db → run终止, 防空库断链)
-        ├─ ③ 数据采集       main.py --checkpoint-reset
-        │      取数: 东财大赛 rtV1 榜单 + rtV2 选手详情/持仓/调仓
-        │      存数: jiarenmens/data/crawl_data.db (SQLite)
-        ├─ ④ 人气榜快照     auction_scan.py --hot-rank → hot_rank.db
-        ├─ ⑤ 导出 JSON      export_json.py → stockboard-app/public/data/
-        ├─ ⑥ 构建 Vue       npm ci && npm run build
-        ├─ ⑦ 钉钉通知       notify_daily.py (增量, 状态写 last_notify_state.json)
-        ├─ ⑧ 清理过期采集日 prune_crawl_db.py --apply (保留 40 个采集日 + VACUUM)
-        ├─ ⑨ 上传Release    [crawl-eod专班 或 ≥14:45收盘run] release_db.py --sync
-        │      热层覆盖 + 当周温层 + 已完成月冷层 + 温层滚动清理; 失败即run失败
-        ├─ ⑩ 提交数据       git add → reset crawl_data.db(db永不进git) → push JSON+状态
-        └─ ⑪ Upload Pages artifact
-        ▼
-deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
-```
-
-另有独立机器：
-- **竞价扫描** `auction_scan.py`（09:25 cron 单独触发，写 `auction.db`，钉钉推**出击选股Top5 + 昨日连板·竞价换手Top5**；2026-09-10 起**提交 auction.json 后直接 build+部署上线**，不再等 09:31 开盘确认——`--confirm` 入口及整套 E 层确认函数**已整链删除**；存量评分漏斗与 V5 首枪 2026-09-06 **整链删除**——代码/回测表/打标全移除，活函数迁 `src/analysis/auction_env.py`）；
-- **盘中监控** `intraday_monitor.py` —— **已停用**（本机 LaunchAgent 已撤、`intraday.db` 最后写入 2026-08-29；代码保留仅留档）；
-- **尾盘格局** `cycle_push.py --session eod`（14:30–14:55 窗口，搭 crawl dispatch 便车）。
-
----
-
-## 二、取数（数据从哪来）
-
-### 2.1 触发机制
-
-| 触发方式 | 说明 |
+| 文件 | 结构 |
 |---|---|
-| `workflow_dispatch: crawl.yml` | 主通道。cron-job.org 在交易日定时调 GitHub API，**每天 20 班**（**首班 09:26**~末班 14:51）。**定时班必须传 `inputs.trigger_source=cron`**，run-name 会带 `[cron]` 标记供掐班告警识别；不传则按手动补跑处理。首班与钉钉《竞价跟单快报》(09:26) 同批：快报直连东财实时接口，站点数据必须跟上，否则用户先收到推送、再打开页面却是昨天的数据（2026-09-09 反馈，首班由 09:30 提前，cron-job.org jobId 8167465） |
-| `repository_dispatch: crawl-eod` | 收盘专班，cron-job.org 15:15 触发，必做 Release sync |
-| `repository_dispatch: crawl-cancel-check` | 掐班告警，cron-job.org job `8880763` 北京 15:45 触发 `crawl-cancel-alert.yml`；只统计当日定时班 `cancelled`，北京时间 15:40~16:30 才检查，已告警 run id 落 `.github/state/crawl-cancel-alert.json` 去重。2026-11-17 起替代 GitHub 原生 schedule（曾延迟到次日 01:28）；同日 20 个 `crawl.yml` 定时 job 已统一加 `inputs.trigger_source=cron` |
-| `push: main` | 每次推送也会跑一遍（**2026-09-21 起有交易日守卫**：非交易日跳过采集/导出/上传/提交，仅保留构建部署；**09-22 延伸至时段**——push 仅在交易时段 09:00-15:15 采集，盘后/夜间/清晨 push 纯发版不采集，时钟统一北京时间；日历解析前端 tradingCalendar.js 单一数据源） |
-| `workflow_dispatch` | 手动触发（Actions 页面 Run workflow） |
-
-> 并发控制：`concurrency: pages-${{ github.ref }}`，新 run 会取消正在跑的旧 run。白天高频 dispatch 是设计使然（盯盘时效），非异常。
->
-> ✅ **已拍板维持现状（2026-09-22 关闭）**：采集/扫描类班次（`crawl` / `auction` / `auction-label` / `cycle-eod`）的 `cancel-in-progress: true` 会掐掉进行中的班次，而被取消（cancelled）不等于失败、不触发失败告警 → 存在丢班风险（数据不可重采）。改成排队（`cancel-in-progress: false`）可避免丢班，但可能让首班数据延后（首班 09:26 是特意提前的），属产品取舍。**09-22 实例**：09:26 首班被 09:38 班取消，数据由 09:38 班全量重采落地、无损失（首班 12 分钟未跑完是东财限流因素）。权衡已接受，部署类班次保留取消。
-
-### 2.1b 盯盘 watchdog（关注选手盘中即时提醒，2026-09-18 上线）
-
-**⚠️ 2026-11-10 EM 协议迁移**：EM 关闭旧 rtV2（emdcspzhapi.eastmoney.com，全部方法拒"APP版本较低"——版本号/时间戳/UA/99.99 全试无效，实为旧主机废弃）。新协议 = **spzhapi.dfcfs.cn/rtV2 + 登录态 token**（args 内 ctToken/utToken，来自用户抓包，**无需 sign**）+ 新字段三件套（randomCode/deviceId/新版 clientVersion "11.5.5_3.0.0.261105130728749"）。方法名映射：detail_97 死亡 → CombinationInfoHandler(信息) + combination_yield_detail_handler(收益率/净值) + CombinationHoldPositionPermitHandler(持仓,返回分板块列表需拍平) + CombinationRelocatePositionHandler(调仓,逐笔流水分页需按日期+票+方向聚合) + combination_dimensions(匿名公开)。userId 必填（代码 NEW_USER_IDS 映射 11 人 → 采集库回退）。token 来源：env EM_CT_TOKEN/EM_UT_TOKEN（CI secrets）> data/em_tokens.json（本地抓包, gitignored）。**token 失效 → 采集诚实失败并提示重新抓包**；周收益字段新协议缺失（players.weekly_return 暂置 0）。
-
-`watchdog.yml`（cron-job.org 每 5 分钟 → `repository_dispatch: watchdog`，独立并发组 `watchdog-main` 且不掐班）：交易时段拉关注选手组合接口（秒级/人），当日新操作 → **立即推钉钉**。页面数据归 `crawl.yml` 统一导出；watchdog 不写 `players/{zh}.json`、不部署 Pages（S2 起）。
-
-- **语义**：东财调仓明细只有日粒度（`tzrq` 无盘中时间戳），"即时" = 当日该笔**首次出现/成交次数增加**的时刻，推送写的是首次发现时刻。
-- **开盘冲刺（09:30~09:35，2026-09-22 上线）**：cron-job.org 另设 09:30 一班
-  （`repository_dispatch: watchdog-open`），任务内 **50 秒/轮自循环**抢开盘黄金窗口
-  （cron 粒度只有 1 分钟，50 秒节奏靠任务内自循环实现）；与常规 5 分钟班共用并发组
-  （排队串行）与同一份已推状态，一条操作只响一次铃；09:35 交回常规节奏。
-- **推送格式（快报同款全员列表）**：有新操作的班次列出全部关注选手——有今日操作的逐个出卡（本轮新增标 🆕、次数增加标 ↩️追加，已推送过的不标），无操作归 💤、隐藏归 🔇、拉取失败归 ⚠️；无新增操作的班次整班静默。
-- **去重**：键 = (选手, 股票, 方向) + 成交次数；次数变 → 补推"↩️追加"（修掉日内回买/加量盲区）。状态放 actions/cache 按日滚动（`watchdog-state-*`，对应 gitignore 的 `data/.watchdog_state.json`）。
-- **与日报的关系**：日报经 crawl.yml「恢复盯盘状态」步骤读同一缓存（`notify_daily.load_watchdog_pushed`），**跳过已实时推送的操作、不发空卡**；读不到缓存（=watchdog 失灵）→ 日报自动全量兜底。一条操作只响一次铃，两层互为备份。
-- **隐藏号流水通道（2026-11-07）**：东财侧隐藏的选手（现 2 人：我嘚财富/我要再来一次；凡人炒股/慢慢做趋势 11-07 用户拍板移出名单）detail 被整体下架（净值/持仓/搜索全无），但 rtV2 `CombinationRelocatePositionHandler` 流水照常实时产生 → watchdog 对隐藏号改走该接口：`HIDDEN_UIDS` 硬编码 zh→userId 映射（userId 无法反查，搜索接口对隐藏号 0 命中），当日流水聚合成与 detail 同形的 trade dict（同票同向多笔→次数累加，价格/仓位档取最新一笔）；**有操作正常出卡（名字带 🔇 角标）、无操作进"隐藏号今日暂无操作"脚注、不叠加选手页**（无持仓数据，页面停留隐藏前快照）。
-- **不做页面叠加/首班基线（2026-11-17 修正）**：per-player JSON 已下线，`fetch_base_player()` 每早 9×3 次 404 空耗且无可用替代源；当日操作一律按 `watchdog-state-*` 去重，状态只记本程序真正推过的笔数。
-- **降级自曝**：连续 3 班全员拉取失败 → 主动推"盯盘已降级"告警；任一班成功即复位。失败退出走 `alert-on-failure` 钉钉告警。
-- **只在工作日执行**：三层闸门——cron-job.org 仅周一~五(wdays)、脚本解析前端 `tradingCalendar.js`（单一数据源，上交所节假日表，运行时读取避免双份日历漂移）跳过法定节假日、时段闸门 09:26~15:05（09:26 竞价段由 watchdog 首班覆盖）且**午休 11:30~13:00 不开机**（09-18 用户拍板，期间无成交）。节假日/午休不开机，免误触降级告警与空烧 runner。
-- **轮询时刻错峰**：cron 分钟为 01/06/11/…/56（09-18 用户拍板，避开整 5 分的公共拥挤点），**盯盘首班 09:26**（闸门放行的第一班，覆盖竞价段与开盘）末班 15:01；09:26 之前的 09:01~09:21 触发由闸门跳过（该时段归 09:25 竞价快报）。
-
-### 2.1c 盘中实时宽度 breadth-rt（2026-09-18 上线）
-
-`crawl.yml` 新增「盘中宽度刷新(实时当日行)」步骤（continue-on-error）：交易时段每班调
-`backfill_emotion.py --breadth-rt`，只拉 KPL 实时 `rise_fall_rt` 当日行（APP 域名直连，
-不经 His/SCF）upsert 进 `market_breadth`，秒级完成。解决"盘中周期/六情绪判定缺今日宽度、
-按覆盖校验退化为昨日顺延口径"的问题（09-18 用户拍板：盘中所见应为当下真实市场状态）。
-
-- **口径**：盘中行是当日累计值（涨停数随时间增长），与收盘定稿天然有差异——这是盘中
-  决策可得的诚实数据。`captured_at` 列标记盘中采样时刻（HH:MM，北京时间）；收盘定稿行
-  该列为 NULL。
-- **定稿**：15:15 专班的 `市场宽度更新`（backfill_breadth，His+实时）照常 REPLACE 今日行
-  且 captured_at=NULL，永远以收盘定稿为准。
-- **护栏**：只回写今天的行（节假日/周末 rt 返回旧日期时过滤跳过，不重写历史）；重试用
-  独立小默认（2 次×30s），**不继承 EOD 的 30×180s**（会把盘中班挂起 90 分钟，已修）。
-- **2026-09-21 补丁**：① 时间/日期口径统一北京时间 `_now_bj()`——CI runner 是 UTC，
-  裸 `datetime.now()` 会把 captured_at 记成 UTC（慢 8 小时），且北京 00:00~07:59 窗口
-  UTC 日期=北京昨日，"只写今天"守卫会误匹配昨日定稿行；② 收盘护栏：北京过 15:05 即
-  跳过写回——此前 17:29 push 班在收盘后写回，把当日 His 定稿行复活成盘中标记（数值无差、
-  纯标记语义，次日首班 His 回补会自愈归 NULL；已无任何下游读 captured_at，属审计瑕疵）。
-- 旧库自动迁移：init_tables 检测缺列即 ALTER ADD captured_at。
-
-### 2.2 数据源清单
-
-| 数据 | 接口 | 文件 | 说明 |
-|---|---|---|---|
-| 选手榜单 | `https://emdcspzhapi.dfcfs.cn/rtV1` (`rt_get_rank`) | `src/spiders/player_list.py` | 总/年/月/周/日 5 类榜单，每榜 `--limit`(默认500)名，页大小20 |
-| 选手详情/持仓/调仓 | `https://emdcspzhapi.eastmoney.com/rtV2` (POST, appKey=eastmoney) | `src/spiders/api_detail.py` | 一次调用拿全三样；无鉴权，固定 timestamp；重试3次 |
-| 竞价池/板块/情绪 | 开盘啦实时接口 (apphwhq: GetBKJJ_W36 / RealRankingInfo / MorningBiddingList 等) | `scripts/auction_scan.py` | 当天走实时路径，历史回放走 His 路径 |
-| 人气榜 | 东财人气榜 TOP100 | `scripts/auction_scan.py --hot-rank` | am/pm 每(date,snap)去重，最多两份/天 |
-| 实时涨停池/格局 | 开盘啦 + 东财实时 | `scripts/cycle_push.py` | 只推钉钉，不落数据库 |
-| 监控行情 | 盘口五档轮询 | `scripts/intraday_monitor.py` | **已停用**（2026-08-29 后未再运行，代码保留） |
-
-**关注选手名单**：`main.py` 顶部 `WATCHED_PLAYERS`（硬编码 zh_id+name，当前 11 人）。每次采集强制重抓、置于队列最前，且不参与 checkpoint 跳过。**改名单只改这一处**：钉钉推送（watchdog/快报/日报）与前端置顶/⭐ 全部自动跟随——export_json 把名单写入 `core.json` 的 `watchedPlayerIds`，前端 `useData.js` 从该字段派生（2026-10-19 起，废除旧的前端硬编码副本；旧副本两处维护曾在 9/22 漏大道可寻、10/15 漏月儿兰）。前端仅在 core.json 尚无该字段的旧缓存下回退到冻结的 `FALLBACK_WATCHED`。
-
-### 2.3 采集过程（main.py）
-
-1. 写 `data/crawl_start.txt`（北京时间起点，供导出/通知引用）。
-2. 拉榜单 → 合并去重 → 强制插入 `WATCHED_PLAYERS` 至最前。
-3. `asyncio` 并发 20 (`--workers`)，`--test` 只跑 10 人。
-4. 每完成 50 人 flush 一批入库 + 存 checkpoint（`data/checkpoint.json`）；SIGINT/SIGTERM 时也先落库再退。
-5. **Workflow 传 `--checkpoint-reset`**：每次 dispatch 全量重采（不做断点跳过），保证盘中每次都是最新快照。
-
----
-
-## 三、存数（数据存到哪）
-
-### 3.1 主库 `jiarenmens/data/crawl_data.db`（SQLite, WAL 模式）
-
-| 表 | 内容 | 写法 | 增长 |
-|---|---|---|---|
-| `players` | 选手档案（收益/净值/labels/ranks 等，详情 JSON 串） | UPSERT by zh_id | 慢（23192 人 ≈7MB） |
-| `positions` | 每选手每采集日的持仓快照 | **幂等**：先 `DELETE WHERE zh_id=? AND crawl_date=?` 再 INSERT | ~40MB/40日 |
-| `trades` | 调仓流水（带 _id） | 同上幂等 | ~40MB/40日 |
-
-- 当前行数（2026-08-30）：trades 20.3万 / positions 16.6万 / players 23192；库 85MB，gzip 后 **22MB**（压缩比 3.8:1）。
-- 每天新增约 2.5~3MB（≈40 万行级采集日快照）。
-- **`prune_crawl_db.py --apply`**：按 trades 的 crawl_date 排序，保留最近 **40 个采集日**（KEEP_DATES），窗口外 DELETE + `VACUUM`（否则不缩文件）。players 表不删（被外键级联引用且很小）。db 封顶 ≈90MB。
-
-### 3.2 辅助库（均在 `jiarenmens/data/`）
-
-| 库 | 写入方 | 内容 | 是否提交 git |
-|---|---|---|---|
-| `auction.db` | auction_scan.py + crawl 班(宽度/炸板/六情绪指数) | 竞价池/六情绪日档(mood_daily)/梯队/涨停池/宽度/炸板池/指数/出击存档/LLM存档(llm_review) 9 张表(存量回测表 09-06 删除) | **否**（09-06 迁 Release `auction-state`：热层 latest + 日快照 **30 天**(09-09 由 7 提升) + 周快照 26 周；sha 门每班下载/上传；本地 `fetch_db.py --auction`） |
-| `hot_rank.db` | auction_scan --hot-rank | 东财人气榜 am/pm 快照 | 是 |
-| `analysis.db` | cycle_brief / emotion_cycle(周期引擎) | 周期判定快照 | **否（✅ 2026-09-21 已解除跟踪）** —— 此前 .gitignore 有它但文件已被跟踪、每班数据提交实际携带（09-21 巡检实锤），已 `git rm --cached` 归位 |
-| `intraday.db` | intraday_monitor.py(已停用) | 盘中信号快照 | **否**（.gitignore，本机独享） |
-| `crawl_data.db-shm/-wal` | SQLite WAL | — | 否（.gitignore） |
-
-### 3.3 导出 JSON（存数的"前端镜像"，`scripts/export_json.py`）
-
-每次 run 从 crawl_data.db 导出到 `stockboard-app/public/data/`（前端 Pages 直接 fetch）：
-
-```
-index.json              — 有效日期列表
-latest/core.json        — 日期/爬取时间/高手数 等元信息
-latest/copy.json        — 抄作业信号 + 卖出预警 + 疑似清仓
-latest/stocks.json      — 重仓共识（双口径 09-23: h/tp/ap=全体采集样本, qh/qtp/qap=仅优质选手——
-                            全样本随榜单漂移波动, 小米集团曾 175家→4家 一日登顶又消失。
-                            前端仅消费全体四列(2026-11-08 用户拍板: 优质口径视图移除——本质是
-                            长线配置榜, 与短线共识定位不符, 回测高手持仓次日跟随为负;
-                            qh/qtp/qap 三列仍导出备用, export 聚合已修+有守卫+回归测试)。
-                            📊 共识飙升推送(11-08): 15:15 收盘专班(crawl-eod)末尾
-                            `consensus_surge_push.py` 推一条 Top10 汇总卡(Δh≥8 且 h≥15,
-                            按 Δh 降序); 基线=上一交易日 stocks.json 走 actions/cache 每日接力
-                            (CI 浅克隆, git 历史不可用); 基线缺失不推(宁缺毋假); 卡片自带诚实
-                            脚注(班间漂移+回测追高 -0.95%)。盘中班不推(漂移假信号会刷屏)。
-                            ⚠️ 11-07 事故修复: qh/qtp/qap 曾因推导式泄漏循环变量(裸 code 引用
-                            qrows 循环残留值)而**全行恒定**（线上 09-23→11-07 连续 qh=5/354/15.95,
-                            优质口径整体失效; stocks.json 历史存档的 qh 均不可用, 回测请用
-                            players_index 逐日存档 idx15/idx16 自行聚合）。已修 + _build_stock_stats
-                            抽纯函数 + 全行同值 ::warning:: 守卫 + 回归测试 test_export_json）
-latest/name_map.json    — 被引用选手 name→id
-latest/changes_summary.json — 持仓变动计数
-latest/players/<id>.json — 选手详情, 前端按需加载
-  (✅ 08-31 起: 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件,
-   曾累积 23192 个/92MB 的问题已根治, 远端实测 08-31 为 5133 个, 随集合每日浮动, 09-21 约 6120 个)
-latest/auction.json     — 竞价扫描快照
-latest/players_index.json
-latest/strike_review.json — 出击候选复核 + 今日弱转强 + 六情绪快照
-latest/six_history.json   — 六情绪历史序列(~270 交易日 × 15 分量)
-latest/lianban_bid.json   — 昨日连板·今日竞价换手 TOP5
-latest/my_positions.json  — 我的持仓价位表(纪律卡 UI 已 09-07 下线, 数据链保留供「已持仓」标记/触价明细)
-```
-
-> **summary.json 已停写（2026-09-21）**：前端从不 fetch、唯一生产读者 notify_daily 的日期来源
-> 已改 core.json.date（同源同语义）；verify_slices 的 summary 对拍块随之移除（name_map /
-> changes_summary 检查保留）。它是 git 历史第二大反复提交 blob（累计 129MB），停写后仓库日增约减半。
-
-### 3.4 Git 提交策略（✅ 08-31 已切换）
-
-- 每次 run `git add -f stockboard-app/public/data/ jiarenmens/data/`（-f 覆盖部分 ignore），但**随即 `git reset` 掉 `crawl_data.db`——db 永不进 git**（.gitignore 已加，`git rm --cached` 已做）。
-- db 的持久化走 Release 三层存储（§5）：每次 run 开头从热层恢复，收盘 run（`crawl-eod` 专班或 ≥14:45 兜底）末尾 `--sync` 回传。
-- 状态 JSON（last_notify_state/checkpoint 等）**必须每次提交**，否则钉钉增量推送会因状态回退而白天重复推送。
-- 提交信息 `📊 数据更新 YYYY-MM-DD [skip ci]`（防止 push 再触发 workflow）；push 失败重试 3 次（pull --rebase）。
-### 涨停池当日实时化 + 历史回补落地（2026-09-09 最终态）
-
-- **口径（用户拍板）**：**当天用实时接口**（`zt_pool_rt`/`rise_fall_rt`，收盘后即含全天，His 当天 15:05 仍 `errcode=1020`）；**历史用 His**（`zt_pool`，`Day=` 参数）。
-- **通道**：直连 `apphis` 优先，探针（取库内已确认交易日）失败才切 `KPL_HIS_PROXY`（SCF 中转）；双通道皆败或**连续 5 个交易日网络失败**即非零退出（节假日 `1020` 不计入，避免国庆段误中止）。
-- **性能**：历史回补并发 8 日抓取 + 串行落库；`--skip-existing` 跳过已有日期（1250 次串行请求 40-60min → 并发约 5min）。
-- **历史盲区已补齐**：线上 `limit_pool` **2025-09-01 → 2026-09-09 / 249 天 / 17,200 行**（此前仅 7 月起 48 天）。
-- **一次性回补 workflow** `.github/workflows/backfill-pool-history.yml`：push 自身或脚本即触发；**先确认没有进行中的 crawl 班次**再恢复热层→回补→上传（否则 crawl 的 EOD 上传会用无回补的库覆盖，09-09 实测踩坑）。2026-09-15 改两处：① 等待方式由固定 `sleep 20min` 改为**轮询 crawl 是否有进行中班次**（上限 40min，超时 `::warning::` 但继续）——盲等遇到超长班次仍会竞态；② 幂等守卫由"全局 MIN ≤ 2025-09-01 即跳过"改为**按请求区间起点判断**——原先指定更早区间手动触发会被静默忽略（报成功但什么都没做）。**2026-09-21 补丁**：轮询口径改**统计非 completed 班次**（queued 也算）+ 首轮 45s 宽限、API 失败改 fail-closed——原 `status=in_progress` 过滤漏掉刚触发还在排队的班次，09-17 实测 0 秒放行、补数先于 crawl 上传（顺序颠倒；撞上会写库的 EOD 班时补数会被静默覆盖）。同批修掉「校验覆盖」步骤残留的孤立 `PY`（skip=0 真跑回补时该步必 `command not found` 失败）与 watchdog.yml 部署让位的同款过滤（queued crawl 会让让位闸门 0 秒放行、回退闪烁在同 push 场景复活；该处 API 失败仍放行——叠加可自愈，不值得卡部署）。
-- **六情绪窗口**：`six_emotions.load_pool` 120→400 日——历史补齐后窗口边界差会让"全量导出 vs 按日截断参考"分位偏差 0.3~0.7（对拍抓出）。
-- **六情绪舍入口径对齐（2026-09-09）**：`six_emotions.py` 的分数舍入改用 `_round_half_up`（对齐 JS `Math.round`，Python 内置 `round` 是银行家舍入）、窗口均值改用 `_fsum_naive`（朴素左到右，不用内置 `sum`——CPython 3.12 起对 float 补偿求和，与 CI 3.11/JS 差 1 ULP）。两者不一致会让按日截断对拍在并列值上分叉（09-03 m_sector 差 0.4：3 日均值落在基期重复值 52.7 两侧）。改六情绪公式须沿用这两个助手，前端 `sixParity.test.js` 为回归闸门。
-
-### 大模型独立选股（影子；v2 竞价版 09-12 上线 → v3 盘中版 09-22 拍板迁移）
-
-**v3 盘中版（2026-09-22 拍板迁移，10:00 执行；2026-11-07 错峰至 10:03）**：09:25 竞价时点存在**结构性盲区**——当日涨跌停/晋级情况/涨停溢价均未产生，LLM 只能拿昨日存量+竞价代理值拼定性（09-22 实测"涨停105→103持平"式硬凑，当日真实收盘 64 家大退潮）。迁移后：
-
-- **触发**：新工作流 `llm-1000.yml`（cron-job.org 工作日 `repository_dispatch: llm-1000`，含交易日守卫）；09:25 竞价班只回填最新 llm 存档（≤今天，卡片带日期）。**2026-11-07 起触发时刻 10:00→10:03**：10:00 整与采集班"提交数据"撞 git push，连续三个交易日（11-04/05/06）天天 failure（失败告警+下班自愈），错峰 3 分钟根除；cron-job.org 任务 `8489018` 与 workflow 名同步改 10:03。
-- **v3 喂入（实时因子，补齐因子框架三缺口）**：实时涨跌停/炸板（vs 昨日）、**晋级率**（昨日涨停→今日再涨停）、**梯队结构**（N板x只）、**昨日涨停股实时表现**（红/绿/无行情计数 + 实时溢价均值，分首板/连板两档——赚钱效应核心指标）、指数涨跌 + 两市成交额（截至10:03；量能对比待 v3.1）。附带 09-22 对账修复：主净缺失渲染"主净-"（不得伪装 0）、红绿计数显式化（"(60/103只)"歧义曾致模型误读"红盘58%"）。
-- **信号时点入场价**：picks 逐只记录 `entry_px`（10:03 实时价）——盘中选股回测的金标准，不再用日 K 近似。
-- **候选宇宙**：今日实时涨停 ∪ 昨日涨停池（幻觉票剔除口径随迁移更新）。
-- 数据边界声明写入喂入首行（"全天数据未产生, 禁止推测"），防模型硬凑趋势。
-
-**v2 竞价版（09-12~09-21 口径，保留回放）**：09:25 竞价班内（auction_scan.scan 末段），DeepSeek 只看**当日竞价 + 前一日原始数据**做独立分析，与规则引擎完全隔离（不喂阶段标签/闸门/出击名单/状态词/六情绪结论词），**允许空仓输出**。
-
-- **模块**：`src/analysis/llm_review.py`（提示词 v2：游资操盘手人设 + 两级决策闸"先判环境(攻击/试错/观察/空仓)再选股"+ 高开>5% 不做 + 主净为正非安全证明 + 弱转强分环境）；未配 `DEEPSEEK_API_KEY` 时静默跳过，dry-run 跳过。
-- **健壮性四层**：输出压缩(reason≤60字/picks≤3) → 括号配对双模式解析(字符串感知+纯深度, 容忍围栏/尾串/杂引号, 部分截断可提取前半对象) → 解析失败自动重试1次 → 两次失败 degraded 落档不阻塞链路。
-- **双写存档**：`auction.db.llm_review`（PK=date+prompt_ver，回测真相源，随 Release 三层存档、`fetch_db.py --auction` 可取）+ `auction.json.llm`（页面读）。
-- **前端**：选股页「🤖 大模型选股」模块（regime 徽章/仓位/逐只理由/回避清单；空仓日显示"空仓等待✓"；降级显示"今日无有效输出"）。
-- **回测**：`scripts/llm_picks_review.py`（v2 口径=竞价买→收盘；v3 口径=entry_px→收盘，`--compare-engine` 对照引擎 strike_pool Top5 同口径）。
-- **影子中期结果（09-22 盘后拉取）**：7 交易日 5 天空仓，出手 2 天均值 -0.35%（引擎同期 +1.28%）——方向不利，不转正，继续影子至 10 月上旬；09-22 出现解析降级（模型有完整输出但解析失败，raw 已存档）。
-- 密钥：GitHub secrets `DEEPSEEK_API_KEY`（手动配置）；模型 `deepseek-flash`（可用 `LLM_MODEL` 覆盖）。
-
-### 选股引擎两端状态统一（2026-09-11）
-
-Python `jiarenmens/src/analysis/stage_candidates.py`（09:25 存档 + 钉钉推送）与 JS `utils/leaderBattle.js`（页面实时）是同一套阶段/矩阵规则的双实现，此前有 4 处结论相反，已统一：
-
-| 场景 | 统一前 | 统一后（两端一致） | 方向 |
-|---|---|---|---|
-| 启动期 龙头 | Py `观察` / JS `低吸不追高`(可买) | 两端 `可做(低吸)` | Py→JS |
-| 高潮期 主线高位 | Py `观察(谨慎接力)` / JS 按评分 `出击/备选` | 两端 `可做(谨慎接力)`，按评分去弱留强 | **Py→JS**（见下） |
-| 冰点期 火种 | Py `观察(新周期留意)` / JS（cap30 钳住，暂不可达） | 两端 `观察(火种)`，堵住 JS 前缀判定漏洞 | JS→Py |
-| 缩量板(≥2板 换手<3%) | Py 降级 `观察(缩量板)` / JS 只扣 12 分(仍可 `出击`) | 两端降级不可买 | JS→Py |
-| 封单衰减(≥5板 封单<5000万) | Py 降级 `观察(封单衰减)` / JS 只扣 15 分(仍可 `出击`) | 两端降级不可买 | JS→Py（全量复核追加） |
-| 冰点期 1进2 | Py `可做(首板套利)` / JS cap30 结构性封死一切 | **冰点 cap 30→60**；两端 1进2=`备选`(待确认) | 双向（用户拍板 A 方案） |
-
-**冰点 cap 30→60（用户拍板 A）**：cap30 把分数钳死在 55(备选线)之下=结构性禁止一切买入，与本行 banner"只做 1进2 套利"、STAGE_PLAYBOOK"首板套利只在最强板块"、Python `可做(首板套利)` 三处矛盾（3:1，cap 是孤点）。60 的语义上限=备选(待确认)、给不出出击——精确表达"仓位轻、分时确认才上"，并使闸门梯度自洽：退潮 0(关) → 冰点 60(最多待确认) → 启动 100(可出击)。连带头脑口径统一：Py 冰点 1进2 改 `备选(首板套利)`。
-
-**高潮期"谨慎接力"的方向核对（用户质疑后改正）**：最初误统一为"观察"（跟 Python 旧词），核对后确认应可买——依据：① STAGE_PLAYBOOK 高潮条"**板块爆炸买跟风但去弱留强**"，评分分层(出击≥75)正是"去弱留强"的实现；② 该 mode 有完整买点三件套(秒板接力/只排板不追高/断板即走)；③ cap 排序(高潮100>分歧60)要求高潮期可买集合不小于分歧期。弱票由 缩量板/封单衰减 过滤兜底。
-
-根因：JS 用 `mode.startsWith('观察')` 判可买，`火种观察` 命名不带前缀被漏判（已改精确映射 `观察(火种)`）；缩量板在 JS 只作扣分不降级（已改置 `观察(缩量板)`）；Python 高潮分支状态词写死"观察"与自家剧本矛盾（已改 `可做(谨慎接力)`）。
-
-**仍保留的有意差异**（非冲突）：JS 独有盘中实时维度（半路/反核撬板/尾盘修复）；弱转强由 Python 产出经 `auction.json` 供页面；跟风回避是 JS 实时判定。矩阵 9 组 tier 与高低中分层阈值两端本就一致。
-
-### auction-label 涨停池回补班加固（2026-09-09）
-
-事故：09-07/09-08 两日 `limit_pool` 未落库（max 停在 09-04），而 workflow 显示 success——原因是步骤带 `continue-on-error: true` + 只补「今天」单日：His `DailyLimitPerformance` 对未定稿的当日返回 `errcode=1020`，脚本逐板位 catch 后 0 行、退出码 0；sha 未变 → 上传步骤跳过 → 假绿。
-
-加固：
-- `backfill_emotion.py --pool` 支持 `--strict`，且**仅对末尾日做无数据重试**(默认 3×60s，等 His 定稿)；末尾日为工作日且 0 条、窗口内其它日有数据 → 非零退出(节假日全 0 不误报)。
-- `auction-label.yml` 改为**7 天滚动窗口**(`date -d '7 days ago'` → today，INSERT OR REPLACE 幂等)，去掉 `continue-on-error`——任何一天漏补次日自动追平，且断档会显式失败。
-- 历史回补：`--pool 2025-09-01 2026-06-30` 补齐六情绪 250 日高度/主线盲区(2026-09-09 执行)。
-
-- `auction.db` 同样不进 git（09-06 迁 Release `auction-state`）：每班开头 `release_db.py --what auction --download-latest` 恢复（latest 失败自动回退最新日快照），班内 sha256 变更才上传（另存当日+当周快照）；**上传失败让 run 失败**（宁可停，不可静默丢竞价档案）。 auction.yml / auction-label.yml / crawl.yml / cycle-eod.yml 四 workflow 共写共读。
-- ⚠️ 新增调 GitHub API 的 workflow 步骤必须显式 `env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`（09-06 演练实抓：secrets 不会自动进步骤环境）。
-- `jiarenmens/data/archive/`（fetch_db 回测产物）已 ignore，勿 `git add -A` 误提交。
-
-### 炸板池归档加固（2026-09-17）
-
-事故：`broken_pool`（弱转强"昨日分歧"的精确炸板源）09-07/08、09-14~09-16 共 **5 个交易日静默缺口**。09-16 缺口由生产巡检发现——`market_breadth.zhaban=11`（当日 11 只炸板）而 `broken_pool` 该日 0 行，源站 `limit_up_broken?date=2026-09-16` 实拉同为 11 只，确认为落库侧丢失而非无数据。根因与 09-09 `limit_pool` 事故同族：`backfill_broken.py` 只取 `limit_pool` 的 `MAX(date)` 这"一天"，而选股宝当日炸板池收盘后（实测 15:19）未定稿返回空 `data`，脚本 `DELETE` 后写 0 行、退出码 0；次日 `MAX(date)` 已翻篇，那天永不回头。crawl.yml 守卫 `grep -qE "⚠️|失败|Traceback"` 看不见这条路径（只打 `0 只炸板` + `✅`），故连缺三天无人察觉。
-
-加固（与 09-09 同款）：
-- `backfill_broken.py` 默认改**7 天滚动窗口**（`--days N`，幂等 `INSERT OR REPLACE`）——当前尚未定稿的那天由次日窗口自动补上，缺口不再累积。
-- 末尾交易日无数据重试 3×60s（等源站定稿）；**空返回不删旧数据**（重跑不得把已归档好的一天清空）。
-- 可见化由"匹配 ⚠️"改为**落后超一个交易日才打 ⚠️**（正常态=末尾日未定稿，由次日补上，不报噪），crawl.yml 守卫据此产出 `::warning::`；`--strict` 仅供手动/CI 一次性回补判红。
-- CI 补齐入口：`backfill-pool-history.yml` 新增 `broken_days`（默认 30 个交易日），与 limit_pool 回补解耦（不套用只认 `limit_pool` MIN 的幂等守卫，否则永不执行）。
-- 回补结果：41 天/1012 行 → **46 天/1141 行**（07-15 起交易日全覆盖，补 129 行；已有日重抓结果一致）。
-
-### 3.5 前端消费链路
-
-前端只读 `stockboard-app/public/data/` 下的静态 JSON（Pages 无后端）；个股行情/K线/分时走浏览器直连东财/腾讯 JSONP（`stockboard-app/src/utils/eastmoney.js`、`stockSearch.js`），与采集管道无关。**改采集/存储不影响页面行情功能；只影响"重仓共识/抄作业"等选手数据模块的刷新。**
-
----
-
-## 四、问题量化（为什么必须改造）
-
-> ⚠️ 下表为 **2026-08-30 改造前的实测存档**，仅作历史动机保留，问题已于 09-06 git 重写解决（§0 待办 C）。`.git` 2026-09-21 实测 ~233MB——回升主因是每班全量重提交 players_index 等派生 JSON，2026-09-17 已 gc 收敛并拍板维持现状（远端年增 ~2GB 接受）。
-
-| 指标 | 实测值 | 趋势 |
-|---|---|---|
-| `.git` 体积 | **721MB** | 随每日 db commit 线性增长 |
-| 历史中 >1MB blob 总量（打包前） | **13.7GB**（620 个） | 主要是 crawl_data.db 的历史快照 |
-| crawl_data.db 历史 blob 份数 | 275 份 | 08-13 起每天 1~12 份 |
-| 按当前"每天 1 份 22MB gz"外推 | 年 +8GB（打包前）/ pack 每年 +数百MB | **5 年 40GB+，不可持续** |
-| `latest/players/` 累积 | ~~23192 文件 / 92MB~~ | ✅ 已根治(§0 ⑤, 5133 并自动淘汰) |
-| db 本体 | 85MB，40 采集日封顶 | ✅ prune 已解决 |
-
-**结论**：db 本体已封顶；真正的黑洞是 **git 历史里的二进制快照**。git 不适合做时序数据仓库——需要把"长期数据"搬出 git。
-
----
-
-## 五、目标方案：git 轻量化 + Release 三层存储
-
-### 5.1 分层设计
-
-| 层 | 载体 | 内容 | 更新 | 保留 | 容量(5年) |
-|---|---|---|---|---|---|
-| **热层** | Release tag `db-state` 资产 `crawl-latest.db.gz` | 最新一个采集日全量 db | 每交易日收盘后覆盖上传（Release 资产可重复上传替换） | 永远最新一份 | 恒定 ~22MB |
-| **温层** | Release tag `db-w2026-W35`… 资产 `crawl-<week>.db.gz` | 按周聚合的归档 db | 每周五收盘后从"当周每日增量"合并导出 | 滚动 12 周（≈3个月，与 prune 窗口匹配） | ≈12×7MB |
-| **冷层** | Release tag `db-m2026-08` 资产 `crawl-<month>.db.gz` | 按月聚合归档 | 每月首个交易日，把上月温层周档合并成月档 | **永久** | ~30MB/年×5年 ≈ 150MB |
-
-> Release 资产单文件限 2GB、总仓限远超需求；匿名可下载（公开仓库）；完全在 GitHub 免费额度内。
-
-**2026-09-15 静默退化治理对 release_db 的三项修复**（动机均为"别把读不到当成不存在/别把没送到当成已送到"）：
-
-| 项 | 改动 | 防的是什么 |
-|---|---|---|
-| `--hot-status` 三态 | 新增只探测不下载的模式，输出 `present` / `absent` / `unreadable` | `db_upload.yml` 原先把"下载失败"和"热层不存在"合成一个分支 → 瞬时故障（限流/抖动）时会用 git 历史旧库 `--init` 覆盖更新的热层（绿灯数据回滚）。现在只有确认 `absent` 才允许用 git 历史兜底，`unreadable` 一律拒绝覆盖 |
-| auction 回退闸门 | `--what auction` 回退到日快照时加 4 天库龄闸门（`bid_pool.date` 优先计龄，退 `strike_pool.date`），并写独立 marker `.auction_restore_source` | 原先回退可踩数周旧库且无痕；marker 与 crawl 链的 `.db_restore_source` **分开**（auction 由竞价/打标/crawl 三班共写，共用会让前端红条误判来源） |
-| `_api` 网络层受控化 | `URLError/OSError`（SSL 中断/连接重置）不再炸 traceback，GET 重试 1 次后返回 `st=0` → 调用方走"读不到"分支；错误响应体非 JSON 时也不抛解析异常 | `--hot-status` 正是为分流瞬时故障而生，自己遇抖动却崩溃 |
-
-### 5.2 取数/存数闭环（✅ 已上线，08-31 全链路验证通过）
-
-```
-每个 crawl run(白天 20 班 + 收盘, 一律执行):
-  1. 下载热层 crawl-latest.db.gz → 解压为 data/crawl_data.db   ← 取数(状态回放, 3次重试)
-     失败且本地无 db → run 终止(宁可停, 不可空库断链)
-  2. main.py 采集 → 幂等写入当日数据                            ← 存数
-  3. export_json.py 导出 → Build → Pages
-  4. git 提交 JSON+状态文件(db 被 reset, 永不进 git)
-
-仅收盘 run(crawl-eod 专班无条件; 常规班次北京时间≥14:45 兜底)追加:
-  5. prune_crawl_db.py --apply(保留40采集日)
-  6. release_db.py --sync: 快照(backup API+integrity_check+manifest)
-     → 热层覆盖上传 + 当周温层 + 已完成月冷层 + 温层滚动清理    ← 存数
-     上传失败 → workflow 立即失败(告警可见)
-```
-
-关键设计：**读路径每次执行、写路径收盘闸门**（08-31 空库导出事故的教训，详见 §0 事故记录）。db 内 40 采集日滚动 + 温层 12 周 + 冷层永久，三段窗口首尾相接，**任意历史日期都可取出**。
-
-### 5.3 回测取数（满足"经常拉远端数据到本地"）
-
-新增 `jiarenmens/scripts/fetch_db.py`：
-
-```bash
-python scripts/fetch_db.py --latest        # 热层 → data/crawl_data.db (回测最近40日)
-python scripts/fetch_db.py --week 2026-W34 # 温层某周
-python scripts/fetch_db.py --month 2026-07 # 冷层某月 → data/archive/
-python scripts/fetch_db.py --range 2026-03 2026-08   # 拉多个月, 本地合并
-```
-
-匿名可下（公开仓），本机/任何机器无需 token。现有 `backtest_factors.py`、`verify_slices.py` 等脚本读 db 的方式不变。
-
-### 5.4 git 历史瘦身（✅ 已于 2026-09-06 执行，详见 §0 待办 C）
-
-- 实测结果：剥离 `crawl_data.db` + `auction.db` 全历史，pack 387→172MiB，`.git` 398MB→200MB（原估 <100MB 未达——每班全量重提交 players_index 等派生 JSON 持续回填，2026-09-17 实测 453MB 后 gc 收敛，用户拍板维持现状、接受远端年增 ~2GB）。
-- 注意留档：filter-repo 重写了所有 commit hash，旧 SHA 仅作考古；fork/旧 clone 需重新 clone；公开仓 force push 后旧 PR 引用失效。
-
----
-
-## 六、实施清单（按序执行，做完①②即可观察运行）
-
-- [x] **① 存量数据上云**：当前 crawl_data.db 已上传 Release `db-state`（热层）+ `db-m2026-07`（冷层首档）；匿名下载 + integrity_check 已验证。✅ 2026-08-31
-- [x] **② 改造 crawl.yml**：下载热层（失败且有 git 内 db 则过渡放行）、`--sync` 上传（失败即终止）、integrity_check+manifest；提交数据步骤 `git reset` db（git 永不提交）。✅ 代码已推送
-- [x] **③ fetch_db.py** 回测取数 CLI（--latest/--week/--month/--range/--list，重试+curl 兜底）。✅ 端到端验证
-- [x] **④ filter-repo 历史重写** + force push。✅ 2026-09-06 执行（详见 §0 待办 C）
-- [x] **⑤ 导出收窄**：players/ 只导出"优质∪当日活跃∪被引用"集合并自动清理集合外旧文件。✅ 远端实测 23192→5133
-- [x] **⑥ 观察期**：5/5 天全过（09-02~09-08）+ 追加日 09-09 ✅，逐日记录见 §0 待办 B。
-
-## 七、影响分析
-
-| 面向 | 影响 |
+| `players.json` | `{date, rankTime, players[]}`；选手含 `id/name/userId/watched/prevClose/today` |
+| `stocks.json` | `{date, snapshot: 1130|close, updatedAt, stats[]}`；`stats[] = {code,name,h,tp,ap}` |
+| `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}` |
+| `hot_rank.json` | `{date, snap, rows[], src}` |
+| `lianban_bid.json` | `{date, prev_day, top[], src}` |
+| `broken_pool.json` | `{date, rows[], src}` |
+| `market_breadth.json` | `{date, row, src}` |
+
+`tradeConsensus` 当前代码写入 `totalTrades/totalBuyers/aTotalTrades/aTotalBuyers/stocks[]`。2026-11-17 生产快照暂为旧结构（缺 A 股字段），前端回退全市场口径；11-18 自然班后完整写入，契约守卫届时应收紧为“必须有”。
+
+A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示层滤港股，数据文件保留全量。
+
+## 5. 推送
+
+### 5.1 格局推送
+
+- 午盘 `13:00–13:25`：`cycle_push.py --session midday`，正文末尾追加 A 股调仓 Top5 + 重仓 Top5；正文打印到日志供核对。
+- 尾盘 `14:40–15:00`：`cycle_push.py --session eod`。
+- 去重状态：`jiarenmens/data/.cycle_push_state.json`，已纳入 `crawl.yml` 提交清单。
+- 任一环节（接口/计算/构建正文/钉钉）异常都写失败标志并返回非零；`continue-on-error` 不阻断落库/部署，但失败检查会判红。
+
+### 5.2 watchdog
+
+- 每 5 分钟拉关注选手 rtV2 明细，新操作即时推钉钉；09:30–09:35 开盘冲刺。
+- 去重键：`(选手, 股票, 方向) + 成交次数`；次数增加补推“追加”。
+- 状态放 Actions cache `watchdog-state-*`，日报读同一状态，已推操作不重复响铃。
+- 关注名单单一真源：`jiarenmens/src/config/watched.py`，当前 9 人；前端 `FALLBACK_WATCHED` 仅旧缓存兜底。
+- 已删除过期 `fetch_base_player()` / 首班 seed 基线：per-player JSON 已下线，旧逻辑每早 9×3 次 404 空耗。
+- 只在工作日 09:26–15:05 执行，午休 11:30–13:00 不开机；连续 3 班全员失败推降级告警。
+
+### 5.3 掐班告警
+
+- cron-job.org 15:45 触发 `repository_dispatch: crawl-cancel-check`。
+- 脚本仅在北京时间 15:40–16:30 检查；只认 `repository_dispatch(crawl/crawl-eod)` 和 `[cron]` run-name。
+- 已告警 run id 落 `.github/state/crawl-cancel-alert.json`；workflow 有并发组、状态提交三次重试、失败告警。
+- 补发消息只列本次新增 cancelled run，旧 run 不重复出现。
+
+## 6. 存储与恢复
+
+- `auction.db`：不进 git；走 Release `auction-state` 热层 + 日快照（30 天）+ 周快照（26 周），每班下载/上传并做 baseline-sha 检查。
+- `crawl_data.db`：历史回测库，当前页面生产链路不再依赖；仍可从 Release `db-state` 恢复。
+- 数据 JSON 被 `.gitignore` 排除但已跟踪，提交必须 `git add -f <具体文件>`，不要用 `git add -A`。
+- 常用恢复命令：
+  ```bash
+  cd jiarenmens
+  python scripts/fetch_db.py --latest
+  python scripts/fetch_db.py --auction
+  python scripts/fetch_db.py --month 2026-07
+  python scripts/fetch_db.py --list
+  ```
+
+## 7. 日常运维
+
+| 场景 | 做法 |
 |---|---|
-| 前端页面 | **零影响**。JSON 导出链路不动，行情/K线/竞价本就不走这条管道 |
-| 钉钉推送 | 零影响。notify_daily 依赖的 last_notify_state.json 照常提交 |
-| 竞价扫描/盘中监控 | 零影响。auction.db/hot_rank.db 独立于 crawl_data.db |
-| 白天 20 班采集 | 零影响。只有收盘后那次做"下载→采集→上传"；白天 run 依旧只采+导出 JSON |
-| 回测 | **变好**：fetch_db.py 按周/月直取，不再依赖 git 历史里的 db 快照；支持任意历史日期 |
-| 数据安全 | **变好**：三层窗口首尾相接 + manifest + integrity_check + 失败即告警；git 历史不再是唯一备份 |
-| 仓库体积 | 721MB → 200MB（09-06 历史重写）；之后每班 JSON 增量缓慢回升，09-17 gc 收敛至 200MB，拍板维持现状 |
-| 风险点 | ①Release 资产覆盖上传 API 需先删旧资产再传（脚本内处理）；②filter-repo 重写 hash——放最后且需授权；③迁移当天先传归档、再改 workflow，顺序不可颠倒 |
+| 看当天班表 | `gh run list --limit 100 --json number,createdAt,workflowName,status,conclusion,displayTitle` |
+| 手动补跑采集 | `gh workflow run crawl.yml -f force_class=rank|midday|close|market` |
+| 只看某班日志 | `gh run view <run-id> --log` |
+| 改 cron-job.org | 用本机 API key；创建 `PUT /jobs`，更新 `PATCH /jobs/{id}`，body 包一层 `"job"` |
+| 改关注名单 | 只改 `jiarenmens/src/config/watched.py`，必要时同步前端冻结兜底 `FALLBACK_WATCHED` |
+| 数据契约体检 | 见 `docs/OPTIMIZATION_PROGRESS.md` 的命令速查与当前验证 |
 
-## 八、日常运维手册
+禁止：手工编造 `tradeCount` / `tradedPlayerIds` / A 股统计；把 `market` 班当 `midday/close` 数据；用 `git add -A` 带进 untracked 文件。
 
-```bash
-# 手动触发一次全流程
-gh workflow run "数据采集 + 部署"   # 或 Actions 页面点 Run workflow
-export GH_TOKEN=ghp_xxx             # 本地 gh 需要仓库所有者账号的 PAT
+## 8. 当前验证基线
 
-# 回测取数(已上线)
-cd jiarenmens && python3 scripts/fetch_db.py --latest        # 热层(最近40采集日)
-python3 scripts/fetch_db.py --list                           # 查看全部可用归档
-python3 scripts/fetch_db.py --range 2026-03 2026-08          # 多月合并(冷层)
+- 前端：`npx vitest run` → 230 passed；`npx vite build` 成功。
+- 后端：`/opt/homebrew/bin/python3.12 -m unittest discover -s scripts -p 'test_*.py'` → 276 tests OK (skipped=3)。
+- 系统 `python3` 是 3.9，跑全量会因 `dict | None` 报 import error；必须用 3.12。
+- CI：代码门禁 `test.yml` 覆盖 `jiarenmens/**/*.py`、`stockboard-app/src/**`、`scf/**`、`.github/workflows/*.yml`。
 
-# Release 存储手动维护(上传需 GITHUB_TOKEN=PAT)
-GITHUB_TOKEN=ghp_xxx python3 scripts/release_db.py --sync    # 手动补一次三层同步
-GITHUB_TOKEN=ghp_xxx python3 scripts/release_db.py --init    # 重建(灾备; 或 Actions 里跑 db_upload.yml)
+## 9. 剩余事项
 
-# 本地跑一次采集(不动远端)
-cd jiarenmens && python main.py --checkpoint-reset --test
-# ⚠️ 本地库过期/不存在时先恢复: python3 scripts/fetch_db.py --latest
-# ⚠️ 空库跑 export_json.py 会产出退化数据(08-31 事故, 见 §0)
+1. 11-18 自然班验证：midday 写 A 股字段、13:05 推送正文与去重状态、15:45 新告警 workflow。
+2. A 股字段到位后收紧 `test_qa_s1_contracts.py`。
+3. S5/G4 证据链：K2、班时、20+21 班对账；R2/NR-2/NR-3 风险收口。
+4. S6 归档：G4 后整理历史文档；本文件与 `docs/OPTIMIZATION_PROGRESS.md` 已是当前状态入口。
+5. cron-job.org 仍有历史 `llm-1000` job `8489018`，仓库已无对应 workflow，不再产生数据；是否删除需用户拍板。
 
-# 查看库状态
-sqlite3 data/crawl_data.db "SELECT COUNT(*), MIN(crawl_date), MAX(crawl_date) FROM trades;"
-python3 scripts/prune_crawl_db.py          # dry-run 看会删什么
+## 10. 回滚点
 
-# 查看三层存储状态
-curl -s https://api.github.com/repos/WXinYi/stockboard/releases | \
-  python3 -c "import json,sys; [print(r['tag_name'], [a['name'] for a in r['assets']]) for r in json.load(sys.stdin)]"
-
-# 常见故障
-# - 页面选手数据不更新 → 看 crawl.yml「下载热层库/导出 JSON/提交数据」步骤日志
-# - 页面数据退化(quality 数量异常小) → 疑似空库导出, 确认"下载热层库"步骤是否成功
-# - Release 上传失败 → 看对应 run 日志; 修复后手动 --sync 或重跑 db_upload.yml
-# - 钉钉重复推送 → 检查 last_notify_state.json 是否被漏提交/回退
-# - 采集大量失败 → 东财 rtV2 限流或改版, 跑 python scripts/diagnose.py
-# - crawl_data.db 损坏 → python3 scripts/fetch_db.py --latest 从热层覆盖恢复
-```
-
-### 出击候选"预计成功概率"校准 —— 负结果记录（2026-09-12，后人必读）
-
-**结论：不切换排序键。** 用 09:25 可见特征（竞价涨幅/换手/封单比/梯队/主净/阶段/矩阵）拟合的
-概率模型，留出期（最后 20 交易日）**完全无区分力**：五分位胜率 38/44/36/41/38，
-概率 Top3 -1.07%/日反而低于全体 -0.83%。选股层在当前特征下没有稳定 alpha。
-
-**两个前视偏差教训（都曾被跑成"漂亮数字"）**：
-1. `emotion_cycle.compute_cycle` 的 `h_trend = dates[-4:]` 在回放历史日时会把未来日期的高度
-   计入趋势 → 回放必须逐日截断库；
-2. 候选宇宙绝不能含"当日 EOD 涨停池"——回放曾用当日池做候选（09:25 不可能知道今天谁涨停），
-   跑出 93% 胜率/+10% 均值的幻觉收益。**硬约束已代码化**：截断库只保留 date≤昨日 + 双泄漏自检
-   （候选收跌占比<15% 报警 / 基础胜率>80% 报警）。
-
-**数据实证的正结论**：留出期恰为退潮段，全体候选 -0.83%/日无一幸免——引擎"可做 0 只"是唯一
-正确输出，**系统 alpha 在环境层（两级决策闸），不在选股层**。平开低吸优于追高在两个口径下
-均获确认（DeepSeek 权重 -2.4 / 校准器方向一致）。
-
-工具：`scripts/calibrate_probability.py`（as-of 回放+OHLC 标签+逻辑回归+留出报告，带缓存可重跑；
-"次日竞价涨幅≡次日开盘价"已 200 条对照验证 0.00pct）。**每周五收盘后可重跑**；待影子/日常采集
-积累出足够发酵/高潮段样本后，再验证"进攻日选股是否有 alpha"。样本天花板：逐股竞价数据自
-08-07 起才有（当日 26 天），标签窗口随时间自然增长。
-
----
-
-### 跌停极值防守线——数据结论与边界（2026-09-23，负结果记录）
-
-**动机**：周期六段判定的退潮判据不看跌停家数（只用高度/涨停数 vs ma5/破板率），而复盘框架公认"跌停骤增"是退潮/冰点核心信号——是否该把跌停极值写进 CYCLE_CFG？
-
-**数据结论（258 交易日回放，2025-09-01 起）：不进次日阶段判定。** 跌停 ≥30 家的极值日共 30 天（12%，p90=32），但这些日的**次日涨停数 ≥50 的占 80%**，多次次日大涨（118/127/138 家）——跌停极值是当日情绪极值点，不是次日继续差的预测。把"跌停骤增→退潮"写进 CYCLE_CFG 次日判定，会让系统在 80% 概率的反弹日踏空。
-
-**落地形态（数据支持的部分）**：
-1. **当日盘中防守信号**：跌停 ≥30（p90 附近）→ 前端结论头红字"禁止加仓、持仓减半"。价值在当日风控（持有者盘中已受损，定性若仍"高潮"会阻止减仓），不构成次日看空依据。展示文案里已写明这条边界。
-2. **LLM v3 喂入已含实时跌停数**（vs 昨日），模型定性自会转谨慎——与防守线互为印证。
-3. 六情绪 v1.3 的"跌停历史极值触发"已覆盖六情绪侧，两引擎分叉由 divergenceNote 取严。
-
-**实现**：`leaderBattle.computePremium`（赚钱效应读数）+ `emotionCycle.loadCycleData` 透传 `riseFallToday` + MarketTab 结论头 banner 两条展示行（零新增请求）。前端测试 152/152。
-
----
-
-## 九、静默退化治理（2026-09-15，行为变更登记）
-
-> 原则：**不留任何"看起来是真的、其实是假的"输出**。下面每一项都改变了可观测行为（不是纯补校验），
-> 排障时若发现"以前是这样、现在变了"，先查此表。测试基线：Python 单测 53 例（release_db 16 /
-> bid_pool 6 / llm_review 19 / strike_push 12）、前端 vitest 148 例；并做过真实数据导出核对 +
-> 浏览器逐页操作（正常态 8 页 + 删 auction/core/copy/changes_summary 四类失败注入）。
-
-### 9.1 采集/导出层
-
-| 改动 | 之前 | 现在 |
-|---|---|---|
-| `main.py` 退出码 | 采集异常/空选手列表一律 `exit 0` → 后续导出/提交/部署继续，**旧数据盖上今日时戳** | 未处理异常、选手列表为空、全员采集失败 → **非零退出**（部分失败仍继续，逐人失败已在日志列出） |
-| 胜率口径 | 东财 rtV2 对全部选手返 `dealRate=0`（实测 25556 行无一非零）→ 页面显示**假 0.0%** | 判定为"源不可得"：采集写 NULL、导出 `null`、页面显示 `—`（`api_detail._opt_rate`） |
-| 仓位口径 | 当日无持仓行也无调仓行 = 采集缺口，导出仍写 `0` → 页面显示**假"空仓"** | 与 09-13 清仓守卫同口径：这类选手输出 `null`，页面 `—`（真清仓者当日必有卖出交易行，不受影响） |
-| `bid_pool` 落库 | 缺失数值一律 `float(r[i] or 0)`，与"真的是 0"同形 | 缺失写 **NULL** + 打印空字段数；下游全用 falsy 判定，行为等价（补算链照常触发） |
-| 导出收尾 | 15+ 处 per-feature 降级只有日志，无汇总 | 结束打印**本次降级/跳过清单**（收尾汇总），无降级则明确报"无降级" |
-| 时戳一致性 | 采集时戳与导出数据日不一致时无提示（"假新鲜"） | 显式告警，提示页面时点会比数据新 |
-| 回测剔除 | `llm_picks_review` 静默剔除降级日/无行情只 | 打印剔除的降级日数与无行情只数 |
-
-### 9.2 计算/展示层
-
-| 改动 | 之前 | 现在 |
-|---|---|---|
-| 宽度覆盖校验 | 库内最新宽度不是目标日也当"今日"用（09-04 曾拿 08-28 宽度误判"分歧"） | 不匹配则当日 `zt`/破板率**弃权为 None**、理由里写明、前 5 日窗口顺延（`breadth_stale_date`）；`cycle_brief` 同步在结论旁提示 |
-| 周期引擎空输入 | 接口全失败时仍"算出"阶段并当作结论 | 标 `inputsEmpty`，首页与依据页标注"行情输入为空，不可作为依据" |
-| 二级页静默失败 | 对象型 section 轮询失败会把上次好数据整体清成 null（页面变"暂无数据"） | `utils/sectionMerge.js`：保留旧值 + 标记未更新，页面显示"部分数据本次未取到"横幅（6 例单测） |
-| 失败≠事实（七处文案） | 竞价页失败="非交易时段无快照"、大模型卡失败="非交易日无此项"、/copy 失败="需要至少 2 天数据"、四卡失败="接口暂无该股数据"、板块失败="该板块今日无成分"、core 失败让两条诚实横幅一起消失、周期失败永远"加载中" | 全部按"失败"如实说并给重试入口；core 失败单独给红条 |
-| 缺失值展示 | 假排名（`rankMap||1` 显示第 1 名）、假空仓、假 0% 胜率、复制失败仍显示"已复制" | 一律 `—`；复制失败显示"复制失败" |
-| 行情降级源 | KPL→东财延迟→腾讯三级降级静默无标 | 降级时行情栏标"东财延迟/腾讯"（主源不标） |
-| 交割来源 | `strike_review` 的"今日弱转强"存档/重算/合成不可辨 | 加 `today_wzq_src` + 行内 `src` |
-| 页脚时点 | 页脚被移动端 fixed 导航整块遮挡（披露失效）；`数据截至` 走 HTTP 缓存可读到旧 core.json → 与全站日期矛盾 | `style.css` 移动端给页脚让位；`getLatestTradingDay` 改 `no-store`（与 `loader.js` 同口径，回归测试锁定） |
-
-### 9.3 CI 层
-
-| 改动 | 说明 |
-|---|---|
-| 失败告警（9/9 workflow） | 每个 workflow 新增 `alert-on-failure` job（`if: failure()`）→ `scripts/notify_failure.py` 发钉钉（列出失败/取消的 job + run 链接）。**以前失败只表现为"钉钉少一条/页面还是旧数据"** |
-| 推送失败判红 | 竞价跟单快报、午盘/尾盘格局推送保留 `continue-on-error`（不阻断落库/部署），但脚本写标志文件，workflow **末尾**检查 → 失败翻成 job 失败 |
-| 三步可见化 | 人气榜/市场宽度/炸板池归档失败产出 `::warning::` 注解（不判红）。**炸板池 2026-09-17 起改为「落后超一个交易日」才告警**（正常态=末尾日收盘后未定稿、由滚动窗口次日补上，不报噪；原先的「失败/⚠️」匹配看不见 0 行路径，见 §3.4 炸板池归档加固） |
-| `db_upload` 热层分流 | 见 §5.1 表格（`--hot-status`） |
-| 探针真话 | KPL 连通性探针改为"两条通道都不通才判失败"（原先 `curl \|\| echo` 恒绿） |
-| cycle-eod 文案 | 恢复失败文案由"推送将降级"改为"本班尾盘推送终止（不做降级推送）"，与 `exit 1` 行为对齐 |
-| 钉钉客户端 | `errcode != 0`（token 失效/限流/关键词不符，钉钉回 HTTP 200）**抛错**——原先只看 HTTP 状态，会把"没送到"记成"已推送" |
+- 当前全量修复：`git revert f76a8b4e7b3`。
+- watchdog 基线清理：`git revert 6820c28112a`。
+- 掐班告警外部触发：`git revert 708253c86988`。
+- 静态数据：按 4 契约对应数据 commit 回退；`auction.db` / `crawl_data.db` 由 Release 三层存储兜底。

@@ -1,237 +1,127 @@
-# StockBoard 优化进度与待办
+# StockBoard 当前进度
 
-> 最后更新：2026-11-11（北京）
-> 依据：2026-11-10 架构与代码复查报告、2026-11-11 优化方案（均在对话中给出，未单独落盘）
-> 关联：`docs/DATA_PIPELINE.md`（数据管线与事故史）
+> 最后更新：2026-11-17（北京时间）
+> 本文件只记录**当前状态、现行架构、剩余待办和关键红线**。历史过程见 `git log`；运维细节见 `docs/DATA_PIPELINE.md`。
 
-> 2026-11-17 全量复测后修复：前端刷新失败保留旧数据 + 可见重试、恢复键盘焦点环、共识页 A 股口径/动态时点/涨跌色/加载失败态/320px 横滚/ARIA；后端补齐 `cycle_push` 状态提交与全异常失败标志、午盘共识正文日志、token 调仓紧凑日期、采集窗口放宽与错班告警、掐班告警去重消息与并发/重试/失败告警；workflow 改动纳入代码门禁。验证：前端 230 tests + build，后端 276 tests，YAML/py_compile/diff-check 全绿。
+## 一句话状态
 
-## 状态总览
+生产链路稳定：数据采集、前端 4 契约、watchdog 即时推送、午/尾盘格局推送、掐班告警均已上线并通过 CI 与生产核验。当前没有阻塞上线的 bug；剩余是明日自然班观察和规格证据收尾。
 
-| 阶段 | 状态 | commit | 说明 |
-|---|---|---|---|
-| 前置 P0 watchdog 静默漏推修复 | 已完成 | `88bbc010da9` | 分离 `api_ok` / `data_empty` |
-| 前置 P1 采集提速 | 已上线、**11-11 实测** | `b5c97232d0d` | 逻辑正确（trades 档/快照复制/EOD 真值均验证）；首班被掐是 EM 外部抖动，非 P1 逻辑缺陷 |
-| 波 1 正确性护栏 | 已完成 | `9c760449859` | 本轮主体，见下 |
-| 波 1.5 使用者时点体验 | 已完成 | 本轮提交（见 `git log`） | 持仓时点标注 / 竞价页自动刷新 / 尾盘推送去重 |
-| 进度文档 | 已落盘 | `a5c6eadc676` | 本文件 |
-| 波 2 观察 + 提速收尾 | **待开始（已复核重排）** | — | 首班日志已实测；「班时硬前置」判断已被全天数据推翻，见下「待办」 |
-| 波 3 收敛 | 未开始 | — | 依赖波 2 稳定 3 个交易日 |
-| 波 4 数据模型 | 未开始 | — | 单独立项，不与提速混发 |
+当前代码 HEAD：`f76a8b4e7b3`（全量复测问题收口）。最近 CI：代码门禁 `44045910912` success；部署班 `44045910944` success；生产 bundle 已更新为 `index-CNk4sxs3.js` / `index-ChNhDtGK.css`。
 
-## 已完成明细
+## 当前页面
 
-### 波 1（`9c760449859`）
-
-1. **`_k` 稳定键 + 平滑迁移**：新增 `jiarenmens/src/utils/trade_key.py`。键只由 `zh_id|交易日|代码|方向` 决定（16 位 hex），去掉会变的 `price/trades_count/仓位档`；导出同时输出 `_k_legacy`，`notify_daily` 判定「新键或旧键任一命中历史 seen 即已推过」，写入只用新键 → 上线第一班不会全量重推。
-2. **叠加文件口径统一**：`watchdog.merge_player` 今日行也带同源 `_k`/`_k_legacy`。
-3. **导出确定性缺陷**：`all_trades_dedup` 一次去重供 `buy_history`/`trades_by_pid`/推测持仓共用；推测持仓改按选手分组遍历；`name_map` 疑似清仓循环从「卖出预警」循环内移出。
-4. **Release 上传事务化**：`upload_asset` 改为「删前备份 → 删旧 → 传新 → 失败回滚」；备份读不回来则不删旧（宁可不更新，不断链）。修复 11-10 演练实测的热层断链事故。
-5. **prune 小修**：采集日取 `trades ∪ positions` 并集、排除空串/NULL、`try/finally` 关连接。
-6. **代码门禁**：新增 `.github/workflows/test.yml`（仅代码提交/PR 触发，不挂 75+ runs/日 数据班）；修复 `test_llm_review` 顶层 `sys.exit` 与 `test_api_requests` 顶层 playwright 导入。
-7. **可观测最小集**：补 `auction-db-maintenance` 失败告警 job；日报/共识推送失败加 `::warning::`；`notify_failure` 发送失败升级 `::error::` 注解但不判红。
-8. **更正过时注释**：三处「胜率源不可得」→ 新协议 `dayWinRate` 可得（近 20 日上涨天数占比），并标注「真 0% 与源缺失仍不可区分」的已知限制。
-
-### 验证证据（已完成）
-
-| 项目 | 结果 |
-|---|---|
-| 单元测试 | 波 1：本地 `89 tests OK`、GitHub Actions `test.yml` run `42865490695` 同为 `89 tests OK`；波 1.5 后本地 `99 tests OK` |
-| 基线更正 | 改造前是 `69 tests + 1 error`（`test_llm_review` 顶层 `sys.exit`）；此前口头说的「9 通过 0 失败」是脚本自定义汇总，不准确 |
-| 语法 / lint | `py_compile` 全通过；IDE lint 0 诊断；前端 `vite build` exit=0（101 模块 / 2.07s） |
-| 真实库导出 | 6106 个 `players/*.json`；3577 名选手新键与共享模块算法一致 |
-| `_k` 迁移模拟 | 真实产物 3577 名选手的历史旧键全部命中，不会重推 |
-| 失败注入 | 上传成功不回滚 / POST 失败回滚旧字节 / 备份失败不删旧，3 场景单测通过 |
-| 去重量化 | 本地库 `213646 → 140818` 行（1.52× 冗余）；某选手买入行 `62 → 23`（旧口径放大 2.7×） |
-| YAML | 13 个 workflow 全部解析通过（曾发现并修复 2 处本轮引入的 `run: echo ": ${{ }}"` 语法错误） |
-| push 班 | 盘后 `crawl.yml` 数据采集/导出/上传/提交均 `skipped`，仅部署 |
-| 尾盘去重 | `test_cycle_push.py` 10 个单测：state 命中跳过钉钉、首次推送落状态、`--force` 补推、`--dry-run` 无副作用、推送失败不占状态 |
-| 北京时间窗口 | `Intl en-GB + h23` 实测 `01:25Z→925`(窗口内)、`01:39Z→939`(窗口内)、`06:51Z→1451`(窗口外)、`16:00Z→0`(窗口外) |
-
-### 波 1.5：使用者时点体验（不依赖首班验证）
-
-1. **持仓/收益时点标注**：抄作业页变动摘要、核心重仓、重仓共识页、选手详情页统一标注「持仓/收益为最近收盘校准值，盘中不刷新，15:15 后更新当日」；`App.vue` 页脚 title 补全三类数据口径（盘面 KPL 实时 / 选手收盘校准 / 竞价 09:25 快照）。解决 P1 之后「页面标着今天、数字其实是昨收」与「变动 0 看起来像今日无操作」的误导。纯文案，不改数字。
-2. **竞价页自动刷新**：`useUX.js` 在 09:20–09:40（北京）窗口额外探测 `auction.json` 的 `date|generated_at`，变化即触发全局刷新；`AuctionTab.vue` inject/watch `refreshTick` 重新 `load()`（配合 `clearDataCache()`）。修复「竞价班 09:28 已上线、已打开页面因 KeepAlive 停在昨日快照」。不改 `index.json`，避免与采集班并发写。
-3. **午盘/尾盘格局推送**：`crawl.yml` 尾盘窗口由 `[1430,1455]` 收窄到 `[1448,1455]`（只命中 14:51 末班）；`cycle_push.py` 增加按 `(交易日, session)` 的幂等（state 落 `data/.cycle_push_state.json`，随 `git add jiarenmens/data/` 持久化）；`cycle-eod.yml` 增加 `contents: write` 与状态提交步骤（`[skip ci]`，文件不存在时安全跳过）。`--force` 可手动补推，推送失败不占状态。
-   ⚠️ **11-11 复核更正**：这一步当时是在给一条**从未运行的链路**加去重 —— 见下方「cron 核对与首班实测」。
-
-### cron 核对与首班实测（2026-11-11，三份证据交叉验证）
-
-证据：GitHub `repository_dispatch` / `workflow_dispatch` run 历史（近 9 个交易日）、本地 `~/.claude/reference/cron-job-org-api.md` 的 jobId 清单、历史 run 步骤级结论。
-
-**真实触发方式**（此前文档/注释一直写错）：
-
-| 时刻 | 触发方式 | 目标 |
+| 路由 | 页面 | 说明 |
 |---|---|---|
-| 09:25 竞价、09:26–14:51 采集 20 班、15:05 涨停池回补 | **`workflow_dispatch`**（body `{"ref":"main"}`，无 event_type） | `auction.yml` / `crawl.yml` / `auction-label.yml` |
-| 09:30 `watchdog-open`、09:36–15:00 每 5 分钟 `watchdog`、10:03 `llm-1000`、15:15 `crawl-eod` | `repository_dispatch`（带 event_type） | `watchdog.yml` / `llm-1000.yml` / `crawl.yml` |
+| `/market` | 选股 | 今日定性、出击、周期/六情绪、盘面模块 |
+| `/market/auction` | 竞价详情 | AuctionTab 在此复用，独立 `/auction` 路由已删除 |
+| `/rankings` | 排行榜 | 收益/净值排序，今日操作筛选 |
+| `/stocks` | 重仓共识 | A 股 Top20，只按合计仓位/人均口径展示 |
+| `/flow` | 调仓共识 | A 股 Top20，净买入/买入人数/卖出人数三视图 |
+| `/player/:id`、`/stock/:code` | 详情 | 选手详情、股票详情 |
+| `/info/:code/:iid`、`/board/:bk_code` | 资讯/板块详情 | 辅助详情 |
 
-- 20 班精确时刻：`09:26 09:38 09:55 10:00 10:15 10:30 10:45 11:00 11:15 11:30 13:05 13:15 13:30 13:45 14:00 14:10 14:20 14:30 14:40 14:51`；`llm-1000` 11-07 已由 10:00 错峰到 10:03。
-- **`crawl.yml` 午盘/尾盘推送步骤原条件 `github.event_name == 'repository_dispatch'`** 与 20 个 `workflow_dispatch` 班不匹配 → 11-10 13:05 run `42759878580` 实测两步均 `skipped`。`cycle-eod.yml` 在 cron 清单里**没有 14:45 job**，历史仅 1 次演练手工触发 → 午盘/尾盘格局钉钉**从未自动发出**。
-- 因此更正：复查报告里「尾盘最多推 2–3 条、需去重」判断错误，实际是 **0 条**；波 1.5 的去重改动当时无实际效果（无害，但也没解决问题）。
-- 契约冗余（不影响功能）：`crawl.yml` 的 `types: [crawl]`、`auction.yml` 的 `[auction]`、`auction-label.yml` 的 `[label]`、`cycle-eod.yml` 的 `[cycle-eod]` 都没有对应 cron job 发送。
-- **11-11 已修**（用户拍板保留并推送）：两个推送步骤的 `if` 改为 `github.event_name != 'push' && trading != 'false'`；午盘窗口收窄到 `[1300,1314]`（只命中 13:05 班，避开 13:15）、尾盘 `[1448,1455]`（只命中 14:51）。验证：20 班中两窗口各命中 1 班 + 幂等 state 双保险。
+已删除：`/copy` 抄作业页、独立 `/auction` 路由、纪律卡、V5/评分漏斗、per-player 静态详情页。
 
-**首班实测（不符合预期）**：11-11 09:26 run `42938935321` → `cancelled`（09:38:27 被 09:38 班按 `concurrency.group: pages-${{ github.ref }}` + `cancel-in-progress: true` 掐掉）。被取消前只到 **1338/2270** 人，导出/提交/钉钉全部 `skipped`，今日截至核查时**没有任何 crawl 班的数据落盘**。
+## 当前数据契约
 
-- 正确部分：档位 `trades` ✓、检查点跨日清空 ✓、持仓复制校准快照日志「校准 2026-11-10 快照」✓、竞价班 09:25 success ✓。
-- 不符合部分：P1 预测首班 6–8 分钟，实测 >12 分钟且被取消；日志有大量 `spzhapi.dfcfs.cn … Network is unreachable` 重试（01:31:35 起）拖慢；班距仅 12 分钟（09:26→09:38）。
-- 影响（**11-11 盘后复核更正**）：当时写的「波 2 EOD 拆档不能按原计划直接做、须先解决班时 > 班距」判断过重。全天 18 个成功班中 15 个 5.2–7.4 分钟，异常仅 EM 抖动 2 班与 EOD 专班（full 档设计 24 分钟）；掐班只发生在首班一次。连接层改动降级为「抗抖动韧性」优化，EOD 拆档可独立先做。详见「待办 → 复核更正」。
-- 未擅自改 `concurrency`：去掉 `cancel-in-progress` 会让 20 班排队累积或并发写同一热层/git，风险大于收益，待单独评估。
+生产静态数据位于 `stockboard-app/public/data/latest/`：
 
-### watchdog 中午巡检后的三项修复（2026-11-11 12:59，全部单文件 `watchdog.py`）
-
-巡检实证：月儿兰当日 3 笔（10:21 班推 2 笔 + 11:16 班推 1 笔，叠加名单可证）**都被推送过**，用户感知"没推送"的根源是 09:30–10:16 全员误标隐藏静默事故（已由 10:19 提交修复）+ 推送延迟 45 分钟。但巡检暴露两个机制性缺陷 + 一个通道失效：
-
-1. **seed 防剧透守卫**（机制缺陷一）：`fetch_base_player` 顺带返回底稿 `Last-Modified`，新增 `base_is_spoiled()`——底稿为**今日（北京）部署**时跳过 `seed_baseline`，交由 `decide_pushes` 正常比对。原因：crawl 盘中班可能先于 watchdog 首次成功把当日操作部署到页面，seed 会把这些"未经钉钉"的操作永久静默（今天月儿兰 2 笔靠 Pages 部署延迟侥幸逃脱）。昨日底稿 seed 语义不变（防与日报重复）；无 header/解析失败保持现行为（宁可误吞不误推，与现状一致）。**dry-run 实测**：线上底稿为今日 11:35 部署、含全部 22 笔，修复前会被 seed 吞成 0 笔推送，修复后正确检出 22 笔。
-2. **推送摘要落日志**（机制缺陷二）：推送后逐笔打印 `选手+方向+股票(tc)`，解决"消息体只发钉钉不进日志、事后无法对账"（当日 15 笔的构成只能间接推断）。
-3. **隐藏号 9061 显式失败**（通道失效）：巡检发现武研琳（900450475）的 relocate 接口持续报 `code=9061 该组合不存在`（09:36 班起多班出现，本地直连复现 0 条流水）。原代码把 `_call_api` 返回 None 静默折算成"今日暂无操作"，掩盖通道失效。现 `fetch_hidden_trades` 对 None 显式抛错：每班打印 🚨 提示（含处置建议）+ 消息脚注"拉取失败"。**另两个隐藏号（我嘚财富/我要再来一次）接口正常，流水最新到当日**。✅ **11-11 13:5x 已决**：经 userId 铁证（采集库 `6487375946169702 ≠ 1407047413230182`）排除"改名混淆"后，用户确认移出名单。同步清理 7 处：`main.py` 名单、`watchdog.py` `HIDDEN_UIDS`、`api_detail.py` `NEW_USER_IDS`、`notify_daily.py` 文案、`useData.js` `FALLBACK_WATCHED`、`screen_dragon.py` `TRACKED`/显示列表、`test_watchdog.py` 数据。名单 11→10 人；历史 `players/900450475.json` 保留可查；`9061` 提示随之消失。
-
-验证：`104 tests OK`（新增 `TestBaseSpoiled` 5 例：今日剧透/昨日正常/空 header/解析失败/GMT 跨日按北京日期）；dry-run 复测 9061 三重可见；lint 0 诊断。未动：`_call_api`（共享模块，采集链路共用）、`concurrency`、`HIDDEN_UIDS` 名单、watchdog 调度频率。
-
-### 业务口径变化（需知情）
-
-- **推测持仓 `bc/sc` 计数与置信度会变准**（旧值被日快照重复放大），页面数值与改造前不同 —— 是修正缺陷，不是新口径。
-- `_k` 算法变更但有迁移兼容；`players/*.json` 多一个 `_k_legacy` 字段（前端不消费，体积略增）。
-- **波 1 未改变**：抄作业 `score`、重仓共识、`is_quality`、`watchdog.yml` 调度/频率/状态语义、`workers=20`、所有采集档位与调用数。
-- **波 1.5 改变**：竞价页在盘前窗口会自动刷新；持仓类页面新增时点说明（纯文案，数字未变）；`cycle_push.py` 增加幂等 state、`cycle-eod.yml` 新增 `contents: write`。⚠️ 午盘/尾盘推送的实际启用是 11-11 修 `if` 条件后才生效（此前是 0 条，不是去重后的 1 条）。
-- **11-12 榜单上限 500 → 300（#9，用户拍板）**：`crawl.yml` 传 `--limit 300`（`vars.EM_RANK_LIMIT=500` 可回滚），`main.py` 默认值同步对齐。实测口径影响（11-12 13:49 真实拉取）：
-
-  | 项 | 500 | 300 |
-  |---|---|---|
-  | 5 榜去重人数 | 2147 | **1298** |
-  | 榜单请求/班 | 125 | **75** |
-  | 今日调仓选手覆盖 | 842/842 | **约 503/842（60%）** |
-
-  掉出前 300 的 849 人中 **333 人今日有调仓** → 这些选手的当日操作不再进库/页面；关注选手 0 人掉出（仍强制插入）。此外 15:15 EOD 全量校准也只覆盖 1298 人，其余选手持仓/收益停在旧值；`players_index.json` 的新旧混合比例上升。重仓共识 `h/tp/ap` 聚合样本变小、排名会重排。
-
-  **预期收益**：每天省约 1.7 万次 EM 请求（≈30%）、采集班时约 −1.5 分钟（254s → 约 160s）。⚠️ 今日 15:15 `eod` 档首验的班时同时受人数减少影响，归因需扣除该因素。
-
-  **可选补救（未实施，待决策）**：每班 checkout 时读上一班 `core.json` 的 `tradedPlayerIds`，把「今日已有调仓但掉出前 300」的选手并回采集名单 → 调仓覆盖率可回到 100%，总人数约 1631，仍比 2147 少 24%。`core.json` 随 git 提交在班间传递，无需新增状态载体。
-
-  **生产实证（14:00 班 `43165107606`，success）**：`每榜单: 300名` → `去重后共 1316` → `成功: 1322, 失败: 0`；数据采集耗时 **170s**（500 口径的 12:26 push 班为 254s，**−33%**），与预估 −1.5 分钟吻合。线上 `crawl_time=14:00:41`、`tradedPlayerIds=559`（13:30 班 500 口径时为 842），口径下降符合预期。手动门禁 `43164181915` → success / 121 tests OK。
-
-## 明确未做及原因（防止误以为遗漏）
-
-| 未做 | 原因 |
+| 文件 | 当前结构/口径 |
 |---|---|
-| per-connection `PRAGMA foreign_keys=ON` | 实测孤儿行=0，但开启后「潜在 INSERT 失败」会变成整班硬崩溃；代码全是手动 DELETE，收益极小、风险不对称 |
-| `positions` 唯一索引 | 需先改写入去重，风险叠加，留波 4 |
-| `buyers/sellers` 去重 | 按笔数 append 是与 `weight=trades_count×2` 配套的有意口径，改了会变 score 排序 |
-| `seen` 按日清理 | 会改变去重语义，需单独评估 |
-| `notify_failure` 判红 | 钉钉单点故障会刷红全部 12 个 workflow |
-| `timeout-minutes` | 需按各 workflow 历史耗时定值，拍脑袋会误杀班次 |
-| 胜率「真 0%」与「源缺失」区分 | 要改 `_opt_rate` + `export_json` 两处展示口径，属业务变化 |
-| 波 2/3/4 | 首班已验证（不符合预期）；复核后波 2 不再被「班时」阻塞，但仍需按重排顺序推进、避免多波混发 |
+| `players.json` | `{date, rankTime, players[]}`；选手含 `id/name/userId/watched/prevClose/today`。`prevClose` 5 字段，缺失写 `null`。 |
+| `stocks.json` | `{date, snapshot: 1130|close, updatedAt, stats[]}`；`stats[]={code,name,h,tp,ap}`，数据保留全市场，前端展示时过滤 A 股。 |
+| `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}`。`tradeConsensus` 含全市场 `totalTrades/totalBuyers` 与 A 股口径 `aTotalTrades/aTotalBuyers`（11-18 自然班起写入；旧快照缺字段时前端回退全市场口径）。 |
+| 市场 4 切片 | `hot_rank.json` / `lianban_bid.json` / `broken_pool.json` / `market_breadth.json`，均为平铺 JSON。 |
 
-## 待办（2026-11-11 盘后复核重排）
+A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示层滤港股，数据文件仍保留全量，便于回退。
 
-### 复核更正（三处旧判断有误，勿再沿用）
+## 当前调度
 
-1. **「波 2 硬前置 = 先解决班时 > 班距」定得过重**（全天班时实测）：18 个成功班中 15 个 5.2–7.4 分钟；异常仅 09:38=15.1 / 10:30=14.3（EM 抖动时段）与 EOD=24.4（full 档设计如此）。掐班只发生在首班 09:26→09:38（12 分钟班距）**一次**；10:30 班 14.3 分钟未被掐（下一班间隔 15 分钟）。→ 连接层改动是「抗 EM 抖动韧性」优化，**不是阻塞 EOD 拆档的硬前置**；原「波 2 不能按原计划直接做」的表述作废。
-2. **「weekly_return 恒 0」证伪**：线上 `players_index.json` 全量 6359 人 → 3908 人非零（-32.35~175.13），该项从待办删除。`win_rate`：4379 个 `None`(69%)、非零 1980、**0 个 0** → 缺失用 `None`，「真 0% 与源缺失」表述需修正。`max_drawdown`：0~100、中位 31.2、3304 个 >30；`quality=True` 4925/6359（**77%**）偏高 —— 两项同根因，见下「口径专项实证结论」。
-3. **「契约冗余清理」有破坏性风险**：`crawl.yml` 有 5 处 `github.event.action == 'crawl-eod'` 依赖（档位/sync/共识/热层），`types:[crawl-eod]` 是 15:15 专班命脉**不可删**；`auction.yml` / `auction-label.yml` / `cycle-eod.yml` 的 types 是手动演练入口（cycle-eod 11-10 手工触发过）→ **保留并注明用途**，仅 `types:[crawl]` 可删（低优先）。
+| 时间/频率 | 触发 | 目标 |
+|---|---|---|
+| 09:25 | cron-job.org `workflow_dispatch: auction.yml` | 竞价扫描 + 推送 + 发版 |
+| 09:26–14:51 共 20 班 | cron-job.org `workflow_dispatch: crawl.yml`，body 含 `inputs.trigger_source=cron` | 市场切片 + 选手 rank/midday/market 快照 |
+| 15:15 | cron-job.org `repository_dispatch: crawl-eod` | close 全量快照 + Release sync |
+| 15:45 | cron-job.org job `8880763`，`repository_dispatch: crawl-cancel-check` | 掐班告警，external trigger，去重状态落 `.github/state/crawl-cancel-alert.json` |
+| 09:26–15:01 每 5 分钟 | cron-job.org `repository_dispatch: watchdog` / 09:30 `watchdog-open` | 关注选手即时钉钉 |
+| 10:03 | cron-job.org `repository_dispatch: llm-1000` | 大模型盘中选股影子运行 |
 
-另：15:05 轻量定稿班**降级**——业务已确认「收盘后更新即可」且页面已标注时点；先看 EOD 拆档能把 24 分钟压到多少，再决定是否值得新增班次与状态载体，很可能不需要。代理加固与核心数据流无关、灰度风险不低 → 移出本轮优先级。
+`crawl.yml` 的 20 个定时 job 已统一带 `trigger_source=cron`，run-name 显示 `[cron]`；掐班告警只认这些定时班与 `crawl-eod`，push/手动补跑不再误报。
 
-### 口径专项实证结论（#3，11-11 完成）
+## 现行关键机制
 
-| 项 | 结论 |
+### 采集与数据
+
+- rank/midday/close 走 `player_snapshot.py --no-token`，payload 与前端一致，不带 token。
+- 12 worker 并发，按玩家原始下标汇总，保持 2N/3N 调用序列。
+- 当前榜单上限 300：`EM_RANK_LIMIT` 默认 300，回滚可设 500。
+- 实测全天 4-JSON 链路请求数：`75 + 2772 + 4158 = 7005`（1386 人），按实测口径达标；6575 是按 1300 人估算的旧标称值，不再作精确验收线。
+- 调仓共识写入 `today.json.tradeConsensus`，每班全量覆盖不做并集；人数按选手去重，笔数不去重，方向未知不猜测。
+- EM rtV2 `beginDate/endDate` 必须传 `YYYYMMDD`，token/no-token 两条路径均已统一。
+
+### 推送
+
+- 13:05 午盘格局推送末尾附加 A 股调仓 Top5 + 重仓 Top5，只推 6 位代码；正文打印到日志供核对。
+- 尾盘格局推送窗口放宽到 `1440–1460`，去重状态 `jiarenmens/data/.cycle_push_state.json` 已纳入 `crawl.yml` 精确提交清单。
+- `cycle_push.py` 任一环节异常都会写 `/tmp/cycle_push_failed` 并返回非零，不再被 `continue-on-error` 静默吞掉。
+
+### watchdog
+
+- watchlist 单一真源：`jiarenmens/src/config/watched.py`，当前 9 人；前端 `FALLBACK_WATCHED` 仅为旧缓存兜底。
+- 平台明细只有日粒度，“即时”= 当日该笔首次出现或成交次数增加的时刻。
+- 去重键为 `(选手, 股票, 方向) + 成交次数`；次数增加补推“追加”。
+- 状态放 Actions cache `watchdog-state-*`；日报读同一状态，跳过已即时推送的操作。
+- 已删除过期 `fetch_base_player()` / 首班 seed 基线：per-player JSON 已下线，旧逻辑每早 9×3 次 404 空耗且无可推基线。
+- 首班基线移除后，若 crawl 已部署当日操作但 watchdog 尚未推过，watchdog 会正常补推；日报仍按 watchdog state 去重，不会重复响铃。
+
+### 掐班告警
+
+- GitHub 原生 schedule 曾延迟到次日 01:28，已停用。
+- 当前由 cron-job.org 15:45 触发 `crawl-cancel-check`；脚本限制北京时间 15:40–16:30 才检查。
+- 只认 `repository_dispatch(crawl/crawl-eod)` 和带 `[cron]` 的 workflow_dispatch。
+- workflow 有 `concurrency`、状态提交三次重试和 `alert-on-failure`；消息只列本次新增的 cancelled run。
+
+## 当前验证
+
+| 项 | 结果 |
 |---|---|
-| `weekly_return` 恒 0 | **证伪**，从待办删除。6359 人中 3908 人非零（-32.35~175.13）；且 `is_quality` 用 `weekly*0.3` 参与打分，数据一直有效 |
-| `win_rate` 真 0% / 源缺失 | 缺失用 `None`（69%），**没有 0 值**。原表述「不可区分」不准确；真正问题是前端标签「胜率」与近 20 日上涨天数口径不符（文案项） |
-| `max_drawdown` 窗口偏差 | **代码注释已确认**（`api_detail.py:386-387`）：dimensions 的 `maxDrawdown` 是 20d 窗口，被 `is_quality` 当历史最大回撤作风险除数 |
-| `quality=True` 77% | 与上项**同根因**：20d 回撤偏小 → `long_term/drawdown >= 0.15` 阈值极易通过。不是独立缺陷，修窗口口径时应一并重算优质集合并做前后对账 |
-| `hq` 恒空 | **成立但表述修正**：`export_json.py:407` 有意写 `hq: []`，而 `CopyTradeTab.vue:84` 用 `signals.hq.length` 显示「综合高分」KPI → 恒 0。修复方向是导出真实 highQuality 列表或移除该 KPI，不是补数据 |
+| 前端单测 | `230 passed` |
+| 前端构建 | `vite build` 成功，bundle `index-CNk4sxs3.js` / `index-ChNhDtGK.css` |
+| 后端单测 | `276 tests OK (skipped=3)` |
+| 语法/YAML | `py_compile`、workflow YAML、`git diff --check` 全绿 |
+| IDE lint | 0 diagnostics |
+| CI | 代码门禁 success，部署 success |
+| 生产数据（11-17 close） | `players` 1381 人，`prevClose` 1381 全满，`stocks.snapshot=close`，`traded=820` |
+| 掐班告警 | 15:45 自然触发 success，识别 18 个定时采集班全部完成 |
 
-→ 结论：口径类只剩 **1 个高优先业务正确性问题**（max_drawdown 窗口 → 影响 `is_quality` 集合）+ 1 个 UI 计数恒 0 + 1 个文案项；`weekly_return` 项删除。
+## 剩余待办 / 观察
 
-### 状态看板（及时更新）
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 11-18 midday 自然班 | 待观察 | 确认 `[cron]` run-name、`tradeConsensus` 非零、`aTotalTrades/aTotalBuyers` 写入 |
+| 11-18 13:05 午盘推送 | 待观察 | 确认钉钉正文含 A 股共识段，日志打印共识正文，去重状态成功提交 |
+| 11-18 15:45 掐班告警 | 待观察 | 最新 workflow（并发组/重试/失败告警/只列新增 run）上线后首次自然验证 |
+| 收紧契约守卫 | 默认动作 | 新字段到位后，把 `test_qa_s1_contracts.py` 中 A 股字段从“可选兼容”改为“必须有” |
+| S5/G4 证据链 | 待收口 | K2、班时、20+21 班对账，R2/NR-2/NR-3 |
+| S6 归档 | 待收口 | G4 解锁后整理历史文档；本文件已是当前状态入口 |
 
-| # | 项 | 状态 | 备注 |
-|---|---|---|---|
-| 1 | 文档收尾（更正上述结论 + 写入今日收口事实） | ✅ 11-11 完成 | 本文件 |
-| 2 | 掐班告警（cancelled 可见化） | ✅ 11-11 完成，11-17 加固 | 独立心跳 workflow；11-17 改 cron-job.org `repository_dispatch: crawl-cancel-check`，加北京时间窗口过滤、定时班标记过滤、已告警 run id 去重；CI 演练 `42985393942` success（识别 4 班）、push 门禁 `42985391053` 112 tests OK |
-| 3 | 口径专项实证 | ✅ 11-11 完成 | 见上表；结论：只剩 1 高优先正确性问题 |
-| 4 | EOD 拆校准档 `level="eod"` | ✅ 11-11 完成（**明日 15:15 实战待验**） | 只省 `info`；真实接口+真实库对账通过；本地 121 tests、CI 门禁 `42988790474` 121 tests OK；`vars.EM_EOD_LEVEL=full` 可回滚 |
-| 5 | 连接层韧性（Session / timeout / 重试 + env 开关） | ⬜ 待开始 | 抗抖动，加开关灰度 |
-| 6 | 15:05 轻量定稿班 | ⏸ 待评估 | 看完 #4 效果再定，可能取消 |
-| 7 | 波 3 其余 / 波 4 / 代理加固 | 📋 建档不排期 | 按价值递减 |
-| 9 | 每榜前 500 → 300（用户拍板） | ✅ 11-12 完成并**生产验证**（14:00 班） | 日志「每榜单 300 名 / 去重 1316 / 成功 1322」、采集 170s（原 254s）；页面 `tradedPlayerIds=559`；`vars.EM_RANK_LIMIT=500` 一键回滚 |
+没有需要立即拍板的生产阻塞项。可选专项：watchdog Actions cache 架构优化（当前不是已确认故障，暂不做）。
 
-### #4 实施说明（EOD 拆档，方案按实证收窄）
+## 关键红线
 
-**旧假设「eod = 收益 + 真实持仓 + 调仓 1 页 = 3 调用/人」会丢数据，未采用**：本地库有 **647 个（选手,日）** 调仓超过单页 20 行；真实接口对账时月儿兰当日就有 **29 笔**，降到 1 页会丢 9 笔。且 `dimensions` 若不拉，`max_drawdown` / `win_rate` 会退化。
-
-实际方案（**只省 `info` 1 调用/人，6→5**）：
-
-- `eod` 档 = 收益 + 真实持仓 + `dimensions` + 调仓 **2 页**，与 `full` 的业务字段完全一致
-- 不拉 `info` → `detail` 不含 `name`/`followers`/`days`/`concept`/`intro`/`portf_rat` → 触发 `main.py:271-273` **已有的「缺字段不覆盖」合并**（`full` 档 info 偶发失败时早就走这条路径，有实战验证），档案字段从库内旧值取
-- `pick_level` 无需改：`level="eod"` 时老选手走 `eod`、**库内无档案的新选手仍 `full` 初始化**（否则无旧档案可合并）
-- `crawl.yml`：`EM_CRAWL_LEVEL` = `crawl-eod` 时用 `vars.EM_EOD_LEVEL || 'eod'`；仓库变量设 `full` 即一键回滚，无需改代码
-- 单测 `test_crawl_levels.py` 9 例：不拉 info / 保留 2 页 / 与 full 字段一致 / 不含档案字段 / 合并语义 / full 回归 / 组合异常 / 未知档位
-
-**真实验证（16:37，盘后）**：对月儿兰各跑一次 `eod` 与 `full` 真实 EM 接口 → 8 个收益/回撤/胜率字段全一致、持仓 3 只一致、调仓 29 笔一致；与本地真实库档案合并后 19 个字段无丢失，档案字段保留、收益从 239.1 刷新到 246.48。
-
-**明日 15:15 EOD 专班实战验收**：日志应出现「收盘校准班: eod 档」、班时是否短于今天 24.4 分钟、2190 人零失败、页面持仓/收益与 `full` 口径无差异、`Release` 热层正常回传。不符则把 `vars.EM_EOD_LEVEL` 设回 `full` 回滚。
-
-**逻辑校准（11-11 盘后复核，实现成立）**：
-
-- `players` 表（含 `_PLAYER_INSERT_SQL`）**没有** `portf_rat` / `rate_max_stk` / `manager_name` / `start_date` / `crawl_date` 列，入库只消费固定字段列表 → `eod` 省略这些字段对数据零影响；合并 `old`（`SELECT *` 含 `updated_at`/`created_at`）也不会带入过期时间戳，SQL 用 `CURRENT_TIMESTAMP` 覆盖。
-- `fail_count` 只在 **全员失败** 时判红（`main.py:473`）。`eod` 的异常判定少一个 `info` 信号（`yld+pos` 两信号 vs `full` 三信号），个别「info 有响应但收益/持仓全空」的组合在 eod 会记为失败、full 会继续写空收益档案 → eod 反而更保守（不写坏数据），不会判红整班。**已知取舍**：明日 EOD 的失败计数可能由 0 变为个位数，属预期。
-- `weekly_return=0.0` 覆盖库内历史值是 `full` 档既有行为，非 `eod` 引入；口径专项已把「真 0% / 源缺失」问题另列待办。
-- 掐班告警 2026-11-17 加固：GitHub schedule 曾延迟到次日 01:28 才跑（run `43918724551`），改为 cron-job.org job `8880763` 北京 15:45 触发 `repository_dispatch: crawl-cancel-check`；同日 20 个 `crawl.yml` 定时 job 已统一加 `inputs.trigger_source=cron`，run-name 带 `[cron]` 供告警识别。脚本只认 `repository_dispatch(crawl/crawl-eod)` 和带 `[cron]` 的 workflow_dispatch，push/普通手动补跑不再误报；北京时间 15:40~16:30 才检查；已告警 run id 落 `.github/state/crawl-cancel-alert.json` 去重。剩余限制：只覆盖 `cancelled`，「整天无班次」心跳仍留波 3。
-
-### 今日验收收口（15:39 EOD 完成）
-
-- [x] EOD 专班 `42978141542` success，15:15:18→15:39:42（24 分 24 秒），2190/2190 人、EM 失败 0
-- [x] 页面持仓切当日真值（月儿兰 14:51 版 4 只 → EOD 版 3 只，实证 full 档非复制快照）
-- [x] 热层 15:39 二次覆盖（18MB）；数据提交 `20ef91e` 300 文件；Pages `crawl_time=15:15:32`
-- [x] 日报 `无新增操作且今日已推送, 跳过` → 无重复推送（`_k` 判新增路径未实战触发，已有 3 个单测）
-- [x] 午盘 13:05 / 尾盘 14:51 各 1 条钉钉 `errcode=0`；去重 state 落盘
-- [x] 下午 13:00 后零 failure / 零 cancelled / EM 零失败；失败告警 0 触发
-- [ ] 前端体验人工核对：竞价页 60s 自动刷新、持仓页时点说明（需打开页面）
-- [ ] 首班与竞价页错位窗口量化（今日因掐班拉长）
-- [ ] watchdog 降级告警链路的 EM 关闸实战验证（10:19 修复后未再遇关闸）
-
-### 波 2 明细（#4 #5）
-
-- [x] EOD 拆校准档 `level="eod"`（只省 `info`，其余与 `full` 一致；见「#4 实施说明」）
-- [ ] `dimensions` 降频 + **「缺字段不覆盖」合并逻辑**（否则 `max_drawdown` / `win_rate` 被默认值清空、优质选手集合漂移）
-- [ ] `requests.Session` 按线程隔离 + `HTTPAdapter(pool_maxsize=20)`；`timeout` 20→8s、重试 3→2、分页 `sleep(0.2)` 仅在确有下一页时
-- [ ] 新选手初始化的 `full` 档拆轻
-- [ ] 所有提速改动加 env 开关（`EM_EOD_LEVEL` / `EM_USE_SESSION`）便于灰度回滚
-- [ ] watchdog 解耦：cron 错峰 +2 分钟 → 独立 EM token → 仅 EOD 班提 workers（按效果递进）
-- [ ] **明确不做**：`workers` 上调（与 watchdog 共用 EM token）
-
-### 口径修正（#3 产出，业务正确性优先于提速）
-
-- [ ] `max_drawdown` 从 20d 窗口改为历史最大回撤口径；重算 `is_quality` 集合（当前 77% 偏高）并做前后对账
-- [ ] 「综合高分」KPI 恒 0：导出真实 highQuality 列表，或移除该 KPI（`CopyTradeTab.vue:84`）
-- [ ] 前端「胜率」标签改「近 20 日上涨天数」（`win_rate` 缺失用 `None` 已确认，非 0）
-
-### 波 3 / 波 4（#7，建档不排期）
-
-- 波 3：`players/*.json` 写前 hash 比较、19 处 `except` 汇总与非零退出、状态载体收敛、定值 `timeout-minutes`、静默跳过判红；口径类见上一节（不重复列）
-- 波 4：`trades` UPSERT 事件表 + 快照表（消除 1.5× 冗余）、`positions` 唯一索引、迁移与对账（牵动 5 个模块，单独立项）
-
-## 明确不做（避免过度工程）
-
-- `workers` 上调到 30–40
-- 引入 Pinia / 后端服务 / 换数据库
-- 恢复 21 分漏斗 / v5 / 打标回测（2026-09-06 已整链删除，按旧文档优化是做无用功）
-- 盘中追全员持仓实时性（业务已确认「收盘后更新即可」）
-- 波 4 与波 2 混发
-
-## 需拍板
-
-1. `dimensions` 降频后 `win_rate` 的展示口径（属波 2 #4 内部决策，随该项一起拍板，不必现在）
-2. `concurrency` 掐班替代方案（例如班距 12→15 分钟，会影响 watchdog 时效感知）
-3. 代理加固的灰度策略（已降最低优先级，可移出本轮）
-4. 波 4 立项时机（建档不排期）
+1. `midday/close` 的 no-token payload 不能带回 `ctToken/utToken/randomCode/deviceId`。
+2. 缺失值一律显示 `—`，不能用 0 冒充。
+3. A 股=6 位数字，港股=5 位；展示层过滤，不改数据契约。
+4. `tradeConsensus` 每班全量覆盖，不做并集。
+5. `crawl.yml` 的 `concurrency.cancel-in-progress: false` 不能改回 `true`。
+6. `crawl-eod` 的 `types: [crawl-eod]` 是 15:15 专班命脉，不能删。
+7. `.codebuddy/` 不进 git，不删除；3 个 legacy 回测脚本保持只读归档，旧实施计划与 superpowers 旧设计稿已清理。
+8. cron-job.org API key 只留在本地，不进聊天、日志、git 或静态产物。
 
 ## 回滚点
 
-- `git revert 9c760449859` 可整体回退波 1；`trade_key.py` + 三处调用方为一组，回退后历史 `seen` 仍以旧键命中。
-- 前置提交 `88bbc010da9` / `b5c97232d0d` 各自独立可回退。
-- 生产热层由 Release 热/温/冷三层快照兜底；11-10 演练用的 `/tmp/sb_drill/*` 是临时文件，**不作为长期回滚依据**。
+- 当前全量修复：`git revert f76a8b4e7b3`。
+- watchdog 首班基线清理：`git revert 6820c28112a`。
+- 掐班告警外部触发改造：`git revert 708253c86988`。
+- 静态数据回退：4 契约文件被 git 跟踪，按对应数据 commit 回退；db 热层由 Release 三层存储兜底。
