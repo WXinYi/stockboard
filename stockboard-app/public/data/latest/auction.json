@@ -1,98 +1,62 @@
 {
- "date": "2026-11-16",
+ "date": "2026-11-17",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值23 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 21% < 40% (参考)"
+   "情绪值17 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
+   "红盘占比 13% < 40% (参考)"
   ],
   "data": {
-   "strong": 23,
-   "lbgd": 4,
+   "strong": 17,
+   "lbgd": 3,
    "capacity_ratio": null,
-   "red_ratio": 0.21098809275120117,
+   "red_ratio": 0.12615880693268844,
    "bid_count": [
-    114,
-    118,
+    93,
+    101,
     50,
-    0,
-    3
+    28,
+    13
    ],
-   "bid_total": "54亿",
-   "bid_total_prev": "126亿"
+   "bid_total": "111亿",
+   "bid_total_prev": "125亿"
   }
  },
  "boards": [
   {
-   "code": "801062",
-   "name": "军工",
-   "burst": 6.0,
-   "amount": 134011506.0,
-   "main_net": -1220174.0,
+   "code": "801346",
+   "name": "智能电网",
+   "burst": 7.5,
+   "amount": 114401699.0,
+   "main_net": 17431362.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801178",
+   "name": "储能",
+   "burst": 7.0,
+   "amount": 85356939.0,
+   "main_net": 2347484.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801199",
    "name": "汽车零部件",
-   "burst": 5.0,
-   "amount": 126344954.0,
-   "main_net": -837838.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801031",
-   "name": "文化传媒",
    "burst": 4.5,
-   "amount": 412171686.0,
-   "main_net": 6602650.0,
+   "amount": 159379123.0,
+   "main_net": 10043599.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801786",
-   "name": "影视院线",
-   "burst": 4.5,
-   "amount": 200035366.0,
-   "main_net": -8023905.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801070",
-   "name": "光伏",
-   "burst": 4.3,
-   "amount": 335160062.0,
-   "main_net": -9110292.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801045",
-   "name": "医药",
+   "code": "801062",
+   "name": "军工",
    "burst": 4.0,
-   "amount": 130543699.0,
-   "main_net": -103950.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801351",
-   "name": "科创板",
-   "burst": 4.0,
-   "amount": 78030706.0,
-   "main_net": -384674.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801723",
-   "name": "创新药",
-   "burst": 4.0,
-   "amount": 67991418.0,
-   "main_net": 193350.0,
+   "amount": 64329831.0,
+   "main_net": -1332510.0,
    "src": "爆量L1",
    "strength": 0.0
   }
@@ -150,36 +114,36 @@
    "code": "002187",
    "name": "广百股份",
    "height": 2,
-   "bid_pct": 9.04,
-   "turnover": 3.38
-  },
-  {
-   "code": "001358",
-   "name": "兴欣新材",
-   "height": 2,
-   "bid_pct": -0.98,
-   "turnover": 1.63
-  },
-  {
-   "code": "600467",
-   "name": "好当家",
-   "height": 2,
-   "bid_pct": -2.93,
-   "turnover": 1.4140700688055294
-  },
-  {
-   "code": "603396",
-   "name": "金辰股份",
-   "height": 3,
-   "bid_pct": -7.45,
-   "turnover": 1.3726712929286429
+   "bid_pct": 9.91,
+   "turnover": 3.55
   },
   {
    "code": "002148",
    "name": "北纬科技",
    "height": 3,
-   "bid_pct": 10.06,
-   "turnover": 1.24
+   "bid_pct": -1.94,
+   "turnover": 2.11
+  },
+  {
+   "code": "002205",
+   "name": "国统股份",
+   "height": 2,
+   "bid_pct": -9.92,
+   "turnover": 0.9835775711628966
+  },
+  {
+   "code": "001358",
+   "name": "兴欣新材",
+   "height": 2,
+   "bid_pct": null,
+   "turnover": 0.6066953186593073
+  },
+  {
+   "code": "600467",
+   "name": "好当家",
+   "height": 2,
+   "bid_pct": null,
+   "turnover": 0.44012441181894646
   }
  ],
  "regime": {
@@ -247,8 +211,8 @@
   "generated_at": "2026-11-13T02:03:38"
  },
  "stats": {
-  "pool": 325,
-  "boards": 8,
+  "pool": 218,
+  "boards": 4,
   "genes": 0
  },
  "candidates": [],
