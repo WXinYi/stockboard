@@ -25,7 +25,8 @@ jobs:
 
       - name: Install Tencent SCF SDK
         working-directory: scf
-        run: npm i --no-audit --no-fund
+        # npm ci: 按 package-lock 精确安装, 避免 ^4.0.0 在构建时漂到新 SDK 导致"测的与部署的不一致"
+        run: npm ci --no-audit --no-fund
 
       - name: Deploy KPL proxy to Tencent SCF
         working-directory: scf

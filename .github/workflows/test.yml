@@ -8,6 +8,9 @@ on:
     paths:
       - 'jiarenmens/**/*.py'
       - 'stockboard-app/src/**'
+      - 'stockboard-app/package.json'
+      - 'stockboard-app/package-lock.json'
+      - 'stockboard-app/vite.config.js'
       - 'scf/**'
       - '.github/workflows/*.yml'
       - 'pyproject.toml'
@@ -15,6 +18,9 @@ on:
     paths:
       - 'jiarenmens/**/*.py'
       - 'stockboard-app/src/**'
+      - 'stockboard-app/package.json'
+      - 'stockboard-app/package-lock.json'
+      - 'stockboard-app/vite.config.js'
       - 'scf/**'
       - '.github/workflows/*.yml'
   workflow_dispatch:
@@ -26,17 +32,29 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: stockboard-app/package-lock.json
 
       - name: SCF 代理单测
         # Node 20 的 --test 会把文件之后的位置参数当成测试文件；reporter 参数一律不放。
         run: node --test scf/index.test.cjs
+
+      # 前端门禁(2026-11-17 复核 P0-2): 此前 paths 覆盖 src 却从不跑 vitest,
+      # 200+ 用例在 CI 零拦截; 这里补上, 与 scf/后端同级门禁。
+      - name: 前端依赖安装
+        working-directory: stockboard-app
+        run: npm ci --no-audit --no-fund
+
+      - name: 前端单测(vitest)
+        working-directory: stockboard-app
+        run: npx vitest run
 
       - uses: actions/setup-python@v6
         with:
@@ -60,4 +78,6 @@ jobs:
         # 块标量避免单行 echo 中 ": " 被严格 YAML 解析成映射值
         run: |
           echo "::error::单测或语法检查未通过, 请勿合入"
-          echo "本地复现: cd jiarenmens && python -m unittest discover -s scripts -p 'test_*.py'"
+          echo "本地复现(后端): cd jiarenmens && python -m unittest discover -s scripts -p 'test_*.py'"
+          echo "本地复现(前端): cd stockboard-app && npm ci && npx vitest run"
+          echo "本地复现(scf):  node --test scf/index.test.cjs"

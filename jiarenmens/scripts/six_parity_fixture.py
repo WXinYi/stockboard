@@ -14,6 +14,15 @@
 
 前端回归: stockboard-app/src/utils/__tests__/sixParity.test.js 读该夹具, 与 JS 实时引擎逐日断言全等。
 改公式/阈值流程: 改哪边都要 1) 跑本脚本重生成夹具 2) 跑前端 vitest, 两边同批提交。
+
+夹具结构(2026-11-17 复核 P0-2 补充):
+  rows  — 截止到 max(case.date) 的逐日**原始分量**(紧凑键, 同 six_history.json 口径),
+          由 Python _load_all() 产出。前端按 case.date 切片后喂给 computeSixLive(),
+          实现"同一输入 → 同一输出"的真对拍。
+  cases — 各日按截断口径算出的参考值(market/spec/sector/m_*/dominant)。
+  ⚠️ 不要用 public/data/latest/six_history.json 做对拍基准: 该切片生产者已下线,
+     文件是冻结旧产物, 其 zt/dt 与当前 DB(market_breadth) 口径不同(172/258 天不一致),
+     会伪造出"双实现漂移"的假象。
 """
 import argparse
 import json
@@ -56,6 +65,36 @@ def asof_scores(db_path: str, date: str) -> dict:
         Path(tmp.name).unlink(missing_ok=True)
 
 
+def dump_rows(db_path: str, max_date: str) -> list:
+    """导出 <= max_date 的逐日原始分量(紧凑键), 作为前端对拍的同一输入源。
+
+    这些分量是"当日值", 与按日截断无关(height_prev/promo/relay/tc_prev 只依赖前一日,
+    run_days/switches_5d 只依赖更早历史), 因此一份全量序列可按 case.date 切片复用。
+    """
+    import src.analysis.emotion_cycle as ec
+    import src.analysis.six_emotions as se
+    old_db, old_ec_db = se.DB, ec.DB
+    se.DB = ec.DB = db_path          # load_pool 读 emotion_cycle.DB, 两个都要指过去
+    try:
+        dates, metrics = se._load_all()
+    finally:
+        se.DB, ec.DB = old_db, old_ec_db
+    rows = []
+    for d in dates:
+        if d > max_date:
+            continue
+        m = metrics[d]
+        rows.append({
+            "d": d, "s": m.get("strong"), "dt": m.get("dt"), "broke": m.get("broke"),
+            "zt": m.get("zt"), "h": m.get("height"), "promo": m.get("promo"),
+            "relay": m.get("relay"), "zb": m.get("zhaban"), "tc": m.get("top_cnt"),
+            "tc_prev": m.get("top_cnt_prev"), "ta": m.get("top_amt"), "tb": m.get("top_board"),
+            "run": m.get("run_days"), "sw": m.get("switches_5d"),
+            "idx": m.get("idx_trend"), "bid": m.get("bid_amt"),
+        })
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser(description="生成六情绪按日截断对拍夹具")
     ap.add_argument("--days", type=int, default=5, help="取最近 N 个交易日(默认5)")
@@ -82,6 +121,7 @@ def main():
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "db_as_of": dates[0] if len(dates) == 1 else max(dates),
         "note": "按日截断口径(不含未来日); 再生成: jiarenmens venv/bin/python scripts/six_parity_fixture.py",
+        "rows": dump_rows(args.db, max(c["date"] for c in cases)),
         "cases": cases,
     }
     out = Path(args.out)
