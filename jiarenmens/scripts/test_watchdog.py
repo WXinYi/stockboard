@@ -3,14 +3,14 @@
 
 运行: python3 scripts/test_watchdog.py
 """
-import email.utils
 import json
 import sys
 import tempfile
 import unittest
 import unittest.mock
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -105,52 +105,28 @@ class TestStateRollover(unittest.TestCase):
             self.assertEqual(st, watchdog.fresh_state("2026-09-17"))
 
 
-class TestSeedBaseline(unittest.TestCase):
-    def test_seeds_only_today_rows_with_max_count(self):
-        pushed = {}
-        base = {"t": [{"td": "2026-09-17", "dr": "买入", "sc": "600371", "tc": 2},
-                      {"td": "2026-09-17", "dr": "卖出", "sc": "600371", "tc": 1},
-                      {"td": "2026-09-16", "dr": "买入", "sc": "000002", "tc": 5}]}
-        n = watchdog.seed_baseline(pushed, base, "2026-09-17")
-        self.assertEqual(n, 2)
-        self.assertEqual(pushed, {"600371": {"买入": 2, "卖出": 1}})
+class TestNoStaleBaselineFetch(unittest.TestCase):
+    """per-player JSON 已下线: 首轮不得再拉 Pages 底稿做 seed(09:26 9×3 次 404)。"""
 
+    def test_first_cycle_never_fetches_per_player_pages(self):
+        urls = []
 
-class TestBaseSpoiled(unittest.TestCase):
-    """底稿防剧透判定(2026-11-11): 今日部署的底稿不得作"已推"基线,
-    否则 crawl 先于 watchdog 部署的当日操作会被 seed 永久静默(月儿兰事故)。"""
+        def fake_urlopen(url, *args, **kwargs):
+            urls.append(str(url))
+            raise AssertionError("不应再拉线上选手底稿")
 
-    BJ = ZoneInfo("Asia/Shanghai")
+        data = {zh: {"name": nm, "trades": [], "ok": True}
+                for zh, nm in watchdog.WATCHED_PLAYERS}
+        args = SimpleNamespace(dry_run=False)
+        with unittest.mock.patch.object(watchdog, "fetch_all", return_value=data), \
+             unittest.mock.patch.object(watchdog, "save_state"), \
+             unittest.mock.patch.object(watchdog.urllib.request, "urlopen",
+                                        side_effect=fake_urlopen):
+            n = watchdog.run_cycle(args, watchdog.fresh_state("2026-09-17"),
+                                   "2026-09-17", "/tmp/st.json", "/tmp/ch")
 
-    def _lm_gmt(self, y, mo, d, h, mi):
-        """构造 RFC1123 GMT 串(Pages Last-Modified 同格式)。"""
-        return email.utils.format_datetime(
-            datetime(y, mo, d, h, mi, tzinfo=timezone.utc))
-
-    def _run(self, lm, fixed_bj):
-        with unittest.mock.patch.object(watchdog, "bj_now", return_value=fixed_bj):
-            return watchdog.base_is_spoiled(lm)
-
-    def test_今日盘中部署判剧透(self):
-        # crawl 09:52 部署(GMT 01:52) → 北京今日 → 不得 seed
-        fixed = datetime(2026, 11, 11, 10, 21, tzinfo=self.BJ)
-        self.assertTrue(self._run(self._lm_gmt(2026, 11, 11, 1, 52), fixed))
-
-    def test_昨日部署不判剧透(self):
-        # 11-10 15:15 EOD 部署(GMT 07:15) → 北京昨日 → 正常 seed
-        fixed = datetime(2026, 11, 11, 10, 21, tzinfo=self.BJ)
-        self.assertFalse(self._run(self._lm_gmt(2026, 11, 10, 7, 15), fixed))
-
-    def test_空header保持现行为(self):
-        self.assertFalse(self._run("", datetime(2026, 11, 11, tzinfo=self.BJ)))
-
-    def test_解析失败保持现行为(self):
-        self.assertFalse(self._run("not-a-date", datetime(2026, 11, 11, tzinfo=self.BJ)))
-
-    def test_gmt跨日按北京日期判定(self):
-        # GMT 11-10 17:30 = 北京 11-11 01:30 → 属北京今日 → 判剧透
-        fixed = datetime(2026, 11, 11, 9, 36, tzinfo=self.BJ)
-        self.assertTrue(self._run(self._lm_gmt(2026, 11, 10, 17, 30), fixed))
+        self.assertEqual(n, 0)
+        self.assertEqual(urls, [])
 
 
 class TestTradingWindow(unittest.TestCase):

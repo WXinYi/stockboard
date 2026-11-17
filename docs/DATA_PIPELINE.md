@@ -226,13 +226,9 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 
 **⚠️ 2026-11-10 EM 协议迁移**：EM 关闭旧 rtV2（emdcspzhapi.eastmoney.com，全部方法拒"APP版本较低"——版本号/时间戳/UA/99.99 全试无效，实为旧主机废弃）。新协议 = **spzhapi.dfcfs.cn/rtV2 + 登录态 token**（args 内 ctToken/utToken，来自用户抓包，**无需 sign**）+ 新字段三件套（randomCode/deviceId/新版 clientVersion "11.5.5_3.0.0.261105130728749"）。方法名映射：detail_97 死亡 → CombinationInfoHandler(信息) + combination_yield_detail_handler(收益率/净值) + CombinationHoldPositionPermitHandler(持仓,返回分板块列表需拍平) + CombinationRelocatePositionHandler(调仓,逐笔流水分页需按日期+票+方向聚合) + combination_dimensions(匿名公开)。userId 必填（代码 NEW_USER_IDS 映射 11 人 → 采集库回退）。token 来源：env EM_CT_TOKEN/EM_UT_TOKEN（CI secrets）> data/em_tokens.json（本地抓包, gitignored）。**token 失效 → 采集诚实失败并提示重新抓包**；周收益字段新协议缺失（players.weekly_return 暂置 0）。
 
-`watchdog.yml`（cron-job.org 每 5 分钟 → `repository_dispatch: watchdog`，独立并发组 `watchdog-main` 且不掐班）：交易时段拉关注选手组合接口（秒级/人），当日新操作 → **立即推钉钉** + **叠加更新该选手 `players/{zh}.json`** → 轻量部署 Pages（dist 壳缓存命中，1~3 分钟）。操作发生后页面 6~8 分钟可见、钉钉推送后 1~3 分钟可见。
+`watchdog.yml`（cron-job.org 每 5 分钟 → `repository_dispatch: watchdog`，独立并发组 `watchdog-main` 且不掐班）：交易时段拉关注选手组合接口（秒级/人），当日新操作 → **立即推钉钉**。页面数据归 `crawl.yml` 统一导出；watchdog 不写 `players/{zh}.json`、不部署 Pages（S2 起）。
 
 - **语义**：东财调仓明细只有日粒度（`tzrq` 无盘中时间戳），"即时" = 当日该笔**首次出现/成交次数增加**的时刻，推送写的是首次发现时刻。
-- **部署让位（2026-09-22）**：冲刺/常规班的叠加部署前检查 crawl 班是否进行中，
-  进行中则等待（匿名 API 轮询，上限 10 分钟）再部署——否则 crawl 的旧导出部署会
-  覆盖冲刺的叠加（页面回退闪烁的根因，09-22 修复）。另采集班 09:45 提前至 09:38，
-  进一步压缩开盘窗口的数据空档。
 - **开盘冲刺（09:30~09:35，2026-09-22 上线）**：cron-job.org 另设 09:30 一班
   （`repository_dispatch: watchdog-open`），任务内 **50 秒/轮自循环**抢开盘黄金窗口
   （cron 粒度只有 1 分钟，50 秒节奏靠任务内自循环实现）；与常规 5 分钟班共用并发组
@@ -241,10 +237,10 @@ deploy job → GitHub Pages (https://wxinyi.github.io/stockboard)
 - **去重**：键 = (选手, 股票, 方向) + 成交次数；次数变 → 补推"↩️追加"（修掉日内回买/加量盲区）。状态放 actions/cache 按日滚动（`watchdog-state-*`，对应 gitignore 的 `data/.watchdog_state.json`）。
 - **与日报的关系**：日报经 crawl.yml「恢复盯盘状态」步骤读同一缓存（`notify_daily.load_watchdog_pushed`），**跳过已实时推送的操作、不发空卡**；读不到缓存（=watchdog 失灵）→ 日报自动全量兜底。一条操作只响一次铃，两层互为备份。
 - **隐藏号流水通道（2026-11-07）**：东财侧隐藏的选手（现 2 人：我嘚财富/我要再来一次；凡人炒股/慢慢做趋势 11-07 用户拍板移出名单）detail 被整体下架（净值/持仓/搜索全无），但 rtV2 `CombinationRelocatePositionHandler` 流水照常实时产生 → watchdog 对隐藏号改走该接口：`HIDDEN_UIDS` 硬编码 zh→userId 映射（userId 无法反查，搜索接口对隐藏号 0 命中），当日流水聚合成与 detail 同形的 trade dict（同票同向多笔→次数累加，价格/仓位档取最新一笔）；**有操作正常出卡（名字带 🔇 角标）、无操作进"隐藏号今日暂无操作"脚注、不叠加选手页**（无持仓数据，页面停留隐藏前快照）。
-- **叠加安全**：以"线上已部署的选手文件"为底稿，积累历史（含 `_k/_id`）一行不丢，只刷 `p`（实时持仓）与今日 `t`；**不产生 git 提交**（下一班 crawl 的权威导出自愈覆盖）。底稿拉取失败 → 跳过叠加只推送（宁可页面慢，不可丢历史）。
+- **不做页面叠加/首班基线（2026-11-17 修正）**：per-player JSON 已下线，`fetch_base_player()` 每早 9×3 次 404 空耗且无可用替代源；当日操作一律按 `watchdog-state-*` 去重，状态只记本程序真正推过的笔数。
 - **降级自曝**：连续 3 班全员拉取失败 → 主动推"盯盘已降级"告警；任一班成功即复位。失败退出走 `alert-on-failure` 钉钉告警。
-- **只在工作日执行**：三层闸门——cron-job.org 仅周一~五(wdays)、脚本解析前端 `tradingCalendar.js`（单一数据源，上交所节假日表，运行时读取避免双份日历漂移）跳过法定节假日、时段闸门 09:31~15:05（09:26 竞价段由快报覆盖，避免开盘重复响铃）且**午休 11:30~13:00 不开机**（09-18 用户拍板，期间无成交）。节假日/午休不开机，免误触降级告警与空烧 runner。首班基线：当日首个班以线上快照为"已推"底（防与早班日报重复）。
-- **轮询时刻错峰**：cron 分钟为 01/06/11/…/56（09-18 用户拍板，避开整 5 分的公共拥挤点），**盯盘首班 09:31**（闸门放行的第一班，覆盖竞价段与开盘）末班 15:01；09:31 之前的 09:01~09:26 触发由闸门跳过（该时段归 09:25 竞价快报）。
+- **只在工作日执行**：三层闸门——cron-job.org 仅周一~五(wdays)、脚本解析前端 `tradingCalendar.js`（单一数据源，上交所节假日表，运行时读取避免双份日历漂移）跳过法定节假日、时段闸门 09:26~15:05（09:26 竞价段由 watchdog 首班覆盖）且**午休 11:30~13:00 不开机**（09-18 用户拍板，期间无成交）。节假日/午休不开机，免误触降级告警与空烧 runner。
+- **轮询时刻错峰**：cron 分钟为 01/06/11/…/56（09-18 用户拍板，避开整 5 分的公共拥挤点），**盯盘首班 09:26**（闸门放行的第一班，覆盖竞价段与开盘）末班 15:01；09:26 之前的 09:01~09:21 触发由闸门跳过（该时段归 09:25 竞价快报）。
 
 ### 2.1c 盘中实时宽度 breadth-rt（2026-09-18 上线）
 

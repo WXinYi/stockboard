@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """盯盘 watchdog（交易时段每 5 分钟由 cron-job.org → repository_dispatch:watchdog 触发）
 
-拉关注选手组合接口（秒级/人）→ 与当日已推状态比对 → 新操作即时推钉钉，
-同时叠加更新该选手 players/{zh}.json 并轻量部署 Pages（详情页即开即最新）。
+拉关注选手组合接口（秒级/人）→ 与当日已推状态比对 → 新操作即时推钉钉。
+页面数据由 crawl.yml 统一导出；watchdog 不写选手 JSON、不部署 Pages（S2 起）。
 
 设计要点（详见 docs/DATA_PIPELINE.md「盯盘 watchdog」一节）:
 - 东财调仓明细只有日粒度(tzrq 无盘中时间戳) → "即时" = 当日该笔"首次出现/成交次数
@@ -11,8 +11,8 @@
 - 状态放 actions/cache 按日滚动(watchdog-state-*, 本文件路径见 STATE_FILE);
   日报 notify_daily.load_watchdog_pushed() 读同一份缓存, 跳过已即时推送的操作
   → 一条操作只响一次铃; watchdog 失灵时日报自动兜底(读不到缓存 = 空集 = 全量推);
-- 叠加更新以"线上已部署的选手文件"为底稿(积累历史一行不丢, 东财数据不全不构成风险),
-  只刷 p(实时持仓) + 今日 t; 不产生 git 提交(下一班 crawl 的权威导出自愈覆盖);
+- 不做首班线上底稿 seed: per-player JSON 已下线, 旧逻辑只会 404 空耗;
+  当日操作一律按 state 去重, 状态只记本程序真正推过的笔数;
 - 连续 MAX_FAILS 班全员拉取失败 → 主动推"盯盘已降级"告警(不可无声断档), 任一班成功即复位;
 - 隐藏选手只读 visibility.is_hidden 跳过, 不回写状态(回写归快报/日报)。
 
@@ -23,7 +23,6 @@
     python scripts/watchdog.py --force             # 无视交易时段闸门(排障用)
 """
 import argparse
-import email.utils
 import json
 import re
 import sys
@@ -161,62 +160,6 @@ def decide_pushes(trades_today: list, pushed_player: dict):
             known.append(t)
         by_dr[dr] = max(prev or 0, cnt)
     return new, known
-
-
-def seed_baseline(pushed_player: dict, base_file: dict, date_str: str) -> int:
-    """首班基线: 线上已部署快照里"今天已有的操作"视为已推送过(防与早班日报重复)。"""
-    n = 0
-    for t in base_file.get("t") or []:
-        if t.get("td") != date_str or t.get("dr") not in ("买入", "卖出"):
-            continue
-        try:
-            cnt = int(t.get("tc") or 1)
-        except (TypeError, ValueError):
-            cnt = 1
-        by_dr = pushed_player.setdefault(t.get("sc", ""), {})
-        by_dr[t["dr"]] = max(by_dr.get(t["dr"]) or 0, cnt)
-        n += 1
-    return n
-
-
-def fetch_base_player(zh_id: str, retries: int = 3):
-    """拉线上已部署的选手文件作叠加底稿; 失败返回 (None, None)(宁可跳过叠加, 不可丢历史)。
-
-    返回 (base, last_modified_str): last_modified 为 Pages 响应头的 Last-Modified
-    (GMT, RFC1123), 供 seed 防剧透判定; 拉不到时为 None。"""
-    url = f"{BASE_URL}/data/latest/players/{zh_id}.json"
-    last = None
-    for i in range(retries):
-        try:
-            with urllib.request.urlopen(url, timeout=10) as r:
-                lm = r.headers.get("Last-Modified") or ""
-                return json.loads(r.read().decode("utf-8")), lm
-        except Exception as e:          # 大陆网络对 Pages 常见 SSL 瞬断, 退避重试
-            last = e
-            time.sleep(1 + i)
-    print(f"  ⚠️ {zh_id} 线上底稿拉取失败({retries}次), 跳过叠加: {last}")
-    return None, ""
-
-
-def base_is_spoiled(last_modified: str) -> bool:
-    """底稿 Last-Modified 是今日(北京) → 视为 crawl 盘中剧透, 不得作"已推"基线。
-
-    2026-11-11 事故: crawl 09:38 班 09:52 先把选手当日操作部署到页面,
-    watchdog 10:21 首次成功时 seed_baseline 把这些操作当"已推送"吞掉,
-    月儿兰 2 笔被吞的机制性风险。规则:
-    - 今日部署的底稿来源只有三种: crawl 盘中班(剧透, 未推过钉钉)、
-      watchdog 自身叠加(必然已推过, 且此时非 first_of_day 不走 seed)、
-      15:15 EOD(部署的是当日操作, 但 15:05 后 watchdog 不再跑) → 一律不 seed;
-    - 昨日及更早 → 正常 seed(防与昨日日报重复的语义不变);
-    - 无 header/解析失败 → 不判剧透(保持现行为, 宁可误吞不误推——与现状一致)。
-    """
-    if not last_modified:
-        return False
-    try:
-        lm = email.utils.parsedate_to_datetime(last_modified).astimezone(BJ)
-    except Exception:
-        return False
-    return lm.date() == bj_now().date()
 
 
 def merge_player(base: dict, positions: list, trades_today: list, date_str: str) -> dict:
@@ -386,8 +329,8 @@ def build_message(date_str: str, hhmm: str, data: dict, new_mark: dict, quotes: 
     return "\n".join(lines)
 
 
-def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int:
-    """单轮盯盘: 拉取→比对→推送(有新增时)→叠加→落状态。返回本轮新操作笔数。"""
+def run_cycle(args, st, date_str, state_file, changed_file) -> int:
+    """单轮盯盘: 拉取→比对→推送(有新增时)→落状态。返回本轮新操作笔数。"""
     state_file, changed_file = Path(state_file), Path(changed_file)
     now = bj_now()
     hhmm = now.strftime("%H:%M")
@@ -401,7 +344,6 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
     else:
         st["fails"], st["alerted"] = 0, 0
 
-    base_cache = {}
     new_pushes = []   # (zh, nm, trade, is_add)
     new_mark = {}     # zh -> {id(trade): is_add}, 供消息标记 🆕/↩️追加
     for zh, nm in WATCHED_PLAYERS:
@@ -412,17 +354,6 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
         if o.get("hidden") and not o.get("trades"):
             continue   # 隐藏号今日无操作, 无需进比对(有操作时走流水通道正常出卡)
         pushed_player = st["pushed"].setdefault(zh, {})
-        if first_of_day:
-            base_cache.setdefault(zh, fetch_base_player(zh))
-            base, lm = base_cache.get(zh, (None, ""))
-            if base:
-                if base_is_spoiled(lm):
-                    # 2026-11-11: 底稿是今日盘中部署 → 里面的当日操作未经钉钉,
-                    # 若 seed 会把"crawl 先于 watchdog 部署"的操作永久静默。
-                    # 不吞, 交给 decide_pushes 正常比对(可能晚于 crawl 部署, 但不漏)。
-                    print(f"  ℹ️ {nm} 底稿为今日部署(crawl 剧透), 不作已推基线")
-                else:
-                    seed_baseline(pushed_player, base, date_str)
         newt, _known = decide_pushes(o["trades"], pushed_player)
         if newt:
             new_mark[zh] = {id(t): is_add for t, is_add in newt}
@@ -467,7 +398,7 @@ def run_cycle(args, st, date_str, first_of_day, state_file, changed_file) -> int
     return len(new_pushes)
 
 
-def open_sprint(args, st, date_str, first_of_day, state_file, changed_file) -> int:
+def open_sprint(args, st, date_str, state_file, changed_file) -> int:
     """开盘冲刺(2026-09-22 拍板): 09:30~09:35 以 50 秒/轮加密检测, 抢开盘黄金窗口。
 
     cron-job.org 粒度只有 1 分钟, 50 秒节奏靠本任务内自循环实现; 与常规 5 分钟班
@@ -481,8 +412,7 @@ def open_sprint(args, st, date_str, first_of_day, state_file, changed_file) -> i
         if now.strftime("%H%M") >= deadline:
             break
         rounds += 1
-        total += run_cycle(args, st, date_str, first_of_day and rounds == 1,
-                           state_file, changed_file)
+        total += run_cycle(args, st, date_str, state_file, changed_file)
         now = bj_now()
         if now.strftime("%H%M") >= deadline:
             break
@@ -521,12 +451,11 @@ def main():
             return 0
 
     st = load_state(date_str, state_file)
-    first_of_day = not any(st["pushed"].values())
 
     if args.open_sprint:
-        open_sprint(args, st, date_str, first_of_day, state_file, changed_file)
+        open_sprint(args, st, date_str, state_file, changed_file)
         return 0
-    run_cycle(args, st, date_str, first_of_day, state_file, changed_file)
+    run_cycle(args, st, date_str, state_file, changed_file)
     return 0
     # ⚠️ 两者返回值是"本轮推送笔数", 不能作为退出码 —— 09-22 早盘实测: 推 3 笔 = exit 3 =
     # job 判失败 + 失败告警误报 ×3(冲刺提交引入的回归, 冲刺前脚本恒 exit 0)。正常完成
