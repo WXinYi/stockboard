@@ -1,64 +1,207 @@
 {
- "date": "2026-11-17",
+ "date": "2026-11-18",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值17 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 13% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 17,
-   "lbgd": 3,
+   "strong": 44,
+   "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.12615880693268844,
+   "red_ratio": 0.7151630664972469,
    "bid_count": [
-    93,
-    101,
+    111,
+    131,
     50,
     28,
-    13
+    9
    ],
-   "bid_total": "111亿",
-   "bid_total_prev": "125亿"
+   "bid_total": "63亿",
+   "bid_total_prev": "111亿"
   }
  },
  "boards": [
   {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 9.3,
+   "amount": 2096261489.0,
+   "main_net": 52032136.0,
+   "src": "爆量+强度",
+   "strength": 2379.0
+  },
+  {
+   "code": "801270",
+   "name": "基础建设",
+   "burst": 7.5,
+   "amount": 144382703.0,
+   "main_net": 27295540.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
    "code": "801346",
    "name": "智能电网",
    "burst": 7.5,
-   "amount": 114401699.0,
-   "main_net": 17431362.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "amount": 172687374.0,
+   "main_net": 28707578.0,
+   "src": "爆量+强度",
+   "strength": 47.0
   },
   {
-   "code": "801178",
-   "name": "储能",
+   "code": "801070",
+   "name": "光伏",
    "burst": 7.0,
-   "amount": 85356939.0,
-   "main_net": 2347484.0,
-   "src": "爆量L1",
-   "strength": 0.0
-  },
-  {
-   "code": "801199",
-   "name": "汽车零部件",
-   "burst": 4.5,
-   "amount": 159379123.0,
-   "main_net": 10043599.0,
+   "amount": 164971610.0,
+   "main_net": 24228449.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801062",
    "name": "军工",
-   "burst": 4.0,
-   "amount": 64329831.0,
-   "main_net": -1332510.0,
+   "burst": 6.0,
+   "amount": 204135469.0,
+   "main_net": 12972117.0,
    "src": "爆量L1",
    "strength": 0.0
+  },
+  {
+   "code": "801199",
+   "name": "汽车零部件",
+   "burst": 6.0,
+   "amount": 366469874.0,
+   "main_net": 34048138.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801807",
+   "name": "算力",
+   "burst": 4.8,
+   "amount": 337956864.0,
+   "main_net": 50261359.0,
+   "src": "爆量+强度",
+   "strength": 916.0
+  },
+  {
+   "code": "801159",
+   "name": "机器人概念",
+   "burst": 4.8,
+   "amount": 305776759.0,
+   "main_net": 37646022.0,
+   "src": "爆量L2",
+   "strength": 0.0
+  },
+  {
+   "code": "801005",
+   "name": "新能源汽车",
+   "burst": 4.5,
+   "amount": 80768068.0,
+   "main_net": 10315741.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801222",
+   "name": "光刻胶",
+   "burst": 4.5,
+   "amount": 160319381.0,
+   "main_net": 4736707.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801069",
+   "name": "家电",
+   "burst": 0.0,
+   "amount": 826931539.0,
+   "main_net": 68315493.0,
+   "src": "强度",
+   "strength": 442.0
+  },
+  {
+   "code": "801235",
+   "name": "化工",
+   "burst": 0.0,
+   "amount": 1252443664.0,
+   "main_net": 24795379.0,
+   "src": "强度",
+   "strength": 379.0
+  },
+  {
+   "code": "801878",
+   "name": "端侧AI",
+   "burst": 0.0,
+   "amount": 1156230529.0,
+   "main_net": 27741030.0,
+   "src": "强度",
+   "strength": 267.0
+  },
+  {
+   "code": "803041",
+   "name": "光通信",
+   "burst": 0.0,
+   "amount": 2508012760.0,
+   "main_net": 62167886.0,
+   "src": "强度",
+   "strength": 116.0
+  },
+  {
+   "code": "801216",
+   "name": "PCB概念",
+   "burst": 0.0,
+   "amount": 1006658686.0,
+   "main_net": 82212107.0,
+   "src": "强度",
+   "strength": 102.0
+  },
+  {
+   "code": "801694",
+   "name": "非金属材料",
+   "burst": 0.0,
+   "amount": 334154609.0,
+   "main_net": 5546500.0,
+   "src": "强度",
+   "strength": 101.0
+  },
+  {
+   "code": "801660",
+   "name": "通信",
+   "burst": 0.0,
+   "amount": 3699908215.0,
+   "main_net": 9829550.0,
+   "src": "强度",
+   "strength": 89.0
+  },
+  {
+   "code": "801351",
+   "name": "科创板",
+   "burst": 0.0,
+   "amount": 1600575360.0,
+   "main_net": 2344704.0,
+   "src": "强度",
+   "strength": 88.0
+  },
+  {
+   "code": "801067",
+   "name": "面板",
+   "burst": 0.0,
+   "amount": 1037058289.0,
+   "main_net": 6428580.0,
+   "src": "强度",
+   "strength": 78.0
+  },
+  {
+   "code": "801190",
+   "name": "卫星导航",
+   "burst": 0.0,
+   "amount": 585725667.0,
+   "main_net": 8501300.0,
+   "src": "强度",
+   "strength": 75.0
   }
  ],
  "strike": [
@@ -111,39 +254,39 @@
  "strike_watch": true,
  "bidrank": [
   {
-   "code": "002187",
-   "name": "广百股份",
-   "height": 2,
-   "bid_pct": 9.91,
-   "turnover": 3.55
-  },
-  {
    "code": "002148",
    "name": "北纬科技",
    "height": 3,
-   "bid_pct": -1.94,
-   "turnover": 2.11
+   "bid_pct": 6.04,
+   "turnover": 4.51
   },
   {
-   "code": "002205",
-   "name": "国统股份",
-   "height": 2,
-   "bid_pct": -9.92,
-   "turnover": 0.9835775711628966
-  },
-  {
-   "code": "001358",
-   "name": "兴欣新材",
-   "height": 2,
-   "bid_pct": null,
-   "turnover": 0.6066953186593073
+   "code": "603396",
+   "name": "金辰股份",
+   "height": 3,
+   "bid_pct": -8.6,
+   "turnover": 1.9898608106239193
   },
   {
    "code": "600467",
    "name": "好当家",
    "height": 2,
+   "bid_pct": -4.0,
+   "turnover": 1.3964222648694804
+  },
+  {
+   "code": "002205",
+   "name": "国统股份",
+   "height": 2,
    "bid_pct": null,
-   "turnover": 0.44012441181894646
+   "turnover": 0.6469529563482979
+  },
+  {
+   "code": "001358",
+   "name": "兴欣新材",
+   "height": 2,
+   "bid_pct": -1.22,
+   "turnover": 0.48
   }
  ],
  "regime": {
@@ -211,8 +354,8 @@
   "generated_at": "2026-11-13T02:03:38"
  },
  "stats": {
-  "pool": 218,
-  "boards": 4,
+  "pool": 584,
+  "boards": 20,
   "genes": 0
  },
  "candidates": [],
