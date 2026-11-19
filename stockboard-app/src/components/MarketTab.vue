@@ -21,7 +21,6 @@ const router = useRouter()
 
 // 竞价: 当日快照, 单次加载不轮询
 const auction = ref(null)
-const auctionLoading = ref(true)
 // 竞价快照拉取失败标记(与"盘外无快照"区分): 见 loadAuction
 const auctionError = ref(false)
 // 速览/六情绪输入: 30s 轮询(silent)
@@ -160,33 +159,7 @@ function stWord(c) { return statusWord(c?.status) }
 // 09:25 盘前候选(昨日连板·竞价换手前5 优先, 兜底取出击选股榜); 早/盘中换序
 const preRows = computed(() => (auction.value?.bidrank || auction.value?.strike || []).slice(0, 5))
 
-// 大模型独立选股(影子): auction.json.llm, 与引擎结论互不影响; 允许空仓输出
-const llm = computed(() => auction.value?.llm || null)
-// llm 卡时间: llm_review.created_at 是 CI runner 的 UTC ISO, 直显 slice(11,16) 会把北京 10:55 显示成 02:55
-const llmTime = computed(() => {
-  const s = String(llm.value?.generated_at || '')
-  if (!s) return ''
-  if (!/T\d{2}:/.test(s)) return s   // 已是短格式(HH:MM)原样
-  const d = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(s) ? s : `${s}Z`)   // 裸 ISO 按 UTC(CI runner 时区)
-  return isNaN(d) ? s.slice(11, 16)
-    : d.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
-})
-const llmRegimeCls = computed(() => ({ '攻击': 'go', '试错': 'warn', '观察': 'watch', '空仓': 'ban' }[llm.value?.regime] || 'plain'))
-const showLlm = ref(true)
-// 可买性标注(纯展示层, 不改写 LLM 输出, 回测口径不受影响): 引擎闸门禁买或模型自判观察/空仓时,
-// 候选照常展示但打「不可买」标签 —— 执行权在引擎纪律, LLM 输出只作对照
-const llmSelfBuy = computed(() => ['攻击', '试错'].includes(llm.value?.regime || ''))
-const llmBlockTxt = computed(() => {
-  if (!llm.value || llm.value.degraded) return ''
-  if (verdictTier.value?.verdict === '禁买') return '禁买期'
-  if (!llmSelfBuy.value) return `模型自判${llm.value.regime || '观察'}`
-  return ''
-})
-// 密度控制: 默认紧凑 — 依据/回避截断两行、候选理由一行, 点"详情/展开"才放全文
-const whyFull = ref(false)
-const avoidFull = ref(false)
-const llmExp = ref({})
-function toggleLlmPick(code) { llmExp.value = { ...llmExp.value, [code]: !llmExp.value[code] } }
+// 大模型独立选股(影子)已于 2026-11-19 拍板下线(llm-1000 班删除后无新产出, 11-07 回测不转正结案)。
 
 // 候选实时价: 东财 ulist 一次批量(≤40只/批), 仅用于"距买点/止损参考"行
 const strikePx = ref({})
@@ -226,11 +199,10 @@ async function loadAuction(silent = false) {
     auctionError.value = false
   } catch (e) {
     // 盘外无快照是常态, 但"取不到"与"今天没有"不能混为一谈(2026-09-15 审计 E5):
-    // 记下失败, 让大模型卡/盘前候选区如实说"加载失败"而不是"非交易日无此数据"。
+    // 记下失败, 让竞价失败节/盘前候选区如实说"加载失败"而不是"非交易日无此数据"。
     auctionError.value = true
     if (!silent) console.error('[MarketTab auction]', e?.message)
   }
-  auctionLoading.value = false
 }
 
 // 30s 轮询(交易时段)
@@ -427,44 +399,10 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         </div>
       </section>
 
-      <!-- 大模型独立选股(影子): 每日 09:25 DeepSeek 只看原始竞价数据独立分析, 与引擎结论互不影响.
-           卡片常驻: 无输出日也保留入口(占位说明), 候选不可买时照常展示只打标签, 执行权在引擎纪律 -->
-      <section class="mt-sec">
-        <div class="mt-sec-head">
-          <h3>🤖 大模型选股<Hint text="DeepSeek 独立分析: 只喂 09:25 原始竞价数据(昨日涨停池/炸板/宽度/竞价额), 不参考引擎结论; 允许空仓输出。影子运行仅供对照, 不构成引擎结论; 候选上的「不可买」标签来自引擎闸门/模型自判, 展示层标注, 不影响回测口径。"/></h3>
-          <em v-if="llm">{{ llm.model }} · {{ llm.prompt_ver }} · {{ llmTime }}</em>
-          <button v-if="llm" class="mt-more" @click="showLlm = !showLlm">{{ showLlm ? '收起 ▲' : '展开 ▾' }}</button>
-        </div>
-        <template v-if="llm && showLlm && !llm.degraded">
-          <div class="mt-llm-head">
-            <span :class="['llm-regime', llmRegimeCls]">{{ llm.regime || '—' }}</span>
-            <span class="llm-pos">{{ llm.position_today }}</span>
-            <span v-if="llmBlockTxt && (llm.picks || []).length" class="rv-tag watch">候选均不可买 · {{ llmBlockTxt }}</span>
-          </div>
-          <div class="mt-llm-why" :class="{ clamped: !whyFull }" @click="whyFull = !whyFull">{{ llm.why }}</div>
-          <div v-if="!whyFull" class="clamp-line" @click="whyFull = true">展开依据 ▾</div>
-          <div v-if="!(llm.picks || []).length" class="mt-hold">今日 {{ llm.regime }} —— 空仓等待 ✓（不满足出手条件，空仓即正确）</div>
-          <div v-for="k in llm.picks" :key="k.code" class="mt-review" @click="goStock(k)">
-            <div class="mt-strike-top">
-              <b class="nm">{{ k.name }}</b>
-              <span class="llm-action">{{ k.action }}</span>
-              <span class="llm-pos-tag">{{ k.pos }}</span>
-              <span v-if="llmBlockTxt" class="rv-tag watch">不可买</span>
-              <button class="mt-mini" @click.stop="toggleLlmPick(k.code)">{{ llmExp[k.code] ? '收起' : '详情' }}</button>
-            </div>
-            <div class="wzq-sub" :class="{ clamped: !llmExp[k.code] }">
-              {{ k.reason }}<template v-if="llmExp[k.code]"><template v-if="k.entry"> · 买法: {{ k.entry }}</template><template v-if="k.stop"> · 止损: {{ k.stop }}</template></template>
-            </div>
-          </div>
-          <div class="mt-llm-avoid" :class="{ clamped: !avoidFull }" @click="avoidFull = !avoidFull">🚫 回避: {{ llm.avoid }}</div>
-          <div v-if="!avoidFull" class="clamp-line" @click="avoidFull = true">展开回避 ▾</div>
-        </template>
-        <div v-else-if="llm && showLlm && llm.degraded" class="mt-hold">今日无有效输出（模型输出异常，已降级存档待回测）</div>
-        <!-- 竞价数据未到时不下"暂无"结论, 防加载闪现误导; llm 存在但收起时三分支全不命中=只留卡头 -->
-        <div v-else-if="auctionError" class="mt-hold">⚠️ 竞价快照加载失败 — 与"非交易日无此项"不同，请刷新重试</div>
-        <div v-else-if="!auctionLoading && !llm" class="mt-hold">
-          暂无模型输出 — 每个交易日 09:25 竞价班自动生成，非交易日/上线前的历史日期无此项
-        </div>
+      <!-- 竞价快照加载失败要如实可见(2026-09-15 静默审计红线: 失败≠"非交易日无此数据")。
+           大模型卡(2026-11-19 下线)原先借 v-else 链承载本提示, 删卡后独立成节 -->
+      <section v-if="auctionError" class="mt-sec">
+        <div class="mt-hold">⚠️ 竞价快照加载失败 — 与"非交易日无此项"不同，请刷新重试</div>
       </section>
             <!-- 失败与"加载中"分开说: 引擎拉取失败时不能显示成永远在加载(2026-09-15 静默审计 G4) -->
       <div v-if="cycleError" class="mt-hold" style="padding:20px 0;text-align:center;">
@@ -610,26 +548,11 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .wzq-top .nm { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wzq-top .rv-tag { margin-left: auto; }
 .wzq-sub { font-size: 11px; color: #78839a; line-height: 1.6; margin: 3px 0 0; word-break: break-all; }
-/* ── 大模型选股(影子) ── */
-.mt-llm-head { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; flex-wrap: wrap; }
-.llm-regime { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 10px; flex: none; white-space: nowrap; }
-.llm-regime.go { color: #0a7d34; background: rgba(42,168,92,.12); }
-.llm-regime.warn { color: #b06a00; background: rgba(230,146,26,.14); }
-.llm-regime.watch { color: var(--accent); background: rgba(41,128,185,.1); }
-.llm-regime.ban { color: var(--up); background: rgba(192,57,43,.1); }
-.llm-regime.plain { color: var(--ink-3); background: rgba(0,0,0,.05); }
-.llm-pos { font-size: 11px; color: #78839a; flex: 1 1 auto; min-width: 0; }
-/* 中文无空格, flex 收缩会压成一字一列, 不可买标签禁止收缩 */
-.mt-llm-head .rv-tag { margin-left: 0; }
-.mt-llm-why { font-size: 11px; color: #5b6a85; line-height: 1.6; padding: 4px 0 8px; border-bottom: 0.5px solid rgba(0,0,0,.04); }
-.mt-llm-avoid { font-size: 11px; color: #a05a4a; line-height: 1.6; padding: 8px 0 2px; border-top: 0.5px solid rgba(0,0,0,.04); margin-top: 4px; }
-/* 文本密度: 默认截断(依据/回避两行, 候选理由一行), 点击文本或下方小字放全文 */
+/* 大模型选股卡 CSS 已随 2026-11-19 下线删除 */
+/* 文本密度: 默认截断, 点击文本放全文 */
 .clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .mt-review .wzq-sub.clamped { -webkit-line-clamp: 1; }
 .clamp-line { font-size: 10px; color: var(--accent); text-align: right; padding: 2px 2px 6px; cursor: pointer; }
-.mt-llm-avoid + .clamp-line { padding-top: 0; }
-.llm-action { font-size: 11px; color: var(--accent); font-weight: 600; }
-.llm-pos-tag { font-size: 10px; color: var(--ink-3); margin-left: auto; }
 .mt-strike-top { flex-wrap: wrap; row-gap: 4px; }
 .mt-strike-top .mt-strike-score { margin-left: auto; }
 

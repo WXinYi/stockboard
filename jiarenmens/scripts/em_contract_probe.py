@@ -183,9 +183,18 @@ def send_probe():
                         "combinationId": PROBE_COMBINATION_ID},
                "method": "CombinationInfoHandler", "client": "ios",
                "clientType": "cfw", "clientVersion": FAKE_CLIENT_VERSION}
-    resp = requests.post(PROBE_URL, json=payload, timeout=8, headers={
-        "User-Agent": BROWSER_UA, "Origin": "https://groupwap.eastmoney.com",
-        "Content-Type": "application/json", "Accept": "application/json, text/plain, */*"})
+    try:
+        resp = requests.post(PROBE_URL, json=payload, timeout=8, headers={
+            "User-Agent": BROWSER_UA, "Origin": "https://groupwap.eastmoney.com",
+            "Content-Type": "application/json", "Accept": "application/json, text/plain, */*"})
+    except requests.RequestException as e:
+        # 2026-11-19 09:29 事故: 开盘 EM 抖动 ReadTimeout 未捕获 → traceback 打死整班,
+        # 连坐跳过已采完的 --rank 提交。哨兵的职责就是"探到不可用并写 ok=false 让全站 🟡
+        # 优雅降级", 网络层异常与"接口返回异常"同等对待: 归一 status=0 → evaluate →
+        # ok=false, 班次继续走完(midday/close/提交不受哨兵影响)。
+        print(f"哨兵网络异常({type(e).__name__}) → 归一为探测失败, ok=false: {e}")
+        return {"status": 0, "headers": {}, "body": {}, "token_present": False,
+                "network_error": f"{type(e).__name__}: {e}"}
     try:
         body = resp.json()
     except ValueError:

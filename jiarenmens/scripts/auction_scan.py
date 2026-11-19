@@ -714,6 +714,18 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                 print(f"      周期: {cycle_res['stage']} (置信度 {cycle_res['confidence']}/9), "
                       f"主线 {[m['board'] for m in cycle_res['mainlines'][:3]]}")
                 print(f"      (9:26 口径: 当日池未落 → 用池内最近日 {cycle_res['date']} 的周期判定 + 今日竞价)")
+                # 陈旧池守卫(2026-11-13~11-19 涨停池断供事故: 池子静默陈旧 3 个交易日,
+                # 班次全绿零感知)。口径: 池日距今日 >4 个自然日即打 ::warning:: —— 周末
+                # 周一(3天)不误报; 长假后首日会提示(池日确实落后, warning 级无害可解释)。
+                try:
+                    from datetime import date as _date
+                    _pool_day = str(cycle_res.get("date", ""))
+                    _lag = (_date.today() - _date.fromisoformat(_pool_day)).days if _pool_day else 99
+                    if _lag > 4:
+                        print(f"      ::warning::周期判定池日 {_pool_day} 落后今日 {_lag} 个自然日 — "
+                              f"涨停池生产链路疑似断供(crawl.yml 15:00 后应跑 backfill_emotion --pool)")
+                except ValueError:
+                    pass
             except Exception as e2:
                 print(f"      ⚠️ 周期引擎不可用({e2}), 出击选股无法生成")
         else:
@@ -781,31 +793,6 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         except Exception as e:
             print(f"      ⚠️ 昨日连板换手排名失败(不影响主流程): {e}")
 
-    # 大模型独立选股已移至 10:00 盘中班(2026-09-22 拍板): 竞价时点存在结构性盲区
-    # (当日涨跌停/晋级/溢价均未产生, 09-22 实测"105→103持平"式硬凑), 详见 docs/DATA_PIPELINE.md。
-    # 09:25 班只做存档回填: 取 ≤ 今天的最新 llm 行(通常为昨日 v3), 卡片带日期展示;
-    # 当日 10:00 llm-1000 班会以 v3 实时因子覆盖刷新。
-    llm_payload = None
-    if not dry_run:
-        try:
-            import sqlite3
-            with sqlite3.connect(f"file:{Path(__file__).resolve().parent.parent / 'data' / 'auction.db'}?mode=ro", uri=True) as _c:
-                _r = _c.execute(
-                    "SELECT date, regime, why, position, picks, avoid, model, prompt_ver, latency_s, degraded, created_at"
-                    " FROM llm_review WHERE date<=?"
-                    " ORDER BY (CASE WHEN IFNULL(degraded,0)=1 THEN 1 ELSE 0 END) ASC,"
-                    " date DESC, prompt_ver DESC, created_at DESC LIMIT 1", (date_str,)).fetchone()
-            if _r:
-                import json as _json
-                llm_payload = {"date": _r[0], "regime": _r[1], "why": _r[2], "position_today": _r[3] or "",
-                               "picks": _json.loads(_r[4] or "[]"), "avoid": _r[5] or "", "model": _r[6],
-                               "prompt_ver": _r[7], "latency_s": _r[8], "degraded": bool(_r[9]),
-                               "generated_at": _r[10]}
-                print(f"      llm 存档回填(regime={_r[1]}, prompt_ver={_r[7]}, 数据日={_r[0]})")
-        except Exception as e:
-            # 原为裸 pass: 存档兜底也失败时毫无线索, 前端只会看到"大模型卡空着"
-            print(f"      ⚠️ llm 存档回填失败(本班大模型卡将为空): {e}")
-
     # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
     if not dry_run:
         print(f"      东财人气榜快照(am)")
@@ -835,7 +822,6 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                          "pid": l["pid"], "role": l["role"]} for l in cycle_res["leaders"]],
         } if cycle_res else None),
         "empty_reason": "" if env_res["pass"] else "; ".join(env_res["reasons"]),
-        "llm": llm_payload,
         "stats": {"pool": len(pool), "boards": len(boards), "genes": 0},
         # ── 过渡兼容键(老 Pages 构建的 AuctionTab 读 candidates.length/watch 会崩,
         #    新 UI 要等 crawl 班 npm run build 部署; 新 UI 上线后本组可删) ──

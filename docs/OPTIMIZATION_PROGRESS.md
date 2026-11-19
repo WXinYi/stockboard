@@ -40,7 +40,7 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 
 | 时间/频率 | 触发 | 目标 |
 |---|---|---|
-| 09:25 | cron-job.org `workflow_dispatch: auction.yml` | 竞价扫描 + 推送 + 发版（含 LLM 影子选股，内嵌 auction_scan） |
+| 09:25 | cron-job.org `workflow_dispatch: auction.yml` | 竞价扫描 + 推送 + 发版（LLM 影子选股已于 11-19 下线） |
 | 09:26–14:51 共 20 班 | cron-job.org `workflow_dispatch: crawl.yml`，body 含 `inputs.trigger_source=cron` | 市场切片 + 选手 rank/midday/market 快照 |
 | 15:15 | cron-job.org `repository_dispatch: crawl-eod` | close 全量快照 + Release sync |
 | 15:45 | cron-job.org job `8880763`，`repository_dispatch: crawl-cancel-check` | 掐班告警，external trigger，去重状态落 `.github/state/crawl-cancel-alert.json` |

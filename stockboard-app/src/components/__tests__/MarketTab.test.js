@@ -99,7 +99,7 @@ describe('MarketTab 挂载（死链清理回归）', () => {
     expect(w.text()).toContain('发酵')
   })
 
-  it('已下线区块不再出现在 DOM 中（弱转强 / 昨日复核 / 持仓触价）', async () => {
+  it('已下线区块不再出现在 DOM 中（弱转强 / 昨日复核 / 持仓触价 / 大模型选股）', async () => {
     loadCycleData.mockResolvedValue({ cycle: CYCLE, ladderRows: [], prevFull: [], riseFallToday: null })
     loadBattleData.mockResolvedValue(BATTLE)
     const w = await mountAndLoad()
@@ -109,6 +109,8 @@ describe('MarketTab 挂载（死链清理回归）', () => {
     expect(html).not.toContain('持仓触价')
     expect(html).not.toContain('已持仓')          // holdOf 已删除，不应残留标记
     expect(html).not.toContain('弱转强·炸板回封')
+    expect(html).not.toContain('大模型选股')      // 2026-11-19 拍板下线(llm-1000 删除后无新产出)
+    expect(html).not.toContain('暂无模型输出')
   })
 
   it('渲染期无"未定义绑定"类告警（模板残留会在这里暴露）', async () => {

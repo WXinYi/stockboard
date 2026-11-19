@@ -232,6 +232,27 @@ jobs:
             echo "盘中班次($H), 跳过炸板归档"
           fi
 
+      # 涨停池生产者(2026-11-19 修复): 重构删 auction-label.yml 时此链路被连带删除,
+      # limit_pool 自 11-13 断供 3 个交易日 → 竞价班周期判定/连板名单静默用陈旧池。
+      # 7 天滚动窗口 + skip-existing 幂等自愈(当日走实时接口, 历史走 His 中转)。
+      - name: 涨停池归档(KPL, 7天滚动)
+        if: success() && steps.dayguard.outputs.trading != 'false'
+        continue-on-error: true
+        env:
+          KPL_HIS_PROXY: https://1258166434-kgwxvgeu2h.ap-guangzhou.tencentscf.com
+        run: |
+          cd jiarenmens
+          H=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$H" -ge 1500 ]; then
+            START=$(date -d '-7 days' +%F); END=$(date +%F)
+            python scripts/backfill_emotion.py --pool "$START" "$END" --skip-existing 2>&1 | tee /tmp/pool.log
+            if grep -qE "⚠️|失败|Traceback" /tmp/pool.log; then
+              echo "::warning::本班涨停池归档有缺口 — 周期引擎/竞价班会用陈旧池(竞价班另有池日滞后 ::warning:: 守卫)"
+            fi
+          else
+            echo "盘中班次($H), 跳过涨停池归档"
+          fi
+
       - name: 盘中宽度刷新(实时当日行)
         if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true

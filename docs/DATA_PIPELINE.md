@@ -41,12 +41,15 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 | 步骤 | 命令/脚本 | 说明 |
 |---|---|---|
 | 榜单快照 | `player_snapshot.py --rank --live` | 每榜 300 人（5 榜 × 75 次分页），写 `players.json` / `today.json` / `stocks.json` 基础字段 |
-| 契约哨兵 | `em_contract_probe.py --live` | 写 `today.json.emContract`，浏览器 EM 直连是否可用 |
+| 契约哨兵 | `em_contract_probe.py --live` | 写 `today.json.emContract`，浏览器 EM 直连是否可用；**网络异常（超时/SSL）归一为 ok=false 优雅降级，不打死整班**（2026-11-19 09:29 事故修复） |
 | 午盘快照 | `player_snapshot.py --midday --live --no-token` | 12 worker，2N 次 rtV2 调用 |
 | 收盘快照 | `player_snapshot.py --close --live --no-token` | 12 worker，3N 次 rtV2 调用 |
+| 涨停池归档 | `backfill_emotion.py --pool <7天窗口> --skip-existing` | 15:00 后班执行，7 天滚动幂等自愈；**2026-11-19 修复**（重构删 auction-label.yml 时生产者被连带删除，limit_pool 断供 11-13~11-18 三个交易日，竞价班周期判定/连板名单静默用陈旧池；竞价班另有"池日落后>4 自然日 → ::warning::"守卫） |
 | 市场切片 | `export_market.py --market-only` | 写 `hot_rank/lianban_bid/broken_pool/market_breadth.json` |
 | 格局推送 | `cycle_push.py --session midday/eod` | 13:00–13:25 / 14:40–15:00，钉钉正文与失败标志 |
 | auction.db | `release_db.py --what auction --download-latest/--upload-latest` | 每班恢复，sha 变更才上传，带 baseline-sha 并发守卫 |
+
+**LLM 影子选股已下线（2026-11-19 拍板）**：`llm-1000.yml` 重构删除后自 11-14 起无新产出，9:25 回填永远停在旧存档，且 11-07 回测结论"不转正"。已删：`src/analysis/llm_review.py`、`scripts/llm_picks_review.py` 及测试、`data/llm_archive/`、auction.yml 的 DEEPSEEK env、前端大模型卡（`auctionError` 失败提示独立成节保留）；`auction.json` 的 `llm` 键与 auction.db 的 `llm_review` 表（历史数据）不再产出/读取。
 
 `SB_DATA_V2=0` 时不产出 4 契约，用于灰度回滚。`midday/close` 的 no-token payload 不带 `ctToken/utToken/randomCode/deviceId`。
 
