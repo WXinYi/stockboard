@@ -226,7 +226,7 @@ jobs:
           if [ "$H" -ge 1500 ]; then
             python scripts/backfill_broken.py 2>&1 | tee /tmp/broken.log
             if grep -qE "⚠️|失败|Traceback" /tmp/broken.log; then
-              echo "::warning::本班炸板池归档有缺口 — 弱转强判定会少数据"
+              echo "::warning::本班炸板池归档有缺口 — broken_pool 切片将缺数据"
             fi
           else
             echo "盘中班次($H), 跳过炸板归档"

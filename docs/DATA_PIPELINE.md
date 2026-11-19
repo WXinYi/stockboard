@@ -77,6 +77,8 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 
 `tradeConsensus` 当前代码写入 `totalTrades/totalBuyers/aTotalTrades/aTotalBuyers/stocks[]`。2026-11-17 生产快照暂为旧结构（缺 A 股字段），前端回退全市场口径；11-18 自然班后完整写入，契约守卫届时应收紧为“必须有”。
 
+下线切片文件（`six_history.json` / `my_positions.json` / `strike_review.json`）已于 2026-11-19 从仓库删除；部署 `rsync -a --delete` 会在下一班把线上旧文件一并清掉。`auction.json`（09:25 竞价班产出）与上述契约并存于同目录。
+
 A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示层滤港股，数据文件保留全量。
 
 ## 5. 推送

@@ -85,25 +85,28 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 
 | 项 | 结果 |
 |---|---|
-| 前端单测 | `230 passed` |
-| 前端构建 | `vite build` 成功，bundle `index-CNk4sxs3.js` / `index-ChNhDtGK.css` |
-| 后端单测 | `276 tests OK (skipped=3)` |
+| 前端单测 | `269 passed`（11-19 基线；282 − 删除的六情绪对拍 13 例） |
+| 前端构建 | `vite build` 成功，7 precache entries |
+| 后端单测 | `287 tests OK (skipped=3)`（11-19 基线） |
 | 语法/YAML | `py_compile`、workflow YAML、`git diff --check` 全绿 |
-| IDE lint | 0 diagnostics |
 | CI | 代码门禁 success，部署 success |
-| 生产数据（11-17 close） | `players` 1381 人，`prevClose` 1381 全满，`stocks.snapshot=close`，`traded=820` |
-| 掐班告警 | 15:45 自然触发 success，识别 18 个定时采集班全部完成 |
+| 生产数据（11-19 close） | `players/stocks/today` 全部当日 close 快照，`traded=1257`，`emContract.ok=true` |
+| 涨停池断供修复 | 11-19 EOD 班新步骤首跑成功：`limit_pool MAX=11-19` 当日落库；炸板池自愈 11-16/17/18 三天缺口 |
 
 ## 剩余待办 / 观察
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 11-18 midday 自然班 | 待观察 | 确认 `[cron]` run-name、`tradeConsensus` 非零、`aTotalTrades/aTotalBuyers` 写入 |
-| 11-18 13:05 午盘推送 | 待观察 | 确认钉钉正文含 A 股共识段，日志打印共识正文，去重状态成功提交 |
-| 11-18 15:45 掐班告警 | 待观察 | 最新 workflow（并发组/重试/失败告警/只列新增 run）上线后首次自然验证 |
-| 收紧契约守卫 | 默认动作 | 新字段到位后，把 `test_qa_s1_contracts.py` 中 A 股字段从“可选兼容”改为“必须有” |
-| S5/G4 证据链 | 待收口 | K2、班时、20+21 班对账，R2/NR-2/NR-3 |
-| S6 归档 | 待收口 | G4 解锁后整理历史文档；本文件已是当前状态入口 |
+| ~~11-18 三项自然班观察~~ | **已全过**（11-19 核验） | midday A股字段 1321/366 写入；13:05 推送含 A股共识段；15:45 告警班 success |
+| ~~涨停池断供 P0~~ | **已修复**（11-19 `dccf3833715`） | 11-18 晨手工补热层三天 + crawl.yml 加 `--pool` 生产者（当晚 EOD 首跑成功，`limit_pool MAX=11-19`）+ 竞价班池日落后 >4 自然日 `::warning::` 守卫 |
+| ~~哨兵网络异常打死整班~~ | **已修复**（同上） | 11-19 09:29 EM 抖动 ReadTimeout 未捕获连坐 rank 提交；现网络异常归一 `ok=false` 优雅降级 |
+| ~~LLM 影子选股~~ | **已下线**（11-19 拍板） | llm-1000 删除后 11-14 起无新产出、回测不转正；引擎/回测/归档/前端卡/DEEPSEEK env 全删 |
+| ~~下线功能残留清理~~ | **已完成**（11-19） | 线上冻结 JSON×3（six_history/my_positions/strike_review，部署 rsync `--delete` 自动清线上）/ sixEmotion 全家×4 / HeaderStats / verify_slices / calibrate_probability / strike_gate_backtest / 过时文案；`six_emotions.py` 保留（回测脚本依赖） |
+| 后端弱转强候选计算 | **半下线待拍板** | `stage_candidates` 每日仍计算弱转强块并写 strike_pool 存档，前端展示块已删；要不要连后端一起下线属策略变更，单独拍板 |
+| 收紧契约守卫 | 默认动作 | A 股字段已到位（11-18 验证），把 `test_qa_s1_contracts.py` 从”可选兼容”改”必须有” |
+| test.yml 失败告警 | P2 | 唯一无 alert-on-failure 的 workflow |
+| S5/G4 证据链 | 待收口 | 班时已远超目标（盘中 0-1min / EOD 6min）；剩 K2、20+21 班对账 |
+| tradingCalendar 2027 | 年底项 | 等交易所通知 |
 
 没有需要立即拍板的生产阻塞项。可选专项：watchdog Actions cache 架构优化（当前不是已确认故障，暂不做）。
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""炸板池归档: 选股宝 limit_up_broken → auction.db broken_pool(弱转强"昨日分歧"精确数据源)
+"""炸板池归档: 选股宝 limit_up_broken → auction.db broken_pool(炸板池历史归档)
 
 用法(在 jiarenmens/ 目录):
   python scripts/backfill_broken.py                    # 收盘班: 最近 7 个交易日滚动归档(幂等自愈)
@@ -115,7 +115,7 @@ def main():
     conn.close()
     if len(days) >= 2 and (latest is None or latest < days[-2]):
         print(f"⚠️ broken_pool 最新日期 {latest} 落后于 {days[-2]}(窗口内前一个交易日), "
-              f"自愈未生效 — 弱转强「昨日炸板」会少数据")
+              f"自愈未生效 — broken_pool 切片将缺数据")
 
     if failed and len(failed) == len(days):
         sys.exit(1)
