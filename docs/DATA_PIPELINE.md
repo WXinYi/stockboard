@@ -45,7 +45,7 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 | 午盘快照 | `player_snapshot.py --midday --live --no-token` | 12 worker，2N 次 rtV2 调用 |
 | 收盘快照 | `player_snapshot.py --close --live --no-token` | 12 worker，3N 次 rtV2 调用 |
 | 涨停池归档 | `backfill_emotion.py --pool <7天窗口> --skip-existing` | 15:00 后班执行，7 天滚动幂等自愈；**2026-11-19 修复**（重构删 auction-label.yml 时生产者被连带删除，limit_pool 断供 11-13~11-18 三个交易日，竞价班周期判定/连板名单静默用陈旧池；竞价班另有"池日落后>4 自然日 → ::warning::"守卫） |
-| 市场切片 | `export_market.py --market-only` | 写 `hot_rank/lianban_bid/broken_pool/market_breadth.json` |
+| 市场切片 | `export_market.py --market-only` | 写 `hot_rank/lianban_bid/market_breadth.json`（broken_pool 切片已随弱转强下线删除, 11-20） |
 | 格局推送 | `cycle_push.py --session midday/eod` | 13:00–13:25 / 14:40–15:00，钉钉正文与失败标志 |
 | auction.db | `release_db.py --what auction --download-latest/--upload-latest` | 每班恢复，sha 变更才上传，带 baseline-sha 并发守卫 |
 
@@ -55,7 +55,7 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 
 ### 3.3 部署与提交
 
-- 数据班只精确提交：`players/stocks/today/hot_rank/lianban_bid/broken_pool/market_breadth.json` + `jiarenmens/data/.cycle_push_state.json`。
+- 数据班只精确提交：`players/stocks/today/hot_rank/lianban_bid/market_breadth.json` + `jiarenmens/data/.cycle_push_state.json`。
 - 提交信息：`📊 数据更新 YYYY-MM-DD [skip ci]`。
 - 推送冲突：`git -c rebase.autoStash=true pull --rebase -X theirs`，最多重试 3 次；`-X theirs` 在 rebase 中表示保留本班重放提交（最新采集数据）。
 - dist 壳按前端源码指纹缓存；代码未变时只 `rsync` 拼接最新 `public/data`。
@@ -72,7 +72,6 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 | `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}` |
 | `hot_rank.json` | `{date, snap, rows[], src}` |
 | `lianban_bid.json` | `{date, prev_day, top[], src}` |
-| `broken_pool.json` | `{date, rows[], src}` |
 | `market_breadth.json` | `{date, row, src}` |
 
 `tradeConsensus` 当前代码写入 `totalTrades/totalBuyers/aTotalTrades/aTotalBuyers/stocks[]`。2026-11-17 生产快照暂为旧结构（缺 A 股字段），前端回退全市场口径；11-18 自然班后完整写入，契约守卫届时应收紧为“必须有”。

@@ -27,9 +27,6 @@ def make_dbs(db_dir):
     a.execute("INSERT INTO bid_pool VALUES (?, '000001', '平安银行', 3.5)", (DATE,))
     a.execute("CREATE TABLE market_breadth (date TEXT, zt INTEGER, dt INTEGER)")
     a.execute("INSERT INTO market_breadth VALUES (?, 30, 5)", (DATE,))
-    a.execute("CREATE TABLE broken_pool (date TEXT, code TEXT, name TEXT, break_times INTEGER, "
-              "change_pct REAL, turnover REAL, height INTEGER)")
-    a.execute("INSERT INTO broken_pool VALUES (?, '600001', '甲', 2, 3.0, 10.0, 2)", (DATE,))
     a.commit()
     a.close()
     h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
@@ -76,9 +73,9 @@ class TestMarketOnly(unittest.TestCase):
         for forbidden in em.FORBIDDEN_SLICES:
             self.assertNotIn(forbidden, names, f"不得产出 {forbidden}（F5 / Q1=B）")
 
-    def test_产物恰好4个_平铺无子目录(self):
+    def test_产物恰好3个_平铺无子目录(self):
         written = em.cmd_market_only(self.out, self.dbs, DATE)
-        self.assertEqual(len(written), 4)
+        self.assertEqual(len(written), 3)
         self.assertEqual(tuple(sorted(written)), tuple(sorted(em.MARKET_SLICES)))
         for p in self.out.iterdir():
             self.assertTrue(p.is_file(), "AQ1=A: FLAT 平铺, 无 market/ 子目录")
@@ -91,8 +88,6 @@ class TestMarketOnly(unittest.TestCase):
         self.assertEqual(hot["rows"][0]["code"], "000001")
         breadth = json.loads((self.out / "market_breadth.json").read_text(encoding="utf-8"))
         self.assertEqual(breadth["row"]["zt"], 30)
-        broken = json.loads((self.out / "broken_pool.json").read_text(encoding="utf-8"))
-        self.assertEqual(broken["rows"][0]["code"], "600001")
         lianban = json.loads((self.out / "lianban_bid.json").read_text(encoding="utf-8"))
         self.assertEqual(lianban["top"][0]["code"], "000001")
 

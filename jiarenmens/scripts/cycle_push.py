@@ -212,7 +212,7 @@ def build_markdown(res: dict, session: str) -> str:
 
     lines.append(f"\n**📌 阶段纪律: {c['playbook']}**")
     if session == "midday":
-        lines.append("💡 午后重点: 高位股封单是否松动(周期拐点) · 主线是否继续扩散 · 弱转强只认放量站稳均价")
+        lines.append("💡 午后重点: 高位股封单是否松动(周期拐点) · 主线是否继续扩散 · 回封只认放量站稳均价")
     else:
         obs = "、".join(f"{l['name']}({l['pid']}板)" for l in c["leaders"][:4]) or "无"
         lines.append(f"💡 明日竞价观察名单: {obs}")

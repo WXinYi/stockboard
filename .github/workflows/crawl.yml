@@ -217,20 +217,6 @@ jobs:
             echo "盘中班次($H), 跳过宽度更新"
           fi
 
-      - name: 炸板池归档(选股宝)
-        if: success() && steps.dayguard.outputs.trading != 'false'
-        continue-on-error: true
-        run: |
-          cd jiarenmens
-          H=$(TZ=Asia/Shanghai date +%H%M)
-          if [ "$H" -ge 1500 ]; then
-            python scripts/backfill_broken.py 2>&1 | tee /tmp/broken.log
-            if grep -qE "⚠️|失败|Traceback" /tmp/broken.log; then
-              echo "::warning::本班炸板池归档有缺口 — broken_pool 切片将缺数据"
-            fi
-          else
-            echo "盘中班次($H), 跳过炸板归档"
-          fi
 
       # 涨停池生产者(2026-11-19 修复): 重构删 auction-label.yml 时此链路被连带删除,
       # limit_pool 自 11-13 断供 3 个交易日 → 竞价班周期判定/连板名单静默用陈旧池。

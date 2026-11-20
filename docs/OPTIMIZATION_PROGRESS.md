@@ -93,6 +93,23 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 | 生产数据（11-19 close） | `players/stocks/today` 全部当日 close 快照，`traded=1257`，`emContract.ok=true` |
 | 涨停池断供修复 | 11-19 EOD 班新步骤首跑成功：`limit_pool MAX=11-19` 当日落库；炸板池自愈 11-16/17/18 三天缺口 |
 
+## S5/G4 验收记录（2026-11-19 文书收口）
+
+| KPI | 目标 | 实测（11-18/19） | 结论 |
+|---|---|---|---|
+| K1 请求量口径 | rank 75 + midday 2N + close 3N | EOD 日志 `4164 = 1388×3`；全天 ≈7015 | ✅ |
+| K2 全天总量 | 旧标称 7805±10% | 7015（按实测口径；N 随榜单 1386→1388 波动，旧标称不再作精确线） | ✅（口径已改实测） |
+| K3 rank 恰好 75 次 | 5 榜×300 | rank 班日志 75 次分页 | ✅ |
+| K4 盘中班 0 次选手接口 | 18 班 | 盘中班仅市场+宽度步骤 | ✅ |
+| K5 两时点快照 | midday 2N / close 3N，仅 close 加收益 | player_snapshot 设计与日志吻合 | ✅ |
+| K6 watchdog 🆕/↩️ | 不退化 | `9/9 人可用`，去重键不变 | ✅ |
+| K8 20 班无缺口 | 20 班全成 | 11-19: 85 success/1 failure（哨兵事故班已补跑） | ✅ |
+| 班时 ≤基线50% | 正常 5.2-7.4min / EOD 24.4min | 盘中 0-1min / midday 4min / EOD 6min（≈15-25%） | ✅ 大幅超额 |
+| K9 emContract 哨兵 | ok=false → 全站🟡 0 请求 | 哨兵两分支单测 + 网络异常归一 | ✅ |
+| 20+21 班计数分开 | EOD 专班独立 | crawl-eod 单独班次与告警窗口 | ✅ |
+
+**G4 视为达成**（N6 周期/六情绪历史缺口为登记在案的已接受退化，不计失败项；弱转强/broken_pool 于 11-19 经用户拍板整体下线，见下）。
+
 ## 剩余待办 / 观察
 
 | 项 | 状态 | 说明 |
@@ -101,11 +118,11 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 | ~~涨停池断供 P0~~ | **已修复**（11-19 `dccf3833715`） | 11-18 晨手工补热层三天 + crawl.yml 加 `--pool` 生产者（当晚 EOD 首跑成功，`limit_pool MAX=11-19`）+ 竞价班池日落后 >4 自然日 `::warning::` 守卫 |
 | ~~哨兵网络异常打死整班~~ | **已修复**（同上） | 11-19 09:29 EM 抖动 ReadTimeout 未捕获连坐 rank 提交；现网络异常归一 `ok=false` 优雅降级 |
 | ~~LLM 影子选股~~ | **已下线**（11-19 拍板） | llm-1000 删除后 11-14 起无新产出、回测不转正；引擎/回测/归档/前端卡/DEEPSEEK env 全删 |
-| ~~下线功能残留清理~~ | **已完成**（11-19） | 线上冻结 JSON×3（six_history/my_positions/strike_review，部署 rsync `--delete` 自动清线上）/ sixEmotion 全家×4 / HeaderStats / verify_slices / calibrate_probability / strike_gate_backtest / 过时文案；`six_emotions.py` 保留（回测脚本依赖） |
-| 后端弱转强候选计算 | **半下线待拍板** | `stage_candidates` 每日仍计算弱转强块并写 strike_pool 存档，前端展示块已删；要不要连后端一起下线属策略变更，单独拍板 |
-| 收紧契约守卫 | 默认动作 | A 股字段已到位（11-18 验证），把 `test_qa_s1_contracts.py` 从”可选兼容”改”必须有” |
-| test.yml 失败告警 | P2 | 唯一无 alert-on-failure 的 workflow |
-| S5/G4 证据链 | 待收口 | 班时已远超目标（盘中 0-1min / EOD 6min）；剩 K2、20+21 班对账 |
+| ~~下线功能残留清理~~ | **已完成**（11-19） | 线上冻结 JSON×3 / sixEmotion 全家×4 / HeaderStats / verify_slices / calibrate_probability / strike_gate_backtest / 过时文案 |
+| ~~弱转强+broken_pool 全链~~ | **已下线**（11-20 拍板"删干净"） | 后端 stage_candidates 弱转强块与 `_broken_map`、crawl.yml 炸板池步骤、`backfill_broken.py`/`xuangubao.py`/`broken_pool.json` 切片、前端 leaderBattle 加分块与 prevBroken 参数链、MarketTab 死 CSS、cycle_push 文案、data_reconcile ⑤⑥对账块；测试 fixture 同步 |
+| ~~契约守卫收紧~~ | **已完成**（11-20） | `test_qa_s1_contracts.py` A股字段从"可选兼容"改"必须有"（精确集合断言） |
+| ~~test.yml 失败告警~~ | **已完成**（11-20） | 补 alert-on-failure job（钉钉 notify_failure 同款模式） |
+| ~~S5/G4 证据链~~ | **已收口**（11-20 文书，见上表） | K2 按实测口径结案 |
 | tradingCalendar 2027 | 年底项 | 等交易所通知 |
 
 没有需要立即拍板的生产阻塞项。可选专项：watchdog Actions cache 架构优化（当前不是已确认故障，暂不做）。

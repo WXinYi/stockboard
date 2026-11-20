@@ -41,8 +41,6 @@ def make_market_dbs(db_dir):
     a = sqlite3.connect(str(Path(db_dir) / "auction.db"))
     a.execute("CREATE TABLE bid_pool (date TEXT, code TEXT, name TEXT, turnover_ratio REAL)")
     a.execute("CREATE TABLE market_breadth (date TEXT, zt INTEGER)")
-    a.execute("CREATE TABLE broken_pool (date TEXT, code TEXT, name TEXT, break_times INTEGER, "
-              "change_pct REAL, turnover REAL, height INTEGER)")
     a.commit()
     a.close()
     h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
@@ -138,13 +136,12 @@ class TestExactContractFields(unittest.TestCase):
         # 2026-11-16 调仓共识页：today.json 新增 tradeConsensus（方案 C），精确集合同步扩展
         self.assertEqual(set(doc), {"date", "updatedAt", "tradedPlayerIds", "emContract", "tradeConsensus"})
         tc = doc["tradeConsensus"]
-        required = {"totalTrades", "totalBuyers", "stocks"}
-        allowed = required | {"aTotalTrades", "aTotalBuyers"}
-        self.assertTrue(required <= set(tc) <= allowed,
+        # 2026-11-18 A 股字段已自然写入 → 守卫收紧为"必须有"(此前为可选兼容期)
+        required = {"totalTrades", "totalBuyers", "aTotalTrades", "aTotalBuyers", "stocks"}
+        self.assertEqual(set(tc), required,
                         f"tradeConsensus 字段异常: {sorted(tc)}")
-        if "aTotalTrades" in tc:
-            self.assertIsInstance(tc["aTotalTrades"], int)
-            self.assertIsInstance(tc["aTotalBuyers"], int)
+        for k in ("totalTrades", "totalBuyers", "aTotalTrades", "aTotalBuyers"):
+            self.assertIsInstance(tc[k], int)
         for s in tc["stocks"]:
             self.assertEqual(set(s), {"code", "name", "buy", "sell",
                                       "buyTrades", "sellTrades", "net", "lastTime"})

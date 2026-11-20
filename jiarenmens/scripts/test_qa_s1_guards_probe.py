@@ -44,9 +44,6 @@ def make_market_dbs(db_dir, with_crawl_db=True):
     a.execute("INSERT INTO bid_pool VALUES (?, '000001', '平安银行', 3.5)", (DATE,))
     a.execute("CREATE TABLE market_breadth (date TEXT, zt INTEGER, dt INTEGER)")
     a.execute("INSERT INTO market_breadth VALUES (?, 30, 5)", (DATE,))
-    a.execute("CREATE TABLE broken_pool (date TEXT, code TEXT, name TEXT, break_times INTEGER, "
-              "change_pct REAL, turnover REAL, height INTEGER)")
-    a.execute("INSERT INTO broken_pool VALUES (?, '600001', '甲', 2, 3.0, 10.0, 2)", (DATE,))
     a.commit()
     a.close()
     h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))

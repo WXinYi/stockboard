@@ -466,7 +466,7 @@ def pick_strike_top(picks: List[Dict], top_n: int = STRIKE_TOP) -> tuple:
     """出击选股 Top5(纯函数, 单测覆盖)。
     状态映射(与盘面页 leaderBattle 对齐): 可做*=出击, 可做(矩阵谨慎)=备选, 其余=观察。
     优先出击 → 备选; 都没有则回退观察名单(watch_mode=True, 纪律优先只展示不买)。
-    保持 stage_pool 存档顺序(谱系→扩展→弱转强→容量), 不重排。"""
+    保持 stage_pool 存档顺序(谱系→扩展→容量), 不重排。"""
     go = [p for p in picks if (p.get("status") or "").startswith("可做")
           and "矩阵谨慎" not in (p.get("status") or "")]
     care = [p for p in picks if "矩阵谨慎" in (p.get("status") or "")]

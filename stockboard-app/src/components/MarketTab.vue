@@ -335,7 +335,7 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
         </div>
         <div v-if="noCandidate" class="pk-empty">
           <b>闸门开 · 今日暂无达标候选</b>
-          <p>只做手上持仓、不勉强开仓;明日开盘再看新题材与弱转强名单。</p>
+          <p>只做手上持仓、不勉强开仓;明日开盘再看新题材与新周期火种。</p>
         </div>
         <div v-show="!noCandidate || showObs">
           <div v-for="c in strikeTop2" :key="c.code" class="mt-strike" :class="'st-' + stWord(c).cls" @click="goStock(c)">
@@ -543,31 +543,12 @@ const globalTop3 = computed(() => (global.value?.indexes || []).slice(0, 3))
 .mt-strike-note { font-size: 10px; color: var(--ink-3); margin-top: 4px; }
 .mt-mini { margin-left: auto; font-size: 10px; color: var(--accent); background: none; border: none; padding: 0; cursor: pointer; flex: none; }
 
-/* ── 弱转强/复核(移动端两行布局: 首行 名称+状态+结果徽标, 次行数据整行不挤压) ── */
-.wzq-top { flex-wrap: wrap; row-gap: 4px; }
-.wzq-top .nm { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wzq-top .rv-tag { margin-left: auto; }
-.wzq-sub { font-size: 11px; color: #78839a; line-height: 1.6; margin: 3px 0 0; word-break: break-all; }
 /* 大模型选股卡 CSS 已随 2026-11-19 下线删除 */
 /* 文本密度: 默认截断, 点击文本放全文 */
 .clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
-.mt-review .wzq-sub.clamped { -webkit-line-clamp: 1; }
 .clamp-line { font-size: 10px; color: var(--accent); text-align: right; padding: 2px 2px 6px; cursor: pointer; }
 .mt-strike-top { flex-wrap: wrap; row-gap: 4px; }
 .mt-strike-top .mt-strike-score { margin-left: auto; }
-
-/* ── 弱转强/复核 ── */
-.mt-review { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
-.mt-review-guide { font-size: 11px; color: var(--ink-3); background: var(--bg-3); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; line-height: 1.6; }
-.rv-tag { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 9px; margin-left: auto; flex: none; }
-.rv-tag.hold { background: rgba(255,77,90,.10); color: var(--up); }
-.rv-tag.warn { background: rgba(224,177,92,.08); color: var(--gold); }
-.rv-tag.sell { background: var(--bg-3); color: #1e7e46; }
-.rv-tag.watch { background: var(--line); color: var(--ink-3); }
-.mt-review-today { font-size: 12px; margin-top: 2px; font-weight: 600; }
-.mt-review-today.rv-hold { color: var(--up); }
-.mt-review-today.rv-warn { color: var(--gold); }
-.mt-review-today.rv-sell { color: #1e7e46; }
 
 /* ── 天梯 ── */
 .mt-group-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--bg-3); cursor: pointer; }

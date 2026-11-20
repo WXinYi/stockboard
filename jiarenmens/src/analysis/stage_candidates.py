@@ -118,7 +118,7 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
     cur_rows = [r for r in pool_rows if r["date"] == date_str]
     # "昨日"锚 = 执行日(bid_date)前一交易日, 非周期日前一交易日(2026-09-14 对账巡检⑤修复):
     # 9:26 盘前班 cycle_res.date 回落到昨收日, 旧锚 dates[index(周期日)-1] 恒再往前错一天,
-    # 1进2首板池/弱转强分歧池被锚到前日("昨日XX分歧"名不副实; 实锤: 众泰汽车 断板@09-10 vs
+    # 1进2首板池被锚到前日("昨日XX分歧"名不副实; 实锤: 众泰汽车 断板@09-10 vs
     # 应为 烂板@09-11)。收盘/回放班 bid_date 缺省=周期日 → 锚不变, 历史行为零变化。
     _anchor = bid_date or date_str
     _prior = [d for d in dates if d < _anchor]
@@ -173,33 +173,6 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
             if in_main and r["height"] >= 3:
                 add(r["code"], r["name"], r["height"], "主线高位(秒板接力对象)", "可做(谨慎接力)")
 
-    # 3) 弱转强(陈小群): 昨日分歧(断板∪尾盘烂板) + 今日竞价超预期(+1.5~7%) → 必要条件,
-    #    分时确认才上, 失败止损。烂板=收盘封单/盘中最高封单<0.15(当日最弱档, 绝对阈值不可用——
-    #    封单全天被消化是常态, 09-01 实测分布校准)。
-    # 弱转强全阶段产出(2026-09-07 "全量输出"改版): 候选必产, 阶段只决定 可做/观察(禁买期)
-    #   启动/发酵/分歧 → 可做(弱转强); 高潮/退潮/冰点 → 观察(弱转强·禁买期), 页面标「不出手」。
-    wzq_status = "可做(弱转强)" if stage in ("启动", "发酵", "分歧") else "观察(弱转强·禁买期)"
-    if prev_date:
-        _j = dates.index(prev_date)
-        prev2_codes = {r["code"] for r in pool_rows if r["date"] == dates[_j - 1]} if _j >= 1 else set()
-        sealed_prev = {r["code"] for r in prev_rows}
-        broken_prev = _broken_map(prev_date)  # 昨日触板未封(精确炸板池, 选股宝归档)
-        duanban = prev2_codes - sealed_prev  # 前日涨停、昨日未封 = 昨日断板
-        rotten = {r["code"] for r in prev_rows
-                  if r.get("max_seal") and r.get("seal_amount")
-                  and r["seal_amount"] / r["max_seal"] < 0.15}
-        names_d = {r["code"]: r["name"] for r in pool_rows}
-        for code in list(duanban | rotten | set(broken_prev))[:80]:
-            if code in seen or not bid_strong(code):
-                continue
-            # 名字兜底链: 涨停池 → 炸板池 → 当日竞价池(断板股不在涨停池时防裸代码上屏, 09-11 实例 601872 等)
-            nm = names_d.get(code) or broken_prev.get(code) or (bids.get(code) or {}).get("name") or code
-            tag = "断板" if code in duanban else ("炸板" if code in broken_prev else "烂板")
-            add(code, nm, 0,
-                f"弱转强: 昨日{tag}分歧, 今竞价 {bids[code]['change_pct']:+.1f}%, 分时确认才上",
-                wzq_status,
-                tag=tag, bid_pct=round(float(bids[code]['change_pct']), 2))  # 结构化字段(数值型! 2026-09-14 修复: 曾存 "+2.5" 字符串, 推送行 :+.1f 格式化崩溃, 竞价班整班失败; regex 兜底仍在 build_strike_review)
-
     return _apply_matrix(_apply_shrink_filter(pool, cycle_res, cur_rows), cycle_res)[:max_n]
 
 
@@ -223,16 +196,4 @@ def _apply_shrink_filter(pool: list, cycle_res: dict, cur_rows: list) -> list:
             if mv and a and 0 < a / mv * 100 < 3:
                 p["status"] = "观察(缩量板)"
     return pool
-
-
-def _broken_map(date_str):
-    """昨日炸板 {code: name}(broken_pool 表, 选股宝 limit_up_broken 归档); 表不存在返回空 dict"""
-    from pathlib import Path
-    import sqlite3
-    db = Path(__file__).resolve().parents[2] / "data" / "auction.db"
-    try:
-        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
-            return {r[0]: r[1] for r in conn.execute("SELECT code, name FROM broken_pool WHERE date=?", (date_str,))}
-    except sqlite3.Error:
-        return {}
 

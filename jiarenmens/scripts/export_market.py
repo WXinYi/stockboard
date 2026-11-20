@@ -29,9 +29,8 @@ from src.utils.atomic import _atomic_json  # noqa: E402  (F6 原子写)
 # 白名单：仅两个市场库。任何其它库名（尤其 crawl_data.db）→ 显式拒绝。
 ALLOWED_DBS = ("auction.db", "hot_rank.db")
 
-# 平铺集合锁定（Story 1.2 AC / AQ1=A）：严格 4 个市场切片，不含 auction.json 与 3 下线切片。
-MARKET_SLICES = ("lianban_bid.json", "market_breadth.json",
-                 "broken_pool.json", "hot_rank.json")
+# 平铺集合锁定（Story 1.2 AC / AQ1=A）：严格 3 个市场切片，不含 auction.json 与 3 下线切片。
+MARKET_SLICES = ("lianban_bid.json", "market_breadth.json", "hot_rank.json")
 FORBIDDEN_SLICES = ("auction.json", "my_positions.json",
                     "strike_review.json", "six_history.json")
 
@@ -153,14 +152,6 @@ def export_market_breadth(conn, date):
             "row": rows[0] if rows else {}, "src": "auction.db"}
 
 
-def export_broken_pool(conn, date):
-    """broken_pool.json：炸板池最新交易日归档。"""
-    latest = query_rows(conn, "SELECT MAX(date) AS d FROM broken_pool")
-    day = (latest[0]["d"] if latest else None) or date
-    rows = query_rows(conn, "SELECT code, name, break_times, change_pct, turnover, height "
-                            "FROM broken_pool WHERE date=? ORDER BY code", (day,))
-    return {"date": day, "rows": rows, "src": "auction.db"}
-
 
 def export_hot_rank(conn, date):
     """hot_rank.json：东财人气榜最新 (date, snap) 快照，保留排名。"""
@@ -179,14 +170,13 @@ def export_hot_rank(conn, date):
 # ═══════════════════════════════════════════
 
 def cmd_market_only(out, db_dir, date):
-    """只读两个市场库 → 4 个 FLAT 切片（AQ1=A 零路径改动 / F5 不写 auction.json）。"""
+    """只读两个市场库 → 3 个 FLAT 切片（AQ1=A 零路径改动 / F5 不写 auction.json）。"""
     auction = connect_ro(Path(db_dir) / "auction.db")
     hot = connect_ro(Path(db_dir) / "hot_rank.db")
     try:
         docs = {
             "lianban_bid.json": export_lianban_bid(auction, date),
             "market_breadth.json": export_market_breadth(auction, date),
-            "broken_pool.json": export_broken_pool(auction, date),
             "hot_rank.json": export_hot_rank(hot, date),
         }
     finally:

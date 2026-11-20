@@ -266,7 +266,7 @@ export function candTipOf(c, cap = 100) {
   return { buy: '龙头接力', trigger: '只排板不追高，一致转分歧兑现', stop: '断板即走', pos: cap === 0 ? off : '首仓 1 成（阶段上限内）' }
 }
 
-function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = null, prevBroken = null) {
+function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = null) {
   const stage = cycle.stage
   const gate = STAGE_GATE[stage] || { cap: 100, banner: '' }
   // 矩阵分层闸门: 与阶段闸门取更严者(同类型票在高位弱/中位弱时降级或禁买)
@@ -284,7 +284,6 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
   // 定位四分类(龙头/中军/补涨/跟风): 龙头谱系角色优先, 否则按 板块高度/市值/板块扩缩 推断
   const leadRole = new Map((cycle.leaders || []).map(l => [l.code, l.role || '']))
   const warOf = new Map(boardWars.wars.map(w => [w.board, w]))
-  const prevMap = new Map(prevFull.map(r => [r.code, r]))
   const primaryBoard = row => (row.plates || []).find(b => warOf.has(b)) || (row.plates || [])[0] || ''
   const classify = row => {
     const role = leadRole.get(row.code)
@@ -410,12 +409,6 @@ function computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now = 
       if (to > 0 && to < 3) { score -= 12; shrink = true; if (!c.risk) c.risk = '缩量板·换手未检验(次日接力存疑)' }
       else if (to >= 5) { score += 4; strengths.push(`换手${to.toFixed(1)}%`) }
     }
-    // 弱转强(陈小群): 昨日烂板(封单保持<0.15)或昨日炸板 今日回封 = 分歧转一致
-    const pr = prevMap.get(c.code)
-    const rottenPrev = pr && (pr.seal || 0) > 0 && (pr.maxSeal || 0) > 0 && pr.seal / pr.maxSeal < 0.15
-    if ((row.level || 0) >= 2 && (rottenPrev || (prevBroken && prevBroken.has(c.code)))) {
-      score += 6; strengths.push(rottenPrev ? '弱转强·烂板回封' : '弱转强·炸板回封')
-    }
     c.score = Math.max(0, Math.min(cap, score))
     const tierAct = mtx ? (mtx.tier[tierOf(c.level)] || 'go') : 'go'
     if (tierAct === 'care') c.score = Math.min(c.score, 70)
@@ -535,15 +528,14 @@ function computeRisks(todayJoined, unsealed, cycle) {
  * @param {object} p  { ladderRows, todayPool, prevFull, unsealed, cycle }
  *   ladderRows/todayPool/prevFull/unsealed 见 useKplApi.fetchTianTi/fetchLimitPool/fetchUnsealedPool
  */
-export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], unsealed = [], cycle = {}, lianbanBid = null, prevBroken = null, now = null }) {
+export function computeBattle({ ladderRows = [], todayPool = [], prevFull = [], unsealed = [], cycle = {}, lianbanBid = null, now = null }) {
   const todayJoined = joinToday(ladderRows, todayPool)
   if (!todayJoined.length || !cycle.stage) {
     return { empty: true, strike: null, boardWars: { wars: [], relations: [], mainSwitch: null }, duels: [], risks: { brokenHighs: [], watch: [] } }
   }
   const boardWars = computeBoardWars(todayJoined, prevFull)
   const duels = computeDuels(todayJoined, prevFull, boardWars)
-  const strike = computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now,
-    Array.isArray(prevBroken) ? new Set(prevBroken) : null)
+  const strike = computeStrike(cycle, todayJoined, prevFull, unsealed, boardWars, now)
   // 昨日连板 × 竞价实际换手 Top5 特殊标记(数据: latest/lianban_bid.json, 口径=scripts/lianban_bid_hs.py; 日期不匹配视为过期不标)
   if (lianbanBid && lianbanBid.date === cycle.date && Array.isArray(lianbanBid.top)) {
     const rank = new Map(lianbanBid.top.map((t, i) => [t.code, { rank: i + 1, hs: t.hs, prevPid: t.prev_pid }]))
@@ -574,14 +566,14 @@ export function reviewVerdict(pct, code, stage) {
  * —— 若日后新增"3进4"类策略需先补拉桶3(09-23 核验登记)。
  * 昨日全字段池复用 loadCycleData 的缓存结果(cd.prevFull); lianbanBid 为竞价换手标记数据(fetchLianbanBid), 可空
  */
-export async function loadBattleData(kpl, cd, lianbanBid = null, prevBroken = null) {
+export async function loadBattleData(kpl, cd, lianbanBid = null) {
   const [pools, unsealedLists] = await Promise.all([
     Promise.all([1, 2, 3, 4, 5].map(p => kpl.fetchLimitPool('', p, { rt: true, silent: true }))),
     Promise.all([1, 2, 4, 5].map(p => kpl.fetchUnsealedPool(p, true))),
   ])
   const battle = computeBattle({
     ladderRows: cd.ladderRows, todayPool: pools.flat(),
-    prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle, lianbanBid, prevBroken,
+    prevFull: cd.prevFull, unsealed: unsealedLists.flat(), cycle: cd.cycle, lianbanBid,
   })
   // 六情绪实时版复用同一批已请求的 KPL 行(不重复请求), 原始数据透传给页面
   if (battle) battle._inputs = { todayPool: pools.flat(), unsealed: unsealedLists.flat(), prevFull: cd.prevFull }

@@ -11,7 +11,6 @@
        live 模块盘中分钟级漂移 → 失配时重抓重算一次再判(时点差标 ⚠️ 不算 ❌)。
      - ④(09:25盘前候选=bidrank): 口径= auction_scan.rank_lianban_bid + lianban_bid_hs.py
        (昨日涨停池 pid>=2 ∩ 今日竞价实际换手; 换手 KPL 竞价池优先/0值腾讯 0930 补算)。
-     - ⑤(弱转强): 口径= stage_candidates 弱转强块 / _synthesize_wzq(断板∪烂板∪炸板 ∩ 竞价+1.5~7%)。
        两条路径 2026-09-14 修复后同锚"竞价日前一交易日"; 修复前 stage_pool 曾锚"周期日前一日"
        (9:26 场景=前两交易日, off-by-one, 每晨名单恒旧一天) —— 页面名单若仍命中旧锚 = 生产端未部署修复。
      - ⑥(大模型选股): 只核管线健康(DOM 卡片状态 + GitHub Actions auction.yml 当日 run), 不复现内容。
@@ -394,36 +393,7 @@ def recompute_926(tmp_db, bidding, prev, prev2, broken_prev, broken_prev2):
 
     cycle = ec.compute_cycle(persist=False)          # dates[-1] = 昨日(如 09-11)
     pool = sc.stage_pool(cycle, max_n=30, bid_date=datetime.now(BJ_TZ).strftime("%Y-%m-%d"))
-    wzq = [{"code": p["code"], "name": p["name"], "status": p.get("status"),
-            "tag": p.get("tag"), "bid_pct": p.get("bid_pct")}
-           for p in pool if "弱转强" in (p.get("status") or "")]
-    return cycle, wzq
-
-
-def wzq_bidday_semantics(his_pools, bidding, broken_prev, prev, prev2, stage):
-    """任务/页面文案口径(= _synthesize_wzq): 昨日(=上一交易日)分歧池 ∩ 今日竞价 +1.5~7%"""
-    def codes(day):
-        return {str(r[0]) for pid in range(1, 6) for r in his_pools.get(day, {}).get(pid, [])}
-
-    def rows(day):
-        return [r for pid in range(1, 6) for r in his_pools.get(day, {}).get(pid, [])]
-
-    sealed = codes(prev)
-    duan = codes(prev2) - sealed
-    rotten = {str(r[0]) for r in rows(prev) if f(r[6]) and f(r[7]) and f(r[6]) / f(r[7]) < 0.15}
-    broken = {b["code"]: b["name"] for b in broken_prev}
-    names = {str(r[0]): str(r[1]) for r in rows(prev)}
-    status = "可做(弱转强)" if stage in ("启动", "发酵", "分歧") else "观察(弱转强·禁买期)"
-    out = []
-    for code in list(duan | rotten | set(broken))[:80]:
-        b = bidding.get(code)
-        if not b or b.get("bid_pct") is None or not (1.5 <= b["bid_pct"] <= 7):
-            continue
-        tag = "断板" if code in duan else ("炸板" if code in broken else "烂板")
-        nm = names.get(code) or broken.get(code) or b.get("name") or code
-        out.append({"code": code, "name": nm, "tag": tag, "bid_pct": b["bid_pct"],
-                    "status": status})
-    return out
+    return cycle
 
 
 def bidrank_recompute(his_pools, bidding, prev, src_bidding=None):
@@ -493,23 +463,6 @@ DOM_JS = r'''() => {
       lv: num(txt(r.querySelector('.mt-strike-lv'))),
       bid: num([...r.querySelectorAll('.mt-row-count')].map(txt).find(t => t.includes('竞价'))),
       hs: num([...r.querySelectorAll('.mt-row-count')].map(txt).find(t => t.includes('换手'))) }))
-  }
-  const wz = sec('今日竞价弱转强')
-  if (wz) {
-    out.wzqEm = txt(wz.querySelector('.mt-sec-head em'))
-    out.wzq = [...wz.querySelectorAll('.mt-review')].map(r => ({
-      name: txt(r.querySelector('.nm')), status: txt(r.querySelector('.mt-strike-status')),
-      sub: txt(r.querySelector('.wzq-sub')) }))
-    out.wzqHoldNote = [...wz.querySelectorAll('.mt-hold')].map(txt)
-    out.wzqToggles = [...wz.querySelectorAll('.mt-strike-toggle')].map(txt)
-  }
-  const ll = sec('大模型选股')
-  if (ll) {
-    out.llmEm = txt(ll.querySelector('.mt-sec-head em'))
-    out.llmRegime = txt(ll.querySelector('.llm-regime'))
-    out.llmPos = txt(ll.querySelector('.llm-pos'))
-    out.llmHold = [...ll.querySelectorAll('.mt-hold')].map(txt)
-    out.llmPickNames = [...ll.querySelectorAll('.mt-review .nm')].map(txt)
   }
   return out
 }'''
@@ -585,13 +538,6 @@ def cmp_pre_rows(exp, act):
     return diffs
 
 
-def parse_wzq_sub(sub):
-    m = re.search(r"昨日(断板|烂板|炸板)分歧\s*·\s*竞价\s*([+\-\d.]+)%", sub or "")
-    if not m:
-        return None, None
-    return m.group(1), float(m.group(2))
-
-
 def sort_picks_like_page(rows):
     """页面 sortPicksFirst: 可买>待确认>只看, 次级竞价涨幅降序"""
     def w(r):
@@ -615,37 +561,6 @@ def diagnose_pre_mismatch(his_pools, prev, prev2, act_names):
     except Exception as e:  # noqa: BLE001
         return f"诊断未完成({e})"
 
-
-def gh_auction_runs_today(today):
-    """公开 API 查 auction.yml 当日 run(管线健康, 北京时区)"""
-    try:
-        r = requests.get("https://api.github.com/repos/WXinYi/stockboard/actions/workflows/"
-                         "auction.yml/runs?per_page=8", timeout=15,
-                         headers={"Accept": "application/vnd.github+json",
-                                  "User-Agent": "reconcile-script"})
-        r.raise_for_status()
-        runs = r.json().get("workflow_runs") or []
-
-        def bj_date(x):
-            try:
-                return datetime.fromisoformat(
-                    (x.get("run_started_at") or "").replace("Z", "+00:00")).astimezone(BJ_TZ)
-            except ValueError:
-                return None
-        todays = [x for x in runs if (d := bj_date(x)) and d.strftime("%Y-%m-%d") == today]
-        if not todays:
-            return False, "当日无 auction.yml run 记录(公开API)"
-        ok = [x for x in todays if x.get("conclusion") == "success"]
-        if ok:
-            return True, f"auction.yml 当日 {len(todays)} run 中 {len(ok)} 成功"
-        detail = ",".join(f"#{x['run_number']}:{x.get('conclusion') or x.get('status')}"
-                          for x in todays[:3])
-        return False, f"auction.yml 当日 {len(todays)} run 无成功({detail})"
-    except Exception as e:  # noqa: BLE001
-        return False, f"Actions 公开API不可用({e})"
-
-
-# ══════════════════ 7. 逐模块比对(①②③ live) ══════════════════
 
 def cmp_live(js, dom, today):
     """①②③ 比对; 返回 (hard_diffs: bool, 逐模块 (mark, note) 列表)"""
@@ -782,12 +697,9 @@ def main():
     log("[2/6] ④⑤ 重算(9:26 口径: 现场 His 数据建临时库 → 复跑 emotion_cycle/stage_candidates)…")
     tmp_db = build_temp_db({d: his_pools[d] for d in hist_days}, rf["series"][:12],
                            {prev: broken_prev, **({prev2: broken_prev2} if prev2 else {})})
-    cycle926, wzq_archive = recompute_926(tmp_db, bidding, prev, prev2, broken_prev, broken_prev2)
+    cycle926 = recompute_926(tmp_db, bidding, prev, prev2, broken_prev, broken_prev2)
     log(f"    9:26 周期(昨收口径, {cycle926['date']}): {cycle926['stage']} (置信{cycle926['confidence']}/9) "
         f"高度{cycle926['metrics']['height']} 涨停{cycle926['metrics']['zt']}")
-    wzq_bidday = wzq_bidday_semantics(his_pools, bidding, broken_prev, prev, prev2, cycle926["stage"])
-    log(f"    ⑤ 弱转强: stage_pool重算 {len(wzq_archive)} 只 / _synthesize口径 {len(wzq_bidday)} 只"
-        f" (09-14 锚修复后两口径同锚分歧@{prev}; 旧锚@{prev2} 留作未部署诊断)")
     bidrank, n_lb = bidrank_recompute(his_pools, bidding, prev)
     log(f"    ④ bidrank: 昨日连板 {n_lb} 只 → Top5 "
         + ", ".join(f"{r['name']}(换手{r['turnover']:.2f}%)" for r in bidrank))
@@ -850,7 +762,6 @@ def main():
                 V.add(mod, mk if mk != "❌_" else "❌", note)
 
         # ⑥ 先取管线健康
-        gh_ok, gh_note = gh_auction_runs_today(today)
 
         # ④ 09:25 盘前候选
         log("  ④ 09:25 盘前候选(auction.json bidrank, 09:25 口径):")
@@ -867,78 +778,6 @@ def main():
             else:
                 diag = diagnose_pre_mismatch(his_pools, prev, prev2, [a["name"] for a in act_pre])
                 V.add("④", "❌", "; ".join(diffs) + f" [诊断: {diag}]")
-
-        # ⑤ 今日竞价弱转强
-        log("  ⑤ 今日竞价弱转强:")
-        wzq_dom = dom.get("wzq") or []
-        wzq_em = dom.get("wzqEm") or ""
-        if today not in wzq_em:
-            V.add("⑤", "❌", f"竞价口径日期过期: 页面='{wzq_em}' 期望含 {today}"
-                  " (auction.json/strike_review 停旧日的事故指纹)")
-        elif not wzq_dom:
-            if not wzq_bidday and not wzq_archive:
-                V.add("⑤", "✅", f"页面与重算均无弱转强候选(昨日无分歧股或竞价未达 +1.5~7%)")
-            else:
-                V.add("⑤", "❌", "页面无弱转强行但重算有: "
-                      f"文案口径={[e['name'] for e in wzq_bidday]} 存档口径={[e['name'] for e in wzq_archive]}")
-        else:
-            act_rows = [{"name": r["name"], "tag": parse_wzq_sub(r.get("sub"))[0],
-                         "bid_pct": parse_wzq_sub(r.get("sub"))[1], "word": r["status"]}
-                        for r in wzq_dom]
-
-            def match(exp_rows):
-                exp_act = sort_picks_like_page(
-                    [e for e in exp_rows if (e.get("status") or "").startswith("可做")])[:5]
-                names_e, names_a = [e["name"] for e in exp_act], [a["name"] for a in act_rows]
-                if names_e != names_a:
-                    return False, f"重算={names_e} 页面={names_a}"
-                for e, a in zip(exp_act, act_rows):
-                    if e.get("tag") and a.get("tag") and e["tag"] != a["tag"]:
-                        return False, f"{e['name']} tag 重算={e['tag']} 页面={a['tag']}"
-                    if not close(e.get("bid_pct"), a.get("bid_pct")):
-                        return False, f"{e['name']} 竞价 重算={e.get('bid_pct')} 页面={a.get('bid_pct')}"
-                return True, ""
-
-            ok_bid, note_bid = match(wzq_bidday)
-            ok_arch, note_arch = match(wzq_archive)
-            if ok_bid:
-                extra = ""
-                arch_names = [e["name"] for e in wzq_archive]
-                if wzq_archive and arch_names != [e["name"] for e in wzq_bidday]:
-                    extra = (f" (注: 存档口径 stage_pool 分歧@{prev2} 名单不同={arch_names},"
-                             f" 页面未走该口径)")
-                V.add("⑤", "✅", f"名单/竞价%与文案口径(昨日={prev}分歧∩今竞价+1.5~7%)一致: "
-                      + ", ".join(a["name"] for a in act_rows) + extra)
-            elif ok_arch:
-                V.add("⑤", "❌",
-                      f"页面名单={[e['name'] for e in wzq_archive]} 命中 stage_pool 弱转强块旧锚"
-                      f"(分歧池=@{prev2}=周期日前一日), 而页面文案与本模块兜底口径(_synthesize_wzq)"
-                      f"的'昨日分歧'应=@{prev} → 期望名单="
-                      f"{[e['name'] + '(' + e['tag'] + ')' for e in wzq_bidday]}。根因(off-by-one, 每晨"
-                      f"名单恒旧一个交易日)已于 2026-09-14 修复: stage_candidates 锚改 bid_date 前一"
-                      f"交易日; 仍命中此分支 = 生产端未部署修复或回归。旁证: 同股两口径 tag 不同"
-                      f"(旧锚断板@{prev2} vs 新锚烂板@{prev})")
-            else:
-                V.add("⑤", "❌", f"两种口径均不匹配: 文案口径 {note_bid}; 存档口径 {note_arch}")
-
-        # ⑥ 大模型选股(管线健康)
-        log("  ⑥ 大模型选股(管线健康):")
-        llm_em = dom.get("llmEm") or ""
-        holds = dom.get("llmHold") or []
-        if any("无有效输出" in h for h in holds):
-            V.add("⑥", "❌", "页面显示'今日无有效输出(模型输出异常, 已降级)' — llm_review degraded")
-        elif any("暂无模型输出" in h for h in holds):
-            V.add("⑥", "❌", f"llm 卡空(暂无模型输出) 且 {gh_note} — 疑竞价班 llm 步骤失败/无 key")
-        elif dom.get("llmRegime"):
-            utc_note = ("; 卡片时间为 CI runner 本地(UTC)时戳, 页面直显 HH:MM 未换北京时间"
-                        "(如 02:55=北京 10:55, 展示层小瑕疵不影响新鲜度)")
-            note = f"卡片在档: {llm_em} · regime={dom.get('llmRegime')}"
-            if gh_ok:
-                V.add("⑥", "✅", note + f"; {gh_note}" + utc_note)
-            else:
-                V.add("⑥", "⚠️", note + f"; {gh_note} — 卡片有内容但当日 run 未确认成功, 新鲜度以⑤日期/早盘曾判旁证" + utc_note)
-        else:
-            V.add("⑥", "⚠️", f"llm 卡片状态未识别(em='{llm_em}') {gh_note}")
         c = V.counts()
 
     # ---- 汇总 ----

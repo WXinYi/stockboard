@@ -81,3 +81,19 @@ jobs:
           echo "本地复现(后端): cd jiarenmens && python -m unittest discover -s scripts -p 'test_*.py'"
           echo "本地复现(前端): cd stockboard-app && npm ci && npx vitest run"
           echo "本地复现(scf):  node --test scf/index.test.cjs"
+
+  # 失败告警(2026-11-19 补齐): 此前是唯一无 alert-on-failure 的 workflow, 门禁红只有 pusher 可见
+  alert-on-failure:
+    name: 失败告警
+    if: failure()
+    needs: [test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: 钉钉失败告警
+        env:
+          DINGTALK_URL: ${{ secrets.DINGTALK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          cd jiarenmens
+          python3 scripts/notify_failure.py "${{ github.workflow }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '${{ toJSON(needs) }}'

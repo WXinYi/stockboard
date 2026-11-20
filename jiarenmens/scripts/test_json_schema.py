@@ -44,8 +44,6 @@ def make_market_dbs(db_dir):
     a = sqlite3.connect(str(Path(db_dir) / "auction.db"))
     a.execute("CREATE TABLE bid_pool (date TEXT, code TEXT, name TEXT, turnover_ratio REAL)")
     a.execute("CREATE TABLE market_breadth (date TEXT, zt INTEGER)")
-    a.execute("CREATE TABLE broken_pool (date TEXT, code TEXT, name TEXT, break_times INTEGER, "
-              "change_pct REAL, turnover REAL, height INTEGER)")
     a.commit()
     a.close()
     h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
