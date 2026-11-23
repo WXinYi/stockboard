@@ -190,13 +190,13 @@ function hsTxt(r) { return r.turnover != null ? `${fmt(r.turnover, 1)}%` : (r.hs
 .st { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 5px; background: var(--line); color: var(--ink-3); flex: none; }
 .st.go { background: var(--up); color: var(--ink); }
 .st.alt { background: var(--gold); color: var(--ink); }
-.sk-l2 { margin-top: 4px; font-size: 11px; color: #64748b; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-l2 { margin-top: 4px; font-size: 11px; color: var(--ink-3); line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 强势板块 chips */
 .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .chip { font-size: 11px; color: var(--ink-2); background: var(--bg-3); border: 1px solid #e4e8ef; padding: 3px 10px; border-radius: 100px; display: inline-flex; align-items: center; gap: 4px; }
 .chip i { font-style: normal; color: var(--up); font-weight: 600; }
 
-.next { border: 1px solid #dbe7f3; background: var(--bg-3); border-radius: 12px; padding: 10px 12px; text-align: center; font-size: 12px; color: #24608f; cursor: pointer; margin-bottom: 8px; }
+.next { border: 1px solid var(--line-2); background: var(--bg-3); border-radius: 12px; padding: 10px 12px; text-align: center; font-size: 12px; color: var(--ink-2); cursor: pointer; margin-bottom: 8px; }
 .foot { text-align: center; font-size: 10.5px; color: var(--ink-3); margin: 4px 0 10px; line-height: 1.7; }
 </style>

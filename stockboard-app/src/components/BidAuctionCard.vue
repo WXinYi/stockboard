@@ -33,7 +33,7 @@ const lineColor = computed(() => (isUp.value ? 'var(--up)' : 'var(--down)'))
         <span class="bd-vol">竞价量 {{ (last.cumVol / 1e4).toFixed(1) }}万</span>
       </div>
       <svg viewBox="0 0 220 64" preserveAspectRatio="none" class="bd-svg">
-        <line x1="0" y1="28" x2="220" y2="28" stroke="#eee" stroke-width="1" />
+        <line x1="0" y1="28" x2="220" y2="28" stroke="#434c5a" stroke-width="1" />
         <polyline :points="linePts" fill="none" :stroke="lineColor" stroke-width="1.5" />
         <rect v-for="(b, i) in pts.bars" :key="i" :x="b.x - 1" :y="b.y" width="1.6" :height="b.h" :fill="b.color" opacity=".55" />
       </svg>

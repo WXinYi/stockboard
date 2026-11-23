@@ -225,7 +225,7 @@ function moodColor(v) {
   if (v >= 60) return 'var(--up)'
   if (v >= 45) return 'var(--accent)'
   if (v >= 30) return 'var(--down)'
-  return '#1e8449'
+  return '#1aa56b'
 }
 // 情绪形容词 + 档位
 function moodLevel(v) { return v >= 75 ? 'hot' : v >= 60 ? 'warm' : v >= 45 ? 'mid' : v >= 30 ? 'cool' : 'cold' }
@@ -233,7 +233,7 @@ const MOOD_LABELS = { hot: '亢奋', warm: '活跃', mid: '中性', cool: '偏�
 function moodLabel(v) { return MOOD_LABELS[moodLevel(v)] }
 // 半圆仪表盘: 5 档色弧(左冰点→右亢奋) + 指针圆点(位置=强度 0-100)
 const GAUGE_SEGS = [
-  { c: '#1e8449', lo: 0, hi: 20 }, { c: 'var(--down)', lo: 20, hi: 40 }, { c: 'var(--accent)', lo: 40, hi: 60 },
+  { c: '#1aa56b', lo: 0, hi: 20 }, { c: 'var(--down)', lo: 20, hi: 40 }, { c: 'var(--accent)', lo: 40, hi: 60 },
   { c: 'var(--up)', lo: 60, hi: 80 }, { c: 'var(--up)', lo: 80, hi: 100 },
 ]
 function gaugeArc(a1, a2) {
@@ -899,7 +899,7 @@ const lhbSorted = computed(() => {
 .md-badge-je { font-size: 10px; color: var(--ink-2); background: var(--bg-3); padding: 1px 6px; border-radius: 10px; flex: none; font-variant-numeric: tabular-nums; }
 /* 龙虎榜: 排序切换 + 机构徽标 + 振幅/换手副行 */
 .md-lhb-tools { display: flex; gap: 6px; margin: 0 0 8px; }
-.md-chip { font-size: 11px; padding: 3px 12px; border-radius: 14px; border: 1px solid #e0e4ea; background: var(--bg-2); color: var(--ink-2); cursor: pointer; }
+.md-chip { font-size: 11px; padding: 3px 12px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink-2); cursor: pointer; }
 .md-chip.on { background: var(--accent); border-color: var(--accent); color: var(--ink); font-weight: 600; }
 .md-row-name.stacked { display: flex; flex-direction: column; align-items: stretch; white-space: normal; overflow: visible; }
 .md-lhb-name-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -993,7 +993,7 @@ const lhbSorted = computed(() => {
 .dv-yj { margin-top: 8px; font-size: 12px; color: var(--gold); background: rgba(224,177,92,.06); border-radius: 8px; padding: 6px 10px; }
 .cy-trail { margin-top: 7px; font-size: 11px; color: var(--accent); background: var(--bg-3); border-radius: 8px; padding: 5px 9px; line-height: 1.6; }
 .cy-warn { margin-top: 7px; font-size: 11px; color: var(--gold); background: rgba(224,177,92,.08); border-radius: 8px; padding: 6px 9px; line-height: 1.6; }
-.cy-six { margin-top: 8px; font-size: 12px; color: #4a6fa5; background: var(--bg-3); border-radius: 8px; padding: 6px 10px; }
+.cy-six { margin-top: 8px; font-size: 12px; color: #8db0e0; background: var(--bg-3); border-radius: 8px; padding: 6px 10px; }
 .do-verdict { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-radius: 8px; padding: 9px 10px; margin: 8px 0 4px; font-size: 13px; }
 .do-verdict b { font-size: 15px; }
 .do-verdict.g-bad { background: rgba(255,77,90,.06); color: var(--up); }
@@ -1029,7 +1029,7 @@ const lhbSorted = computed(() => {
 .cy-reasons li { font-size: 12px; color: var(--ink-2); line-height: 1.7; }
 .cy-playbook { font-size: 12px; color: var(--gold); background: var(--bg-3); border-radius: 6px; padding: 6px 8px; line-height: 1.6; }
 .cy-scale { display: flex; gap: 4px; margin: 10px 0; }
-.cy-seg { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid var(--line); border-radius: 6px; color: #99a; background: var(--bg-3); }
+.cy-seg { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-3); background: var(--bg-3); }
 .cy-seg.on { color: var(--ink); font-weight: 700; }
 .cy-metrics { display: flex; gap: 8px; margin: 10px 0; }
 .cy-mi { flex: 1; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 6px; text-align: center; }
@@ -1054,7 +1054,7 @@ const lhbSorted = computed(() => {
 .cy-hero-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .cy-gate { margin-left: auto; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--up); color: var(--ink); }
 .cy-gate.ban { background: #9b6bde; }
-.lb-toggle { text-align: center; font-size: 12px; color: #2a7fd4; padding: 6px 0 2px; cursor: pointer; }
+.lb-toggle { text-align: center; font-size: 12px; color: #6aa9e8; padding: 6px 0 2px; cursor: pointer; }
 .cy-tabs { margin: 10px 0 2px; }
 /* Tab 内容卡片化: 行内容不再浮在页面渐变底上 */
 .cy-pane .md-group { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 6px; box-shadow: 0 1px 2px rgba(17,24,39,.04), 0 4px 14px rgba(17,24,39,.05); }
@@ -1066,7 +1066,7 @@ const lhbSorted = computed(() => {
 .mt-tab.on { background: var(--ink); border-color: var(--ink); color: var(--ink); font-weight: 700; }
 /* 龙头博弈 + 今日出击 /market/cycle */
 .lb-banner { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--ink-3); line-height: 1.6; background: var(--bg-3); margin-bottom: 8px; }
-.lb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed var(--line); color: #2b6cb0; }
+.lb-mtx { margin-top: 5px; padding-top: 6px; border-top: 1px dashed var(--line); color: #7fb3ea; }
 .lb-banned { color: var(--up); font-weight: 700; }
 .lb-cand { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; background: var(--bg-3); }
 .lb-cand.st-go { border-left-color: var(--up); background: rgba(255,77,90,.08); }
@@ -1092,8 +1092,8 @@ const lhbSorted = computed(() => {
 .lb-empty { font-size: 12px; color: var(--ink-3); padding: 6px 0; }
 .lb-tag { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 4px; margin-right: 4px; vertical-align: 1px; }
 .lb-tag.hot { background: var(--up); color: var(--ink); }
-.lb-tag.rise { background: var(--bg-3); color: #1a9e6e; }
-.lb-tag.up { background: var(--bg-3); color: #2a7fd4; }
+.lb-tag.rise { background: var(--bg-3); color: var(--down); }
+.lb-tag.up { background: var(--bg-3); color: #6aa9e8; }
 .lb-tag.fade { background: var(--bg-3); color: #d4574f; }
 .lb-tag.plain { background: var(--line); color: var(--ink-3); }
 .lb-delta { font-size: 11px; font-weight: 700; }

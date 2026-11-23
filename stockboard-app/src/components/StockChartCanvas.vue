@@ -45,16 +45,31 @@ let lastPointerType = ''    // 最近指针类型: 鼠标 hover 不自动隐藏,
 const HIDE_MS = 2500        // 无操作自动隐藏延迟
 
 // 颜色 token (spec §7.2, 唯一来源)
-const C = {
-  up: 'var(--up)', down: 'var(--down)', accent: 'var(--accent)',
-  avg: '#f2a900', signal: '#9b59b6', chan: '#7d3c98', wave: 'var(--accent)',
-  ma20: 'var(--down)', ma60: 'var(--accent)', bollUp: 'var(--up)', bollMid: '#f39c12', bollLo: 'var(--down)',
-  grid: '#f2f4f7', preClose: '#b9c2cc', border: 'var(--line)',
-  axisText: '#9aa2ac', timeText: '#b3bac3',
-  volUp: 'rgba(231,76,60,.6)', volDown: 'rgba(39,174,96,.6)',
-  histUp: 'rgba(231,76,60,.5)', histDown: 'rgba(39,174,96,.5)',
-  crosshair: 'rgba(41,128,185,.45)',
+// ⚠️ Canvas 2D 不解析 CSS var(): fillStyle/strokeStyle 赋 'var(--x)' 会被静默忽略,
+// 蜡烛/量柱退化成上一帧遗留色(2026-11-23 全灰不可辨事故). 主题 token 必须先经
+// resolveColors() 取 :root 计算值, 全站为固定暗色主题, 解析一次即可.
+let C = null
+function resolveColors() {
+  const cs = getComputedStyle(document.documentElement)
+  const v = (n, fb) => cs.getPropertyValue(n).trim() || fb
+  C = {
+    up: v('--up', '#ff4d5a'), down: v('--down', '#21c58b'), accent: v('--accent', '#ff6b35'),
+    avg: '#f2a900', signal: '#9b59b6', chan: '#a569d6', wave: v('--accent', '#ff6b35'),
+    ma20: v('--down', '#21c58b'), ma60: v('--accent', '#ff6b35'),
+    bollUp: v('--up', '#ff4d5a'), bollMid: '#f39c12', bollLo: v('--down', '#21c58b'),
+    // 网格/边线用主题线色(原 #f2f4f7 为浅色主题遗留, 暗底上是刺眼白线)
+    grid: v('--line', '#333a46'), preClose: '#b9c2cc', border: v('--line', '#333a46'),
+    axisText: '#9aa2ac', timeText: '#b3bac3',
+    // 文字描边垫底: 面板底色(原 rgba(255,255,255,.85) 为浅色主题遗留, 暗底上把刻度糊成白块)
+    halo: 'rgba(33,38,47,.9)', haloSolid: '#21262f',
+    chipBg: v('--bg-3', '#303743'), chipInk: v('--ink-2', '#c9d1dc'),
+    // 红绿统一对齐主题 --up/--down 色相(原 #e74c3c/#27ae60 为旧浅色主题遗留)
+    volUp: 'rgba(255,77,90,.6)', volDown: 'rgba(33,197,139,.6)',
+    histUp: 'rgba(255,77,90,.5)', histDown: 'rgba(33,197,139,.5)',
+    crosshair: 'rgba(244,246,250,.35)',
+  }
 }
+resolveColors()
 const FONT = '11px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
 const FONT_SM = '10px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif'
 const SIGNAL_LABELS = { '1buy': '1买', '2buy': '2买', '3buy': '3买', '1sell': '1卖', '2sell': '2卖', '3sell': '3卖' }
@@ -121,8 +136,8 @@ function drawTrend() {
   ctx.fillRect(x0, main.y, w0 * 30 / TREND_VMIN, main.height)
   drawHLine(main, prevClose, yMin, yMax, C.preClose, 'dashed')
   if (axis.up > axis.down) {
-    drawHLine(main, axis.up, yMin, yMax, 'rgba(231,76,60,.55)', 'dashed')
-    drawHLine(main, axis.down, yMin, yMax, 'rgba(39,174,96,.55)', 'dashed')
+    drawHLine(main, axis.up, yMin, yMax, 'rgba(255,77,90,.55)', 'dashed')
+    drawHLine(main, axis.down, yMin, yMax, 'rgba(33,197,139,.55)', 'dashed')
   }
   // 2. 左右双轴刻度
   drawTrendAxis(axis, main)
@@ -169,9 +184,9 @@ function drawTrendAxis(axis, main) {
   if (!ctx) return
   ctx.font = FONT_SM
   ctx.fillStyle = C.axisText
-  // 标签叠在绘图区内侧(东财式): 白色描边垫底, 折线/网格穿过时仍可读
+  // 标签叠在绘图区内侧(东财式): 面板底色描边垫底, 折线/网格穿过时仍可读
   ctx.lineWidth = 3
-  ctx.strokeStyle = 'rgba(255,255,255,.85)'
+  ctx.strokeStyle = C.halo
   for (const t of axis.left) {
     // 首尾刻度在面板边缘, 'middle' 会让文字半截出界被裁 → 按位置换 baseline
     ctx.textBaseline = t.y <= main.y + 6 ? 'top' : t.y >= main.y + main.height - 6 ? 'bottom' : 'middle'
@@ -284,7 +299,7 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   const lastTrade = [...t].reverse().find(p => trendMinute(p.time) >= 30)
   const parts = []
   if (Number.isFinite(total)) parts.push([`${fmtHand(total)}`, C.axisText])
-  if (aTicks.length) parts.push([`竞价量:${fmtHand(lastCum)}`, 'var(--down)'])
+  if (aTicks.length) parts.push([`竞价量:${fmtHand(lastCum)}`, C.down])
   if (lastTrade) parts.push([`现量:${fmtHand(lastTrade.vol || 0)}`, C.axisText])
   ctx.font = FONT_SM
   for (const [text, color] of parts) {
@@ -296,12 +311,12 @@ function drawTrendVolume(vol, t, prevClose, x0 = 0, w0 = 0) {
   ctx.fillText(fmtHand(maxVol), x0 + 4, plot.y + 2)
 }
 
-// 量能头部左侧"成交量"芯片(东财深色块 → 浅色主题灰底), 返回后续文本起始 x
+// 量能头部左侧"成交量"芯片(东财深色块 → 主题灰底), 返回后续文本起始 x
 function volHeaderChip(vol) {
   ctx.font = FONT_SM
-  ctx.fillStyle = 'var(--bg-3)'
+  ctx.fillStyle = C.chipBg
   ctx.fillRect(vol.x + 2, vol.y + 2, 42, 12)
-  ctx.fillStyle = 'var(--ink-2)'
+  ctx.fillStyle = C.chipInk
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.fillText('成交量', vol.x + 6, vol.y + 3)
@@ -474,7 +489,7 @@ function drawChan(main, win, yMin, yMax, w) {
     const x1 = xOf(z.from), x2 = xOf(z.to)
     const y1 = yOf(z.zg), y2 = yOf(z.zd)
     if (x1 < 0 && x2 < 0) continue
-    ctx.fillStyle = 'rgba(125,60,152,.15)'
+    ctx.fillStyle = 'rgba(165,105,214,.15)'
     ctx.fillRect(x1, y1, x2 - x1, y2 - y1)
     ctx.strokeStyle = C.chan
     ctx.lineWidth = 1
@@ -499,7 +514,7 @@ function drawChan(main, win, yMin, yMax, w) {
     ctx.closePath()
     ctx.fill()
     if (dv) {
-      ctx.fillStyle = dv.type === 'top' ? 'var(--accent)' : '#5b2c8f'
+      ctx.fillStyle = dv.type === 'top' ? C.accent : '#b988e8'
       ctx.textAlign = 'left'
       ctx.fillText(dv.type === 'top' ? '顶背驰' : '底背驰', x + 5, isTop ? y - 4 : y + 4)
     } else if (sig) {
@@ -550,29 +565,35 @@ function drawWave(main, win, yMin, yMax, w) {
   }
 }
 
-// K线轴(东财): 刻度叠在图内左缘(白色描边垫底), 右缘标注最新收盘价(按当日收开红绿)
+// K线轴(东财): 价格刻度叠在图内右缘(面板底色描边垫底), 左侧让给 MA/BOLL 图例避免叠字;
+// 右缘最新收盘价加垫底色块价签(按当日收开红绿), 与刻度重叠时仍可读
 function drawKlineAxis(main, ticks, win, yMin, yMax) {
   if (!ctx) return
   ctx.font = FONT_SM
-  ctx.fillStyle = C.axisText
-  ctx.textAlign = 'left'
+  ctx.textAlign = 'right'
   ctx.lineWidth = 3
-  ctx.strokeStyle = 'rgba(255,255,255,.85)'
+  ctx.strokeStyle = C.halo
+  const rx = main.x + main.width - 3
   for (const t of ticks) {
     // 首尾刻度换 baseline 防边缘裁切
     ctx.textBaseline = t.y <= main.y + 6 ? 'top' : t.y >= main.y + main.height - 6 ? 'bottom' : 'middle'
-    ctx.strokeText(String(t.label), main.x + 3, t.y)
-    ctx.fillText(String(t.label), main.x + 3, t.y)
+    ctx.fillStyle = C.axisText
+    ctx.strokeText(String(t.label), rx, t.y)
+    ctx.fillText(String(t.label), rx, t.y)
   }
   const last = win[win.length - 1]
   if (last && Number.isFinite(last.close)) {
     const y = clamp(priceToY(last.close, yMin, yMax, main), main.y + 6, main.y + main.height - 6)
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'right'
-    ctx.fillStyle = last.close >= last.open ? C.up : C.down
     const s = `${last.close.toFixed(2)} →`
-    ctx.strokeText(s, main.x + main.width - 3, y)
-    ctx.fillText(s, main.x + main.width - 3, y)
+    // 垫底色块: 盖住穿过的刻度字/网格, 东财式价签
+    const tw = ctx.measureText(s).width
+    ctx.fillStyle = C.haloSolid
+    ctx.fillRect(rx - tw - 4, y - 8, tw + 7, 16)
+    ctx.fillStyle = last.close >= last.open ? C.up : C.down
+    ctx.strokeText(s, rx, y)
+    ctx.fillText(s, rx, y)
   }
   ctx.lineWidth = 1
 }
@@ -604,7 +625,7 @@ function drawMALegend(main, win, baseI) {
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.lineWidth = 3
-  ctx.strokeStyle = 'rgba(255,255,255,.85)'
+  ctx.strokeStyle = C.halo
   rows.forEach((parts, r) => {
     let x = main.x + 4
     for (const [text, color] of parts) {
@@ -743,7 +764,7 @@ function drawSubMacdHeader(sub, m, lastIdx) {
 function drawSubOscHeader(sub, lines, lastIdx) {
   if (!ctx) return
   const f2 = v => Number.isFinite(v) ? v.toFixed(2) : '—'
-  const colors = [C.avg, C.signal, 'var(--down)']
+  const colors = [C.avg, C.signal, C.down]
   drawSubHeaderParts(sub, lines.map(([name, vals], i) =>
     [`${name}:${f2(vals?.[lastIdx])}${subHeaderArrow(vals, lastIdx)}`, colors[i % colors.length]],
   ))
@@ -790,7 +811,7 @@ function drawSubMacd(sub, win, w, m, x0 = 0, baseI = 0, isIntraday = false) {
 
 function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0, isIntraday = false) {
   const entries = Object.entries(lines)
-  const colors = [C.avg, C.signal, 'var(--down)']
+  const colors = [C.avg, C.signal, C.down]
   entries.forEach(([_, vals], idx) => {
     if (!vals) return
     ctx.strokeStyle = colors[idx % colors.length]
@@ -812,7 +833,7 @@ function drawSubOsc(sub, win, w, lines, x0 = 0, baseI = 0, isIntraday = false) {
   // 参考虚线
   const refs = props.subInd === 'rsi' ? [30, 50, 70] : props.subInd === 'wr' ? [20, 80] : []
   ctx.setLineDash([2, 2])
-  ctx.strokeStyle = '#eee'
+  ctx.strokeStyle = 'rgba(255,255,255,.14)'
   for (const r of refs) {
     const y = sub.y + sub.height - 2 - (r / 100) * (sub.height - 4)
     ctx.beginPath()
