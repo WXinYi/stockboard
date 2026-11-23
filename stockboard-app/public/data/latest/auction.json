@@ -1,179 +1,245 @@
 {
- "date": "2026-11-20",
+ "date": "2026-11-23",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值14 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 2% < 40% (参考)"
+   "情绪值20 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
+   "红盘占比 6% < 40% (参考)"
   ],
   "data": {
-   "strong": 14,
-   "lbgd": 4,
+   "strong": 20,
+   "lbgd": 5,
    "capacity_ratio": null,
-   "red_ratio": 0.017775334432838557,
+   "red_ratio": 0.05887867991749484,
    "bid_count": [
-    89,
-    123,
+    141,
+    143,
     50,
-    20,
-    16
+    5,
+    10
    ],
-   "bid_total": "134亿",
-   "bid_total_prev": "127亿"
+   "bid_total": "160亿",
+   "bid_total_prev": "134亿"
   }
  },
  "boards": [
   {
-   "code": "801001",
-   "name": "芯片",
-   "burst": 9.8,
-   "amount": 328038784.0,
-   "main_net": 63028276.0,
+   "code": "801270",
+   "name": "基础建设",
+   "burst": 8.1,
+   "amount": 101389970.0,
+   "main_net": 0.0,
    "src": "爆量L1",
    "strength": 0.0
   },
   {
-   "code": "801159",
-   "name": "机器人概念",
-   "burst": 4.0,
-   "amount": 162924425.0,
-   "main_net": 6757518.0,
-   "src": "爆量L2",
+   "code": "801045",
+   "name": "医药",
+   "burst": 7.8,
+   "amount": 183162947.0,
+   "main_net": 341330.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801199",
+   "name": "汽车零部件",
+   "burst": 7.3,
+   "amount": 288800285.0,
+   "main_net": 5033553.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801704",
+   "name": "6G",
+   "burst": 6.6,
+   "amount": 120789119.0,
+   "main_net": 6653052.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801005",
+   "name": "新能源汽车",
+   "burst": 6.5,
+   "amount": 91953207.0,
+   "main_net": 8193660.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801350",
+   "name": "一带一路",
+   "burst": 5.5,
+   "amount": 45826052.0,
+   "main_net": 0.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801660",
+   "name": "通信",
+   "burst": 5.1,
+   "amount": 928430687.0,
+   "main_net": 6653052.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801120",
+   "name": "电力",
+   "burst": 5.0,
+   "amount": 51234246.0,
+   "main_net": 0.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801519",
+   "name": "汽车类",
+   "burst": 5.0,
+   "amount": 64540209.0,
+   "main_net": -592799.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801062",
+   "name": "军工",
+   "burst": 4.5,
+   "amount": 332343024.0,
+   "main_net": -1307245.0,
+   "src": "爆量L1",
    "strength": 0.0
   }
  ],
  "strike": [
   {
-   "code": "002771",
-   "name": "真视通",
-   "height": 3,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[空间锚(最高连板)] 3连板 | 算力主线空间龙, 封单 2.08亿；逆市连板(火种观察) 3板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
    "code": "603324",
    "name": "盛剑科技",
-   "height": 3,
-   "status": "观察(只看最强)",
-   "reason": "龙头谱系[总龙头] 主线[先进封装] 5只涨停, 封单 0.28亿；逆市连板(火种观察) 3板",
+   "height": 4,
+   "status": "可做(低吸)",
+   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 先进封装主线空间龙, 封单 0.43亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "301348",
-   "name": "蓝箭电子",
-   "height": 1,
-   "status": "观察(容量)",
-   "reason": "龙头谱系[中军(先进封装)] 成交 7.8亿 容量核心",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "603030",
-   "name": "全筑股份",
-   "height": 3,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 3板",
-   "tag": null,
-   "bid_pct": null
-  },
-  {
-   "code": "600156",
-   "name": "华升股份",
+   "code": "002579",
+   "name": "中京电子",
    "height": 2,
-   "status": "观察(火种)",
-   "reason": "逆市连板(火种观察) 2板",
+   "status": "可做(低吸)",
+   "reason": "龙头谱系[总龙头] 主线[PCB] 5只涨停, 封单 2.04亿",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "000530",
+   "name": "冰山冷热",
+   "height": 2,
+   "status": "可做(首板套利)",
+   "reason": "1进2: 昨日首板, 今竞价 +1.9%；首板试错: 主线首板, 今竞价 +1.9%",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "301313",
+   "name": "凡拓数创",
+   "height": 2,
+   "status": "可做(首板套利)",
+   "reason": "1进2: 昨日首板, 今竞价 +4.1%",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002548",
+   "name": "金新农",
+   "height": 2,
+   "status": "可做(首板套利)",
+   "reason": "1进2: 昨日首板, 今竞价 +2.9%；首板试错: 主线首板, 今竞价 +2.9%",
    "tag": null,
    "bid_pct": null
   }
  ],
- "strike_watch": true,
+ "strike_watch": false,
  "bidrank": [
   {
    "code": "002771",
    "name": "真视通",
-   "height": 3,
-   "bid_pct": 1.04,
-   "turnover": 4.59
+   "height": 4,
+   "bid_pct": 9.99,
+   "turnover": 3.98
   },
   {
-   "code": "600156",
-   "name": "华升股份",
+   "code": "002579",
+   "name": "中京电子",
    "height": 2,
-   "bid_pct": -8.2,
-   "turnover": 1.968170319887566
+   "bid_pct": 10.01,
+   "turnover": 2.39
   },
   {
    "code": "603324",
    "name": "盛剑科技",
-   "height": 3,
-   "bid_pct": 10.0,
-   "turnover": 1.55
-  },
-  {
-   "code": "603030",
-   "name": "全筑股份",
-   "height": 3,
-   "bid_pct": -9.83,
-   "turnover": 1.442670683380074
-  },
-  {
-   "code": "000711",
-   "name": "京蓝科技",
-   "height": 2,
-   "bid_pct": 0.0,
-   "turnover": 0.43
+   "height": 4,
+   "bid_pct": -0.97,
+   "turnover": 2.03448836246062
   }
  ],
  "regime": {
   "regime": "电风扇",
-  "relay": 0.12195121951219512,
-  "max_board": 3,
-  "top1_days": 3,
+  "relay": 0.13043478260869565,
+  "max_board": 4,
+  "top1_days": 1,
   "detail": [
-   "昨日再板率12%",
-   "最高3板",
-   "TOP1连续3日"
+   "昨日再板率13%",
+   "最高4板",
+   "TOP1连续1日"
   ]
  },
  "cycle": {
-  "stage": "退潮",
+  "stage": "启动",
   "confidence": 7,
-  "gate": "closed",
+  "gate": "off",
   "mainlines": [
-   "先进封装",
+   "PCB",
+   "农业",
+   "通信",
    "算力",
-   "机器人概念",
-   "光刻胶"
+   "先进封装",
+   "AI应用"
   ],
   "leaders": [
    {
-    "code": "002771",
-    "name": "真视通",
-    "pid": 3,
+    "code": "603324",
+    "name": "盛剑科技",
+    "pid": 4,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "603324",
-    "name": "盛剑科技",
-    "pid": 3,
+    "code": "002579",
+    "name": "中京电子",
+    "pid": 2,
     "role": "总龙头"
    },
    {
-    "code": "301348",
-    "name": "蓝箭电子",
+    "code": "000823",
+    "name": "超声电子",
     "pid": 1,
-    "role": "中军(先进封装)"
+    "role": "中军(PCB)"
+   },
+   {
+    "code": "002086",
+    "name": "东方海洋",
+    "pid": 1,
+    "role": "中军(农业)"
    }
   ]
  },
  "empty_reason": "",
  "stats": {
-  "pool": 246,
-  "boards": 2,
+  "pool": 334,
+  "boards": 10,
   "genes": 0
  },
  "candidates": [],
