@@ -17,12 +17,13 @@ run-name: >-
 #
 # 班次（单一真源，见「班次判定」step）：
 #   crawl-eod          → close   （15:15 专班，必做 >=1500 定稿）
-#   0925–0929          → rank    （09:26 首班，容忍窗吸收外部 job 漂移）
-#   1129–1134          → midday
+#   0925–0935          → rank    （09:26 首班，容忍窗吸收外部 job 漂移）
+#   1129–1140          → midday
 #   其它               → market
 # player_ok = class != market && event != push && vars.SB_DATA_V2 != '0'
 # → SB_DATA_V2=0 时选手新 4 JSON 一律不产出（A3：新 schema 不得早于 P3/S4 原子切换）。
 #   push 触发一律只跑 market，防代码 push 撞 09:26 触发第二次 75 次榜单。
+# 核心时段守卫(2026-11-24): rank/midday 窗口过后, 当日快照仍未提交进 git 才 ::warning::。
 
 on:
   repository_dispatch:
@@ -131,9 +132,20 @@ jobs:
           else
             CLASS=market
           fi
-          if [ "$FORCE_CLASS" = "auto" ] && [ "$CLASS" = "market" ]; then
-            if { [ "$H" -ge 915 ] && [ "$H" -le 945 ]; } || { [ "$H" -ge 1115 ] && [ "$H" -le 1145 ]; }; then
-              echo "::warning::核心时段落入 market 班($HHMM)，疑似 cron 漂移或 runner 排队；请核对选手快照是否缺失"
+          # 核心时段守卫(2026-11-24 重写): 旧版只判断"market 班是否落进时段窗口", 而 cron 的
+          # 09:38 / 11:15 两个常规班本身就在窗口里 → 自 11-18 起每天固定误报 2 条, 真漂移时
+          # 长相相同。改为看结果: 班次窗口已过, 且当日快照还没提交进 git(players.json /
+          # stocks.json 的 date)才告警 —— rank/midday 班的产物后续班 checkout 即可见, 不查
+          # API、不加权限; 窗口过后全天有效(11-16 那种 midday 被掐, 会在 13:05 班现形)。
+          landed() { python3 -c "import json,sys; sys.exit(0 if str(json.load(open(sys.argv[1])).get('date',''))[:10]==sys.argv[2] else 1)" "$1" "$2" 2>/dev/null; }
+          if [ "$FORCE_CLASS" = "auto" ] && [ "$CLASS" = "market" ] && [ "${{ steps.dayguard.outputs.trading }}" != "false" ] && [ "${{ vars.SB_DATA_V2 }}" != "0" ]; then
+            TODAY=$(TZ=Asia/Shanghai date +%F)
+            LATEST=stockboard-app/public/data/latest
+            if [ "$H" -ge 936 ] && ! landed "$LATEST/players.json" "$TODAY"; then
+              echo "::warning::榜单班次窗口(09:25-09:35)已过, 但今日 rank 快照未落库(players.json 的 date 不是 $TODAY) — 疑似 cron 漂移/runner 排队/rank 班失败; 补跑: workflow_dispatch force_class=rank"
+            fi
+            if [ "$H" -ge 1141 ] && ! landed "$LATEST/stocks.json" "$TODAY"; then
+              echo "::warning::午盘班次窗口(11:29-11:40)已过, 但今日 midday 快照未落库(stocks.json 的 date 不是 $TODAY) — 疑似 cron 漂移/runner 排队/midday 班失败; 补跑: workflow_dispatch force_class=midday"
             fi
           fi
           PLAYER_OK=false

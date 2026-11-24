@@ -69,9 +69,15 @@ jobs:
       - name: 语法检查
         run: python -m compileall -q jiarenmens/src jiarenmens/scripts
 
+      # 被测代码走模拟失败路径时会打 ::error::/::warning::(如 release_db 上传失败回滚),
+      # runner 把行首的这类文本收成注解 → 门禁全绿却挂红叉(2026-11-24 巡检)。
+      # 行首 "::" 改写成普通文本再进日志: 原文仍可见, 但不再被当作 workflow 命令解析;
+      # pipefail 保住单测的退出码(管道默认只看 sed 的退出码)。
       - name: 单元测试
         working-directory: jiarenmens
-        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+        run: |
+          set -o pipefail
+          python -m unittest discover -s scripts -p 'test_*.py' -v 2>&1 | sed -u 's/^::/[wf] ::/'
 
       - name: 失败摘要
         if: failure()

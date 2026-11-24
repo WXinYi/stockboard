@@ -1,6 +1,6 @@
 # StockBoard 数据管线（当前状态）
 
-> 最后更新：2026-11-17（北京时间）。本文件只描述**当前生产链路**与必要运维点；历史事故和过程见 `git log`。
+> 最后更新：2026-11-24（北京时间）。本文件只描述**当前生产链路**与必要运维点；历史事故和过程见 `git log`。
 > 代码仓库：<https://github.com/WXinYi/stockboard>；生产站点：<https://wxinyi.github.io/stockboard/>。
 
 ## 1. 全链路一句话
@@ -33,7 +33,8 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
   - 09:25–09:35 → `rank`
   - 11:29–11:40 → `midday`
   - 其它 → `market`
-- 核心时段（09:15–09:45、11:15–11:45）若落入 `market`，输出 `::warning::` 提示 cron 漂移/排队。
+- 核心时段守卫（2026-11-24 重写，看结果不看时钟）：`rank`（09:25–09:35）/ `midday`（11:29–11:40）窗口过后，定时 `market` 班发现当日快照还没提交进 git（`players.json` / `stocks.json` 的 `date` ≠ 今天）才输出 `::warning::`，并提示 `force_class=rank|midday` 补跑。非交易日、`SB_DATA_V2=0`、手动指定班次时不核对；窗口过后全天有效。
+  - 旧版只判断「market 班是否落进 09:15–09:45 / 11:15–11:45」，而 cron 的 09:38、11:15 常规班本身就在窗口里，11-18 起每天固定误报 2 条。
 - `concurrency: pages-${{ github.ref }}`，`cancel-in-progress: false`：后续 market 班排队，不掐正在跑的 midday/close。
 
 ### 3.2 数据步骤
@@ -134,10 +135,10 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 
 ## 8. 当前验证基线
 
-- 前端：`npx vitest run` → 230 passed；`npx vite build` 成功。
-- 后端：`/opt/homebrew/bin/python3.12 -m unittest discover -s scripts -p 'test_*.py'` → 276 tests OK (skipped=3)。
+- 前端：`npx vitest run` → 269 passed（11-23 复核）；`npx vite build` 成功。
+- 后端：`/opt/homebrew/bin/python3.12 -m unittest discover -s scripts -p 'test_*.py'` → 287 tests OK (skipped=3)（11-24 复核）。
 - 系统 `python3` 是 3.9，跑全量会因 `dict | None` 报 import error；必须用 3.12。
-- CI：代码门禁 `test.yml` 覆盖 `jiarenmens/**/*.py`、`stockboard-app/src/**`、`scf/**`、`.github/workflows/*.yml`。
+- CI：代码门禁 `test.yml` 覆盖 `jiarenmens/**/*.py`、`stockboard-app/src/**`、`scf/**`、`.github/workflows/*.yml`。门禁的单测输出先经 `sed` 把行首 `::` 改写成普通文本（2026-11-24）：被测代码走模拟失败路径时会打 `::error::`，runner 会把它收成注解，造成门禁全绿却挂红叉；`pipefail` 保住单测退出码。
 
 ## 9. 剩余事项
 

@@ -1,6 +1,6 @@
 # StockBoard 当前进度
 
-> 最后更新：2026-11-17（北京时间）
+> 最后更新：2026-11-24（北京时间）
 > 本文件只记录**当前状态、现行架构、剩余待办和关键红线**。历史过程见 `git log`；运维细节见 `docs/DATA_PIPELINE.md`。
 
 ## 一句话状态
@@ -32,7 +32,7 @@
 | `players.json` | `{date, rankTime, players[]}`；选手含 `id/name/userId/watched/prevClose/today`。`prevClose` 5 字段，缺失写 `null`。 |
 | `stocks.json` | `{date, snapshot: 1130|close, updatedAt, stats[]}`；`stats[]={code,name,h,tp,ap}`，数据保留全市场，前端展示时过滤 A 股。 |
 | `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}`。`tradeConsensus` 含全市场 `totalTrades/totalBuyers` 与 A 股口径 `aTotalTrades/aTotalBuyers`（11-18 自然班起写入；旧快照缺字段时前端回退全市场口径）。 |
-| 市场 4 切片 | `hot_rank.json` / `lianban_bid.json` / `broken_pool.json` / `market_breadth.json`，均为平铺 JSON。 |
+| 市场 3 切片 | `hot_rank.json` / `lianban_bid.json` / `market_breadth.json`，均为平铺 JSON（`broken_pool.json` 已随弱转强下线删除，11-20）。 |
 
 A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示层滤港股，数据文件仍保留全量，便于回退。
 
@@ -44,7 +44,7 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 | 09:26–14:51 共 20 班 | cron-job.org `workflow_dispatch: crawl.yml`，body 含 `inputs.trigger_source=cron` | 市场切片 + 选手 rank/midday/market 快照 |
 | 15:15 | cron-job.org `repository_dispatch: crawl-eod` | close 全量快照 + Release sync |
 | 15:45 | cron-job.org job `8880763`，`repository_dispatch: crawl-cancel-check` | 掐班告警，external trigger，去重状态落 `.github/state/crawl-cancel-alert.json` |
-| 09:26–15:01 每 5 分钟 | cron-job.org `repository_dispatch: watchdog` / 09:30 `watchdog-open` | 关注选手即时钉钉 |
+| 09:26–15:56 每 5 分钟（脚本实际检测 09:26–15:05，午休/盘后班自跳过） | cron-job.org `repository_dispatch: watchdog` / 09:30 `watchdog-open` | 关注选手即时钉钉 |
 
 `crawl.yml` 的 20 个定时 job 已统一带 `trigger_source=cron`，run-name 显示 `[cron]`；掐班告警只认这些定时班与 `crawl-eod`，push/手动补跑不再误报。
 
@@ -89,9 +89,10 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 | 前端构建 | `vite build` 成功，7 precache entries |
 | 后端单测 | `287 tests OK (skipped=3)`（11-19 基线） |
 | 语法/YAML | `py_compile`、workflow YAML、`git diff --check` 全绿 |
-| CI | 代码门禁 success，部署 success |
+| CI | 代码门禁 success，部署 success；门禁单测输出经 `sed` 改写行首 `::`，不再出现假红注解（11-24） |
 | 生产数据（11-19 close） | `players/stocks/today` 全部当日 close 快照，`traded=1257`，`emContract.ok=true` |
 | 涨停池断供修复 | 11-19 EOD 班新步骤首跑成功：`limit_pool MAX=11-19` 当日落库；炸板池自愈 11-16/17/18 三天缺口 |
+| 生产日巡检（11-24，对象 11-23） | 92 run 全绿、班次与基线逐类一致；竞价/午盘/尾盘三次钉钉送达；热层日快照 15:20 落盘，`limit_pool` 当日 146 条、池日连续；线上 7 切片均为当日 |
 
 ## S5/G4 验收记录（2026-11-19 文书收口）
 
@@ -123,7 +124,8 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 | ~~契约守卫收紧~~ | **已完成**（11-20） | `test_qa_s1_contracts.py` A股字段从"可选兼容"改"必须有"（精确集合断言） |
 | ~~test.yml 失败告警~~ | **已完成**（11-20） | 补 alert-on-failure job（钉钉 notify_failure 同款模式） |
 | ~~S5/G4 证据链~~ | **已收口**（11-20 文书，见上表） | K2 按实测口径结案 |
-| tradingCalendar 2027 | 年底项 | 等交易所通知 |
+| ~~班次守卫固定误报 + 门禁假红~~ | **已修复**（11-24） | 守卫改为「rank/midday 窗口过后、当日快照没进 git 才告警」（原 09:38、11:15 两个常规班每天固定误报）；门禁单测管道把行首 `::` 改写成普通文本（原每次挂 1 条“上传热层失败 500”假红）。运维描述同步见 `docs/DATA_PIPELINE.md` §3.1、§8 |
+| ~~tradingCalendar 2027~~ | **已完成**（11-07 `384763a948b`） | 国办通知 11-05 发布后已录入（含元旦），`COVERAGE_YEAR=2027`；跨 2028 需用新通知更新 |
 
 没有需要立即拍板的生产阻塞项。可选专项：watchdog Actions cache 架构优化（当前不是已确认故障，暂不做）。
 
