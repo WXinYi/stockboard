@@ -105,7 +105,7 @@ async def main():
 
             # Check page state
             body_text = await page.evaluate("document.body ? document.body.innerText.slice(0, 1000) : 'no body'")
-            print(f"\n=== Page content (first 500 chars) ===")
+            print("\n=== Page content (first 500 chars) ===")
             print(body_text[:500])
 
         except Exception as e:

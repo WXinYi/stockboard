@@ -383,7 +383,6 @@ class NoTokenClient:
     def _post(self, args, method):
         payload = {"args": args, "method": method, "client": "ios",
                    "clientType": "cfw", "clientVersion": NO_TOKEN_VERSION}
-        last = None
         for attempt in range(self.max_retry + 1):
             if attempt:
                 time.sleep(0.5)
@@ -396,9 +395,8 @@ class NoTokenClient:
                     return data.get("data") or {}
                 if code in NO_TOKEN_NO_RETRY_CODES:
                     return {}
-                last = code
-            except Exception as e:
-                last = type(e).__name__
+            except Exception:
+                pass   # 瞬时故障 → 重试; 次数耗尽后按"无数据"返回
         # 显式失败不伪造数据：返回空集合，由上层「无数据」语义处理。
         return {}
 

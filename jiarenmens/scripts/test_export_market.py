@@ -21,7 +21,8 @@ DATE = "2026-11-12"
 
 
 def make_dbs(db_dir):
-    """临时建两个最小市场库 + 一个应被拒绝的 crawl_data.db（模拟存量库存在）。"""
+    """临时建最小市场库 auction.db + 一个应被拒绝的 crawl_data.db（模拟存量库存在）。
+    hot_rank.db 已于 2026-11-25 随人气榜链路下线：夹具故意不建它，证明导出不再依赖它。"""
     a = sqlite3.connect(str(Path(db_dir) / "auction.db"))
     a.execute("CREATE TABLE bid_pool (date TEXT, code TEXT, name TEXT, turnover_ratio REAL)")
     a.execute("INSERT INTO bid_pool VALUES (?, '000001', '平安银行', 3.5)", (DATE,))
@@ -29,11 +30,6 @@ def make_dbs(db_dir):
     a.execute("INSERT INTO market_breadth VALUES (?, 30, 5)", (DATE,))
     a.commit()
     a.close()
-    h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
-    h.execute("CREATE TABLE hot_rank (date TEXT, snap TEXT, rank INTEGER, code TEXT, name TEXT, rise REAL)")
-    h.execute("INSERT INTO hot_rank VALUES (?, 'am', 1, '000001', '平安银行', 2.1)", (DATE,))
-    h.commit()
-    h.close()
     c = sqlite3.connect(str(Path(db_dir) / "crawl_data.db"))
     c.execute("CREATE TABLE positions (id INTEGER)")
     c.commit()
@@ -57,11 +53,22 @@ class TestMarketOnly(unittest.TestCase):
 
         with patch("export_market.sqlite3.connect", side_effect=spy):
             em.cmd_market_only(self.out, self.dbs, DATE)
-        self.assertEqual(len(opened), 2, "恰好打开两个市场库")
+        self.assertEqual(len(opened), 1, "恰好打开一个市场库")
         self.assertFalse(any("crawl_data.db" in p for p in opened),
                          f"--market-only 打开了 crawl_data.db: {opened}")
-        self.assertTrue(all(("auction.db" in p or "hot_rank.db" in p) for p in opened))
+        self.assertFalse(any("hot_rank" in p for p in opened),
+                         f"人气榜已下线(2026-11-25), 不得再打开: {opened}")
+        self.assertTrue(all("auction.db" in p for p in opened))
         self.assertTrue(all("mode=ro" in p for p in opened), "只读方式打开")
+
+    def test_人气榜库不存在_照常导出两个切片(self):
+        """下线回归锁: 导出不得依赖已删除的 hot_rank.db, 也不得再产出 hot_rank.json。"""
+        self.assertFalse((self.dbs / "hot_rank.db").exists(), "夹具不应建人气榜库")
+        written = em.cmd_market_only(self.out, self.dbs, DATE)
+        self.assertEqual(tuple(sorted(written)), ("lianban_bid.json", "market_breadth.json"))
+        self.assertNotIn("hot_rank.json", {p.name for p in self.out.iterdir()})
+        self.assertNotIn("hot_rank.json", em.MARKET_SLICES)
+        self.assertIn("hot_rank.json", em.FORBIDDEN_SLICES, "下线切片须进禁止集合防复发")
 
     def test_白名单硬拒绝_crawl_data_db(self):
         with self.assertRaises(ValueError):
@@ -73,9 +80,9 @@ class TestMarketOnly(unittest.TestCase):
         for forbidden in em.FORBIDDEN_SLICES:
             self.assertNotIn(forbidden, names, f"不得产出 {forbidden}（F5 / Q1=B）")
 
-    def test_产物恰好3个_平铺无子目录(self):
+    def test_产物恰好2个_平铺无子目录(self):
         written = em.cmd_market_only(self.out, self.dbs, DATE)
-        self.assertEqual(len(written), 3)
+        self.assertEqual(len(written), 2)
         self.assertEqual(tuple(sorted(written)), tuple(sorted(em.MARKET_SLICES)))
         for p in self.out.iterdir():
             self.assertTrue(p.is_file(), "AQ1=A: FLAT 平铺, 无 market/ 子目录")
@@ -83,9 +90,6 @@ class TestMarketOnly(unittest.TestCase):
 
     def test_切片内容来自市场库且形状可校验(self):
         em.cmd_market_only(self.out, self.dbs, DATE)
-        hot = json.loads((self.out / "hot_rank.json").read_text(encoding="utf-8"))
-        self.assertEqual(hot["src"], "hot_rank.db")
-        self.assertEqual(hot["rows"][0]["code"], "000001")
         breadth = json.loads((self.out / "market_breadth.json").read_text(encoding="utf-8"))
         self.assertEqual(breadth["row"]["zt"], 30)
         lianban = json.loads((self.out / "lianban_bid.json").read_text(encoding="utf-8"))

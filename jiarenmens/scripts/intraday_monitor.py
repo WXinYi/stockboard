@@ -4,7 +4,7 @@
 
 数据边界:
   - 读: stockboard-app/public/data/latest/auction.json(当日 09:25 扫描快照, Actions 提交)
-        auction.db(昨日连板梯队, 只读) / hot_rank.db(人气榜, 只读)
+        auction.db(昨日连板梯队, 只读)
   - 写: data/intraday.db(signals+snaps, 本地独享, 不提交) + data/intraday_page.html(本地信号页)
 
 用法(在 jiarenmens/ 目录):
@@ -21,7 +21,7 @@ import sqlite3
 import sys
 import time
 from collections import deque
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +33,6 @@ from src.analysis.stage_candidates import stage_pool  # noqa: E402
 REPO = ROOT.parent
 AUCTION_JSON = REPO / "stockboard-app" / "public" / "data" / "latest" / "auction.json"
 AUCTION_DB = ROOT / "data" / "auction.db"
-HOT_DB = ROOT / "data" / "hot_rank.db"
 INTRADAY_DB = ROOT / "data" / "intraday.db"
 HTML_PAGE = ROOT / "data" / "intraday_page.html"
 EXTRA_FILE = ROOT / "data" / "watchlist_extra.txt"

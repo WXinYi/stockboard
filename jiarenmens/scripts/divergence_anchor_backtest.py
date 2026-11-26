@@ -30,7 +30,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.analysis import six_emotions as se          # noqa: E402
-from src.analysis import emotion_cycle as ec         # noqa: E402
 
 AUC = ROOT / "data" / "auction.db"
 STRONG_SIX = ("板块情绪极强", "投机情绪极强")
@@ -221,7 +220,7 @@ def main():
     nok = [r for r in divs if r["no_k"]]
     base = [r for r in recs if not r["div"] and not r["unfillable"] and not r["no_k"]]
 
-    print(f"\n== 4) 结果 ==")
+    print("\n== 4) 结果 ==")
     print(f"背离日 {len(divs)} 天 (其中一字不可成交 {len(unfill)}, 缺K线 {len(nok)})")
     for r in unfill:
         print(f"   [不可成交] {r['date']} {r['name']}({r['code']}) {r['height']}板 "

@@ -8,7 +8,6 @@
 运行: python3 scripts/test_live_client.py
 """
 import json
-import os
 import sys
 import tempfile
 import unittest

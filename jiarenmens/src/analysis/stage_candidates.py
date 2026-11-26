@@ -15,7 +15,7 @@
 收紧状态: go=可做 care=可做(矩阵谨慎) watch=观察(矩阵) ban=观察(矩阵禁买); 只收紧不放松。
 (JS 版另有评分上限 cap, Python 无评分, 仅状态语义对齐。)
 """
-from src.analysis.emotion_cycle import load_pool, ladder_split
+from src.analysis.emotion_cycle import load_pool
 
 MATRIX_GATE = {
     "强|强":     {"tier": {"high": "go",    "mid": "go",    "low": "go"}},
@@ -126,7 +126,6 @@ def stage_pool(cycle_res: dict, max_n: int = 20, bid_date: str | None = None) ->
     prev_rows = [r for r in pool_rows if r["date"] == prev_date]
     prev_first = {r["code"]: r for r in prev_rows if r["height"] == 1}
     bids = _bid_pool(bid_date or date_str)
-    mainlines = {m["board"] for m in cycle_res["mainlines"]}
 
     def bid_strong(code):
         b = bids.get(code)

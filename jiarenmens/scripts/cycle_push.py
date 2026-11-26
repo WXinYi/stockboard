@@ -104,7 +104,9 @@ def fmt_pct(x):
 
 
 def fmt_time(ts):
-    return datetime.fromtimestamp(ts).strftime("%H:%M") if isinstance(ts, (int, float)) else "?"
+    # 显式北京时区(2026-11-24 修复): runner 是 UTC, 裸 fromtimestamp 会把封板时间
+    # 显示成北京时间-8h(09:25 → 01:25), 且"午后上板 >= 13:00"判定永远为假。
+    return datetime.fromtimestamp(ts, BJ_TZ).strftime("%H:%M") if isinstance(ts, (int, float)) else "?"
 
 
 # ── A 股共识附加段（2026-11-16 用户要求：午盘顺便推调仓共识，重仓共识只推 A 股）──

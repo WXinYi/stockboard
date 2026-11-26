@@ -38,7 +38,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,6 +46,15 @@ DB_PATH = ROOT / "data" / "crawl_data.db"
 REPO = os.environ.get("GITHUB_REPO", "WXinYi/stockboard")
 API_BASE = f"https://api.github.com/repos/{REPO}"
 UPLOAD_BASE = f"https://uploads.github.com/repos/{REPO}/releases"
+BJ_TZ = timezone(timedelta(hours=8))
+
+
+def _today_bj() -> date:
+    """北京日期。runner 是 UTC: 裸 date.today()/datetime.now() 在北京 00:00~07:59 会落到前一天,
+    而日/周快照命名、超龄清理、库龄闸门都靠它。现行班次都在北京 09:25 后运行所以尚未咬人
+    (2026-11-25 加固, 与 backfill_emotion._now_bj / cycle_push.BJ_TZ 同一口径)。"""
+    return datetime.now(BJ_TZ).date()
+
 HOT_TAG = "db-state"
 HOT_ASSET = "crawl-latest.db.gz"
 
@@ -263,7 +272,7 @@ def make_manifest(db: Path) -> dict:
         "players": c.execute("SELECT COUNT(*) FROM players").fetchone()[0],
         "date_range": [lo, hi],
         "sha256": hashlib.sha256(db.read_bytes()).hexdigest(),
-        "generated_at": date.today().isoformat(),
+        "generated_at": _today_bj().isoformat(),
     }
     c.close()
     return m
@@ -427,15 +436,16 @@ def cmd_upload_what(what: str, baseline_sha_file: str = None):
         # 日快照 + 当前 ISO 周快照: 热层被后写者覆盖/损坏时, 最近 N 天任意时点与最近
         # N 周的周末状态可回滚。周资产复用同一个 gz、同名覆盖, 每班刷新当前周,
         # 周切换后旧周资产自然冻结为周末状态, 无需按周定时。
-        daily = f"{t['prefix']}-{date.today().isoformat()}.db.gz"
+        today = _today_bj()   # 日/周快照命名与超龄清理用同一个"今天", 防跨零点前后不一致
+        daily = f"{t['prefix']}-{today.isoformat()}.db.gz"
         upload_asset(t["tag"], daily, gz)
-        y, w, _ = date.today().isocalendar()
+        y, w, _ = today.isocalendar()
         upload_asset(t["tag"], f"{t['prefix']}-{y}-W{w:02d}.db.gz", gz)
         # 滚动清理: 日快照留 daily_keep 天 + 周快照留 weekly_keep 周(纯函数可单测)
         rel = get_release(t["tag"])
         assets = rel.get("assets", []) if rel else []
         stale = set(_stale_auction_assets([a["name"] for a in assets],
-                                          date.today(), t["daily_keep"], t["weekly_keep"]))
+                                          today, t["daily_keep"], t["weekly_keep"]))
         for a in assets:
             if a["name"] in stale:
                 _api("DELETE", a["url"], token=_token())
@@ -474,7 +484,7 @@ def cmd_archive_months():
 
 
 def cmd_retain_weeks(weeks: int):
-    cutoff = date.today() - timedelta(weeks=weeks)
+    cutoff = _today_bj() - timedelta(weeks=weeks)
     for rel in list_releases():
         tag = rel.get("tag_name", "")
         if not tag.startswith("db-w"):
@@ -572,13 +582,13 @@ def _auction_last_date(db_path: Path):
 
 
 def _days_since(last: date, today: date = None):
-    return None if last is None else (today or date.today()) - last
+    return None if last is None else (today or _today_bj()) - last
 
 
 def _db_age_days(db_path: Path, today: date = None):
     """库龄天数(今天-最后采集日); 库不可读返回 None。纯函数, 可单测。"""
     last = _db_last_date(db_path)
-    return None if last is None else (today or date.today()) - last
+    return None if last is None else (today or _today_bj()) - last
 
 
 def _write_marker(source: str, degraded: bool, extra: dict = None, path: Path = None):
@@ -586,14 +596,14 @@ def _write_marker(source: str, degraded: bool, extra: dict = None, path: Path = 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "source": source, "degraded": degraded,
-        "checked_at": datetime.now().isoformat(timespec="seconds"),
+        "checked_at": datetime.now(BJ_TZ).isoformat(timespec="seconds"),
         **(extra or {}),
     }, ensure_ascii=False))
 
 
 def cmd_download_fallback(cache_db: Path = None, today: date = None):
     """④降级链: 热层 → 温层最新周快照 → cache 副本。成功(含降级)返回 0, 全链耗尽返回 1。"""
-    today = today or date.today()
+    today = today or _today_bj()
     # 1) 热层(最新可信, 不做库龄校验)
     if _download_asset_to_db(HOT_TAG, HOT_ASSET, DB_PATH) == 0:
         _write_marker("hot", False)

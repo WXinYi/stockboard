@@ -91,7 +91,7 @@ class TestAuctionPulse(unittest.TestCase):
         r1 = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)],
                            self._pool([-2, -4, -1, -3, 1, 0, -2, -1, 0, -1]))
         self.assertEqual(r1["verdict"], "退潮延续")
-        pcts = [4, 5, -5, -6, -4, 2, 1, -7, 3, 0]  # 均幅≈-0.7? 算: 4+5-5-6-4+2+1-7+3+0=-7 → 均幅-0.7 已覆盖
+        # 另一组合 [4, 5, -5, -6, -4, 2, 1, -7, 3, 0] 均幅≈-0.7, 与上面 r1 同属「退潮延续」, 已覆盖
         # 大面≥3/10 且红盘率高: [5,4,6,4,5,-8,-6,-5,4,3] → 均幅1.2 红盘率0.8 大面0.3
         r2 = auction_pulse([{"code": str(i), "name": "x"} for i in range(10)],
                            self._pool([5, 4, 6, 4, 5, -8, -6, -5, 4, 3]))

@@ -1,13 +1,13 @@
 # StockBoard 当前进度
 
-> 最后更新：2026-11-24（北京时间）
+> 最后更新：2026-11-25（北京时间）
 > 本文件只记录**当前状态、现行架构、剩余待办和关键红线**。历史过程见 `git log`；运维细节见 `docs/DATA_PIPELINE.md`。
 
 ## 一句话状态
 
-生产链路稳定：数据采集、前端 4 契约、watchdog 即时推送、午/尾盘格局推送、掐班告警均已上线并通过 CI 与生产核验。当前没有阻塞上线的 bug；剩余是明日自然班观察和规格证据收尾。
+生产链路稳定：数据采集、前端 4 契约、watchdog 即时推送、午/尾盘格局推送、掐班告警均已上线并通过 CI 与生产核验。当前没有阻塞上线的 bug；11-24/25 两轮巡检发现的噪声、无消费方链路与 runner 时区隐患均已处理，剩余一项待拍板（本地对账工具 `data_reconcile.py` 的处置）。
 
-验证基线：`f76a8b4e7b3`（全量复测问题收口；当前代码以 main 最新提交为准，本行不随每次提交刷新）。最近 CI：代码门禁 `44045910912` success；部署班 `44045910944` success；生产 bundle 已更新为 `index-CNk4sxs3.js` / `index-ChNhDtGK.css`。
+验证基线：`f76a8b4e7b3`（全量复测问题收口；当前代码以 main 最新提交为准，本行不随每次提交刷新）。CI 与生产 bundle 以线上为准：门禁与部署班见 Actions 运行历史，线上主 bundle 以站点 index.html 的引用为准（本文件不再写死指纹）。
 
 ## 当前页面
 
@@ -32,7 +32,7 @@
 | `players.json` | `{date, rankTime, players[]}`；选手含 `id/name/userId/watched/prevClose/today`。`prevClose` 5 字段，缺失写 `null`。 |
 | `stocks.json` | `{date, snapshot: 1130|close, updatedAt, stats[]}`；`stats[]={code,name,h,tp,ap}`，数据保留全市场，前端展示时过滤 A 股。 |
 | `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}`。`tradeConsensus` 含全市场 `totalTrades/totalBuyers` 与 A 股口径 `aTotalTrades/aTotalBuyers`（11-18 自然班起写入；旧快照缺字段时前端回退全市场口径）。 |
-| 市场 3 切片 | `hot_rank.json` / `lianban_bid.json` / `market_breadth.json`，均为平铺 JSON（`broken_pool.json` 已随弱转强下线删除，11-20）。 |
+| 市场 2 切片 | `lianban_bid.json` / `market_breadth.json`，均为平铺 JSON（`broken_pool.json` 11-20、`hot_rank.json` 11-25 先后下线删除）。 |
 
 A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示层滤港股，数据文件仍保留全量，便于回退。
 
@@ -85,10 +85,10 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 
 | 项 | 结果 |
 |---|---|
-| 前端单测 | `269 passed`（11-19 基线；282 − 删除的六情绪对拍 13 例） |
-| 前端构建 | `vite build` 成功，7 precache entries |
-| 后端单测 | `287 tests OK (skipped=3)`（11-19 基线） |
-| 语法/YAML | `py_compile`、workflow YAML、`git diff --check` 全绿 |
+| 前端单测 | `269 passed`（11-19 基线；282 − 删除的六情绪对拍 13 例；11-24 复核） |
+| 前端构建 | `vite build` 成功，7 precache entries（bundle 344KB / gzip 121KB） |
+| 后端单测 | `312 tests OK (skipped=3)`（11-25：287 + fmt_time 时区 4 + 人气榜下线锁 11 + runner 时区 10；在 Asia/Shanghai、UTC、America/New_York 三种宿主机时区下结果一致） |
+| 语法/YAML | `py_compile`、workflow YAML、`git diff --check` 全绿；pyflakes 31 → 1（仅剩 `watchdog.py` 的 `urllib.request`，测试经它打桩，有意保留） |
 | CI | 代码门禁 success，部署 success；门禁单测输出经 `sed` 改写行首 `::`，不再出现假红注解（11-24） |
 | 生产数据（11-19 close） | `players/stocks/today` 全部当日 close 快照，`traded=1257`，`emContract.ok=true` |
 | 涨停池断供修复 | 11-19 EOD 班新步骤首跑成功：`limit_pool MAX=11-19` 当日落库；炸板池自愈 11-16/17/18 三天缺口 |
@@ -125,6 +125,13 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 | ~~test.yml 失败告警~~ | **已完成**（11-20） | 补 alert-on-failure job（钉钉 notify_failure 同款模式） |
 | ~~S5/G4 证据链~~ | **已收口**（11-20 文书，见上表） | K2 按实测口径结案 |
 | ~~班次守卫固定误报 + 门禁假红~~ | **已修复**（11-24） | 守卫改为「rank/midday 窗口过后、当日快照没进 git 才告警」（原 09:38、11:15 两个常规班每天固定误报）；门禁单测管道把行首 `::` 改写成普通文本（原每次挂 1 条“上传热层失败 500”假红）。运维描述同步见 `docs/DATA_PIPELINE.md` §3.1、§8 |
+| ~~推送封板时间差 8 小时~~ | **已修复**（11-24 闲时巡检） | `cycle_push.py:fmt_time` 裸 `fromtimestamp` 在 UTC runner 上把封板时间显示成北京-8h，且「午后上板 ≥13:00」判定恒假；改显式 `BJ_TZ` + 4 例时区回归测试（`TZ=UTC` 下也过） |
+| ~~盘中班冗余上传热层~~ | **已收紧**（11-24 闲时巡检） | crawl.yml 上传步骤限收盘专班（`class == close`）：盘中班唯一写入 breadth-rt 每班自实时整行重写（自愈），不值得 3×3.2MB 删旧传新。省 ~9s/班 × 21 班 + ~450MB/天流量 + 63 次/天资产删传操作；竞价班（不可重采数据）与收盘班上传语义不变 |
+| watchdog 空转班收窄 | 待拍板 | 每日 67 班里 17 班落午休 11:31–11:56 与盘后 15:06–15:56（每班 ~17s 纯环境开销），需改 cron-job.org 窗口（只读纪律不动它）；估算收益 ~5 min runner/天 |
+| ~~人气榜链路~~ | **已下线**（11-25 用户拍板） | 前端与线上 bundle 引用为 0。删除 crawl.yml「人气榜快照」步骤、竞价主流程里的 am 快照、`HotRankStore`、`export_market.export_hot_rank`、`hot_rank.db` 与 `hot_rank.json`；市场切片 3 → 2，提交白名单同步。每班省 2–4s、每天少 22 次东财请求；历史数据留在 git 历史里。`test_hot_rank_retired.py` 10 例下线锁防复发，两个提交步骤在临时仓库 + 远端里模拟 15 场景全过 |
+| runner 时区加固 | **已完成**（11-25） | `release_db`（8 处 `date.today()`：日/周快照命名、超龄清理、库龄闸门、marker）、`auction_spider._validate_date`、竞价班陈旧池守卫、`visibility.update` 的「今天」统一改显式北京日期（runner 是 UTC，现行班次恰在北京 09:25 后所以此前未咬人）；`test_runner_timezone.py` 10 例冻结时钟回归，把口径换回 UTC 后 8 例失败，证明测试有判别力 |
+| pyflakes 清理 | **已完成**（11-25） | 31 → 1：删未用导入 15 处、无占位符 f-string 8 处、死赋值 6 处（逐个确认不含业务逻辑：`mainlines` 为 09-06 删 V5 漏斗的遗留、`last`/`t0` 只写不读等） |
+| `data_reconcile.py` 无法加载 | 待拍板 | 11-20 删炸板池链路后的遗漏：主流程与 `recompute_926` 仍调用已删除的 `xuangubao.fetch_broken_pool`、给已删除的 `sc._broken_map` 打桩，import 即报错。本地对账工具，不影响生产。处置二选一：删掉其炸板池依赖后修复，或整工具下线 |
 | ~~tradingCalendar 2027~~ | **已完成**（11-07 `384763a948b`） | 国办通知 11-05 发布后已录入（含元旦），`COVERAGE_YEAR=2027`；跨 2028 需用新通知更新 |
 
 没有需要立即拍板的生产阻塞项。可选专项：watchdog Actions cache 架构优化（当前不是已确认故障，暂不做）。

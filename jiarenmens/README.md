@@ -26,7 +26,7 @@
 | `players.json` | `{date, rankTime, players[]}` |
 | `stocks.json` | `{date, snapshot, updatedAt, stats[]}` |
 | `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}` |
-| 市场切片 | `hot_rank.json` / `lianban_bid.json` / `broken_pool.json` / `market_breadth.json` |
+| 市场切片 | `lianban_bid.json` / `market_breadth.json`（`broken_pool.json` 11-20、`hot_rank.json` 11-25 先后下线删除） |
 
 `tradeConsensus` 按股票聚合当日买/卖，人数按选手去重，笔数不去重，方向未知不猜测；每班全量覆盖，不做并集。
 

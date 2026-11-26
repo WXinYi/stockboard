@@ -6,8 +6,9 @@
   python scripts/export_market.py --market-only --out /tmp/pdr-s1/out
 
 硬约束：
-  * **只读 ``auction.db`` / ``hot_rank.db``**，``ALLOWED_DBS`` 白名单 +
+  * **只读 ``auction.db``**，``ALLOWED_DBS`` 白名单 +
     ``mode=ro`` 硬保证**绝不打开 ``crawl_data.db``**（Story 1.2 AC / 单测断言）。
+    （``hot_rank.db`` 已于 2026-11-25 随人气榜链路下线删除。）
   * 产物 **FLAT 平铺**在输出目录根（AQ1=A：零路径改动，不迁 ``market/`` 子目录）。
   * **不写 ``auction.json``**（F5：single-writer 归 ``auction.yml``）；
     **不补** ``my_positions`` / ``strike_review`` / ``six_history`` 三个下线切片。
@@ -26,13 +27,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from src.utils.atomic import _atomic_json  # noqa: E402  (F6 原子写)
 
-# 白名单：仅两个市场库。任何其它库名（尤其 crawl_data.db）→ 显式拒绝。
-ALLOWED_DBS = ("auction.db", "hot_rank.db")
+# 白名单：仅一个市场库。任何其它库名（尤其 crawl_data.db）→ 显式拒绝。
+ALLOWED_DBS = ("auction.db",)
 
-# 平铺集合锁定（Story 1.2 AC / AQ1=A）：严格 3 个市场切片，不含 auction.json 与 3 下线切片。
-MARKET_SLICES = ("lianban_bid.json", "market_breadth.json", "hot_rank.json")
+# 平铺集合锁定（Story 1.2 AC / AQ1=A）：严格 2 个市场切片，不含 auction.json 与下线切片。
+# hot_rank.json 已于 2026-11-25 随人气榜链路下线（前端 0 引用）：入 FORBIDDEN_SLICES 防复发。
+MARKET_SLICES = ("lianban_bid.json", "market_breadth.json")
 FORBIDDEN_SLICES = ("auction.json", "my_positions.json",
-                    "strike_review.json", "six_history.json")
+                    "strike_review.json", "six_history.json", "hot_rank.json")
 
 ONLINE_MARKER = "public/data/latest"
 DEFAULT_OUT = Path(tempfile.gettempdir()) / "player-data-refactor-s1" / "out"
@@ -133,7 +135,7 @@ def query_rows(conn, sql, params=()):
 
 
 # ═══════════════════════════════════════════
-# 4 个平铺切片导出器（数据源仅 auction.db / hot_rank.db）
+# 2 个平铺切片导出器（数据源仅 auction.db）
 # ═══════════════════════════════════════════
 
 def export_lianban_bid(conn, date):
@@ -153,35 +155,20 @@ def export_market_breadth(conn, date):
 
 
 
-def export_hot_rank(conn, date):
-    """hot_rank.json：东财人气榜最新 (date, snap) 快照，保留排名。"""
-    latest = query_rows(conn, "SELECT MAX(date) AS d FROM hot_rank")
-    day = (latest[0]["d"] if latest else None) or date
-    snaps = query_rows(conn, "SELECT snap FROM hot_rank WHERE date=? "
-                             "ORDER BY snap DESC LIMIT 1", (day,))
-    snap = snaps[0]["snap"] if snaps else ""
-    rows = query_rows(conn, "SELECT rank, code, name, rise FROM hot_rank "
-                            "WHERE date=? AND snap=? ORDER BY rank", (day, snap))
-    return {"date": day, "snap": snap, "rows": rows, "src": "hot_rank.db"}
-
-
 # ═══════════════════════════════════════════
 # 子命令
 # ═══════════════════════════════════════════
 
 def cmd_market_only(out, db_dir, date):
-    """只读两个市场库 → 3 个 FLAT 切片（AQ1=A 零路径改动 / F5 不写 auction.json）。"""
+    """只读 auction.db → 2 个 FLAT 切片（AQ1=A 零路径改动 / F5 不写 auction.json）。"""
     auction = connect_ro(Path(db_dir) / "auction.db")
-    hot = connect_ro(Path(db_dir) / "hot_rank.db")
     try:
         docs = {
             "lianban_bid.json": export_lianban_bid(auction, date),
             "market_breadth.json": export_market_breadth(auction, date),
-            "hot_rank.json": export_hot_rank(hot, date),
         }
     finally:
         auction.close()
-        hot.close()
     for name in MARKET_SLICES:
         _atomic_json(out / name, docs[name])   # 平铺：out 根，无子目录
     return sorted(docs)
@@ -190,7 +177,7 @@ def cmd_market_only(out, db_dir, date):
 def build_parser():
     ap = argparse.ArgumentParser(description="P1 市场切片导出（Sprint 1，产物仅 /tmp）")
     ap.add_argument("--market-only", action="store_true", required=True,
-                    help="只读 auction.db / hot_rank.db，导出平铺市场切片")
+                    help="只读 auction.db，导出平铺市场切片")
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="输出目录（拒绝线上路径）")
     ap.add_argument("--db-dir", default=str(DEFAULT_DB_DIR), help="市场库目录")
     ap.add_argument("--date", default="", help="覆盖交易日 YYYY-MM-DD（默认北京当日）")

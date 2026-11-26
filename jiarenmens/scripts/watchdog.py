@@ -27,7 +27,7 @@ import json
 import re
 import sys
 import time
-import urllib.request
+import urllib.request  # 模块内不直接调用, 但 test_watchdog 经 watchdog.urllib.request 打桩 urlopen —— 勿删
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path

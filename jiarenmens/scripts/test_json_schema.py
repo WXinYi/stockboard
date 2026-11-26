@@ -46,10 +46,6 @@ def make_market_dbs(db_dir):
     a.execute("CREATE TABLE market_breadth (date TEXT, zt INTEGER)")
     a.commit()
     a.close()
-    h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
-    h.execute("CREATE TABLE hot_rank (date TEXT, snap TEXT, rank INTEGER, code TEXT, name TEXT, rise REAL)")
-    h.commit()
-    h.close()
     return Path(db_dir)
 
 

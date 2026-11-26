@@ -14,7 +14,7 @@ stable_trade_key 只依赖交易身份(zh_id|交易日|代码|方向), 不依赖
 notify_daily 判定"新键或旧键任一命中即已见", 写入只写新键, 平滑过渡。
 """
 import hashlib
-from typing import Iterable, Optional, Set
+from typing import Optional, Set
 
 
 def _safe_float(v, default=0.0):

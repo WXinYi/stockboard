@@ -12,7 +12,7 @@ run-name: >-
 #
 # S2 / Commit-R1 起：
 #   选手数据 → player_snapshot.py --rank/--midday/--close（AQ5=A 直取榜单 userid）
-#   市场数据 → export_market.py --market-only（4 切片平铺，AQ1=A 路径零改动）
+#   市场数据 → export_market.py --market-only（2 切片平铺，AQ1=A 路径零改动；hot_rank 11-25 下线）
 #   不再跑 main.py / export_json.py / notify_daily.py / prune_crawl_db.py
 #
 # 班次（单一真源，见「班次判定」step）：
@@ -202,16 +202,6 @@ jobs:
             echo "非尾盘时段($H), 跳过"
           fi
 
-      - name: 人气榜快照
-        if: success() && steps.dayguard.outputs.trading != 'false'
-        continue-on-error: true
-        run: |
-          cd jiarenmens
-          python scripts/auction_scan.py --hot-rank 2>&1 | tee /tmp/hotrank.log
-          if grep -qE "❌|失败|异常|Traceback" /tmp/hotrank.log; then
-            echo "::warning::本班人气榜快照未写入(该日人气榜数据将缺失)"
-          fi
-
       - name: 市场宽度更新
         if: success() && steps.dayguard.outputs.trading != 'false'
         continue-on-error: true
@@ -299,8 +289,12 @@ jobs:
         run: cd jiarenmens && python scripts/export_market.py --market-only --out ../stockboard-app/public/data/latest
 
       # auction.db 上传闸门: sha 变更才传(夜间空转班自动跳过)。竞价档案易逝不可重采, 失败即失败。
-      - name: 上传 auction.db 热层
-        if: steps.dayguard.outputs.trading != 'false'
+      # 2026-11-24 收盘专班限定: 盘中班对热层的唯一写入是 breadth-rt 当日行, 而它每班都从
+      # 实时接口整行重写(自愈, 上一班传不传都一样), 为它做 3×3.2MB 删旧传新(约 9s/班、
+      # 每天 21 班 ≈ 470MB 流量)是纯浪费。收盘专班(15:15 crawl-eod)无条件上传定稿+历史自愈;
+      # 不可重采的竞价档案仍由 09:25 auction.yml 班自己上传, 不受本门控影响。
+      - name: 上传 auction.db 热层(仅收盘专班)
+        if: steps.dayguard.outputs.trading != 'false' && steps.shift.outputs.class == 'close'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -341,9 +335,9 @@ jobs:
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          # AQ1=A：market 4 切片与 3 个契约均平铺在 latest/，路径零改动；精确 add，不用 -A。
+          # 契约与市场切片均平铺在 latest/，路径零改动；精确 add，不用 -A。
           # SB_DATA_V2=0 时 players/today 尚未产出 → 逐文件判存, 避免 git add 对缺失路径报错打死整班。
-          for f in players stocks today hot_rank lianban_bid broken_pool market_breadth; do
+          for f in players stocks today lianban_bid market_breadth; do
             p="stockboard-app/public/data/latest/$f.json"
             if [ -f "$p" ]; then git add -f "$p"; fi
           done
@@ -355,8 +349,8 @@ jobs:
           else
             git commit -m "📊 数据更新 $(date +%Y-%m-%d) [skip ci]"
             for i in 1 2 3; do
-              # 真实交易日班还会改 auction.json / hot_rank.db 等非白名单 tracked 文件,
-              # 它们不属于本 step 的 7 个契约 add 范围 → 残留 unstaged 会让 pull --rebase 直接拒绝。
+              # 真实交易日班还会改 auction.json 等非白名单 tracked 文件,
+              # 它们不属于本 step 的白名单 add 范围 → 残留 unstaged 会让 pull --rebase 直接拒绝。
               # autoStash 自动暂存/恢复这些改动, 不改白名单、不动并发/闸门语义。
               if git -c rebase.autoStash=true pull --rebase -X theirs && git push; then
                 echo "✅ 推送成功"

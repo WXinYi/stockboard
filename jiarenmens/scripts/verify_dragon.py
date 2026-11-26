@@ -26,7 +26,7 @@ import sys
 import time
 import urllib.request
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -284,7 +284,7 @@ def main():
                     hd_s = f", 平均持有{sum(hd)/len(hd):.1f}交易日" if hd else ""
                     print(f"  ▶ 实际兑现(选手自身卖出价): 平均{sum(rv)/len(rv):+.1f}% ({len(rv)}笔{hd_s})")
         else:
-            print(f"  涨停日买入: 0 笔")
+            print("  涨停日买入: 0 笔")
 
     print("\n=== 完成 ===")
 

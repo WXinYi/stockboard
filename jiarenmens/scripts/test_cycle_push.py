@@ -157,5 +157,40 @@ class TestMainDedup(unittest.TestCase):
         self.assertIn("CONSENSUS-MARK", buf.getvalue())
 
 
+class TestFmtTime(unittest.TestCase):
+    """fmt_time 时区回归(2026-11-24 修复): runner 是 UTC, 裸 fromtimestamp 会把封板
+    时间显示成北京时间-8h(09:25 → 01:25), 且"午后上板 >= 13:00"判定永远为假。
+    修复后显式 BJ_TZ, 本组用例在任意宿主机时区下答案一致。"""
+
+    def setUp(self):
+        import cycle_push
+        self.fmt_time = cycle_push.fmt_time
+
+    def test_真实封板时间_北京上午(self):
+        # 真实库值: 2026-11-23 首个涨停封板 = 北京 09:25:00(TZ=UTC 下修复前显示 01:25)
+        self.assertEqual(self.fmt_time(1795397100), "09:25")
+
+    def test_午后封板时间_能过13点阈值(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        ts = int(datetime(2026, 11, 23, 14, 30,
+                          tzinfo=ZoneInfo("Asia/Shanghai")).timestamp())
+        self.assertEqual(self.fmt_time(ts), "14:30")
+        self.assertGreaterEqual(self.fmt_time(ts), "13:00")
+
+    def test_跨日时刻仍按北京时区(self):
+        # 北京 00:30 = UTC 前一日 16:30 —— 宿主机无论什么时区都应显示 00:30
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        ts = int(datetime(2026, 11, 23, 0, 30,
+                          tzinfo=ZoneInfo("Asia/Shanghai")).timestamp())
+        self.assertEqual(self.fmt_time(ts), "00:30")
+
+    def test_非数值返回问号(self):
+        for bad in (None, "abc", "", object()):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.fmt_time(bad), "?")
+
+
 if __name__ == "__main__":
     unittest.main()

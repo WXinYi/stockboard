@@ -1,5 +1,5 @@
 name: 竞价扫描 + 推送 + 发版
-# 由 cron-job.org 09:25(北京时间) repository_dispatch 触发。
+# 由 cron-job.org 09:25(北京时间) workflow_dispatch 触发(repository_dispatch: auction 仍兼容保留)。
 # 只扫描 + 推送 + 提交 auction.json, 然后直接 build+部署 Pages(不再等 09:31 开盘确认)。
 # 2026-09-10 重构: 原「等至 09:31 开盘确认 + --confirm 补推」整链移除 —— 用户拍板
 # 「不需要开盘确认了, 只要获取到新数据就直接发版」。这样竞价数据约 09:28 就上线,
@@ -93,12 +93,13 @@ jobs:
             python3 scripts/release_db.py --what auction --upload-latest --baseline-sha-file /tmp/auction_sha_start
           fi
 
-      - name: 提交 auction.json + hot_rank.db(前端 raw 即时读取 + 回测积累)
+      # hot_rank.db 已于 2026-11-25 随人气榜链路下线(前端 0 引用), 不再随竞价班提交。
+      - name: 提交 auction.json + player_visibility.json
         if: steps.dayguard.outputs.trading != 'false'
         run: |
           git config user.name "bot"
           git config user.email "bot@users.noreply.github.com"
-          git add -f stockboard-app/public/data/latest/auction.json jiarenmens/data/hot_rank.db jiarenmens/data/player_visibility.json
+          git add -f stockboard-app/public/data/latest/auction.json jiarenmens/data/player_visibility.json
           if git diff --staged --quiet; then
             echo "auction.json 无变化, 跳过提交"
           else

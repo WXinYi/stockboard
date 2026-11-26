@@ -392,7 +392,7 @@ def recompute_926(tmp_db, bidding, prev, prev2, broken_prev, broken_prev2):
     sc._circ_mv_map = lambda d: mv_map
 
     cycle = ec.compute_cycle(persist=False)          # dates[-1] = 昨日(如 09-11)
-    pool = sc.stage_pool(cycle, max_n=30, bid_date=datetime.now(BJ_TZ).strftime("%Y-%m-%d"))
+    sc.stage_pool(cycle, max_n=30, bid_date=datetime.now(BJ_TZ).strftime("%Y-%m-%d"))
     return cycle
 
 
@@ -665,8 +665,8 @@ def main():
             log(f"    ℹ️ 宽度接口今日行={alt}(≠{today}), 按接口实际日对账")
             today = rf["today"]["day"]
         else:
-            V.add("ALL", "⏭", f"宽度接口今日行为空(非交易日/源不可用), 对账终止")
-            log(f"══ 总结: ⏭ 非交易日或源不可用 ══")
+            V.add("ALL", "⏭", "宽度接口今日行为空(非交易日/源不可用), 对账终止")
+            log("══ 总结: ⏭ 非交易日或源不可用 ══")
             return 0
     prev = next((r["day"] for r in rf["series"] if r["day"] < today), None)
     if not prev:

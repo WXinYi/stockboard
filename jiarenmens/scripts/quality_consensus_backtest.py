@@ -20,7 +20,6 @@ import subprocess
 import time
 from pathlib import Path
 from collections import defaultdict
-from bisect import bisect_right
 
 ROOT = Path(__file__).resolve().parents[1]          # jiarenmens/
 REPO = ROOT.parent                                   # 仓库根(git pathspec 用)
@@ -148,7 +147,7 @@ def main():
     print("— 去重票(每票首日):")
     stats(uniq, "  ")
     # 高频共识票 Top
-    cnt = Counter = defaultdict(int)
+    cnt = defaultdict(int)
     for e in g2:
         cnt[e["code"]] += 1
     top = sorted(cnt.items(), key=lambda x: -x[1])[:10]

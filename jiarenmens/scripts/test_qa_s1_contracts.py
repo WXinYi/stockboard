@@ -43,10 +43,6 @@ def make_market_dbs(db_dir):
     a.execute("CREATE TABLE market_breadth (date TEXT, zt INTEGER)")
     a.commit()
     a.close()
-    h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
-    h.execute("CREATE TABLE hot_rank (date TEXT, snap TEXT, rank INTEGER, code TEXT, name TEXT, rise REAL)")
-    h.commit()
-    h.close()
     return Path(db_dir)
 
 
@@ -161,13 +157,16 @@ class TestExactContractFields(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 ps.build_stocks_doc(DATE, bad, TS, [])
 
-    def test_落盘文件集_严格3核心加4市场切片_无第5契约_no_market子目录(self):
+    def test_落盘文件集_严格3核心加2市场切片_无第5契约_no_market子目录(self):
         names = {p.name for p in self.out.iterdir()}
         self.assertEqual(names, {"players.json", "stocks.json", "today.json", *em.MARKET_SLICES})
+        self.assertEqual(em.MARKET_SLICES, ("lianban_bid.json", "market_breadth.json"),
+                         "hot_rank.json 已于 2026-11-25 随人气榜链路下线")
         self.assertFalse((self.out / "archive_players.json").exists(), "6B: 不产第 5 个 JSON")
         self.assertFalse((self.out / "market").exists(), "AQ1=A: 不迁 market/ 子目录")
         self.assertNotIn("auction.json", names, "F5: --market-only 不写 auction.json")
-        for downlined in ("my_positions.json", "strike_review.json", "six_history.json"):
+        for downlined in ("my_positions.json", "strike_review.json", "six_history.json",
+                          "hot_rank.json"):
             self.assertNotIn(downlined, names)
 
 

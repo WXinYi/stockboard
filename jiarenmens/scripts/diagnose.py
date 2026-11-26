@@ -21,10 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from playwright.async_api import async_playwright
-
 from src.config import (
-    USER_AGENT,
     PLAYER_INFO_URL,
     POSITION_URL,
     TRADE_URL,
@@ -109,7 +106,7 @@ async def dump_page(
         print(f"    HTML 长度: {len(html)} 字节")
         print(f"    body innerText 前 200 字: {body_text[:200]!r}")
         print(f"    桥接对象: {bridge_state}")
-        print(f"    截图已保存")
+        print("    截图已保存")
     except Exception as e:
         print(f"    [错误] {e}")
     finally:

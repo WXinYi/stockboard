@@ -12,6 +12,7 @@ notify_daily.py / watched_flash.py 读它决定是否跳过。文件随 crawl.ym
 import json
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 # ⚠️ 路径: 本文件在 jiarenmens/src/utils/ 下, parents[2] 已是 jiarenmens/ 目录,
 # 再拼 "jiarenmens/data" 会变成 jiarenmens/jiarenmens/data(2026-09-18 修复的静默 bug:
@@ -41,7 +42,8 @@ def update(results: dict) -> dict:
     (11-10 事故: 全名单隐藏状态持续两天, watchdog/日报零推送)。"""
     st = load()
     hidden = st.get("hidden", {})
-    today = datetime.now().strftime("%Y-%m-%d")
+    # "今天"按北京日期(runner 是 UTC, 裸 now() 在北京 00:00~07:59 会落到前一天); 2026-11-25 加固
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
     new_hidden = [zh for zh, is_none in results.items()
                   if is_none and zh not in hidden]
     if len(new_hidden) >= 5:

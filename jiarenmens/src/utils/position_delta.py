@@ -15,7 +15,7 @@
 
 纯函数, 不做 IO; 单测见 test_position_delta.py。
 """
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 # 文字档位 → 数值仓位%("1成以下"买方≈5; 卖方见模块注释的保守规则)
 RATIO_MAP: Dict[str, float] = {

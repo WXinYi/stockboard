@@ -7,7 +7,6 @@
 token 来源: env EM_CT_TOKEN/EM_UT_TOKEN > data/em_tokens.json(gitignored, 抓包获取)。
 token 失效表现: code 9081/200 → 采集诚实失败, 重新抓包更新 token 即恢复。
 """
-import re
 import json
 import time
 import uuid
@@ -16,7 +15,6 @@ import string
 import os
 import asyncio
 from typing import Dict, Any, Optional, List, Tuple
-from datetime import date
 from pathlib import Path
 
 import requests

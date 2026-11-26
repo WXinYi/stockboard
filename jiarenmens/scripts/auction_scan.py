@@ -26,9 +26,8 @@ import json
 import os
 import re
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import quote
@@ -36,13 +35,11 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import requests  # noqa: E402
-
 from src.analysis.auction_env import board_select, env_check  # noqa: E402
 from src.analysis.emotion_cycle import compute_cycle  # noqa: E402
 from src.config import AUCTION_OUT, DATA_DIR  # noqa: E402
 from src.notify.dingtalk import DingTalk  # noqa: E402
-from src.spiders.auction_spider import AuctionStore, HotRankStore, KPLSpider  # noqa: E402
+from src.spiders.auction_spider import AuctionStore, KPLSpider  # noqa: E402
 # AQ2=A / S2: 竞价换手 0 值补算改从共享模块取, 与 export_json.py 的删除解耦
 from src.notify.quotes import tencent_auction_amt as _tencent_auction_amt  # noqa: E402
 
@@ -311,79 +308,6 @@ def collect_boards(spider, date_str, live=False):
             print(f"ℹ️ 走当天实时板块路径(His 不服务当天: {str(e)[:60]})")
         return _collect_boards_live(spider, date_str)
     return _collect_boards_his(spider, date_str)
-
-
-# =============================================================================
-# 钉钉消息
-# =============================================================================
-
-
-# =============================================================================
-# 钉钉消息
-# =============================================================================
-
-def collect_em_hot(top: int = 100) -> List[Dict]:
-    """东财股吧人气榜 TOP100(实时, 无历史接口)。
-    返回 [{rank, code, name, rise}];名称用 qt.gtimg 批量补(查不到存空串不阻塞)。"""
-    url = "https://emappdata.eastmoney.com/stockrank/getAllCurrentList"
-    body = json.dumps({"appId": "appId01", "globalId": "786e4c21-70dc-435a-93bb-38",
-                       "marketType": "", "pageNo": 1, "pageSize": top}).encode()
-    req = requests.post(url, data=body, timeout=10,
-                        headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"})
-    req.raise_for_status()
-    d = req.json()
-    if d.get("code") != 0:
-        raise RuntimeError(f"人气榜接口异常: code={d.get('code')}")
-    items = d.get("data") or []
-    rows = []
-    for it in items[:top]:
-        sc = it.get("sc", "")            # 形如 SH688836 / SZ002716
-        mkt = sc[:2].lower()             # sh / sz
-        code = sc[2:]
-        rows.append({"rank": it.get("rk"), "code": code, "name": "",
-                     "rise": it.get("rc") or 0, "_mkt": mkt})
-    # 批量补名称(qt.gtimg 一次可拼多只)
-    try:
-        q = ",".join(f"{r['_mkt']}{r['code']}" for r in rows)
-        resp = requests.get(f"https://qt.gtimg.cn/q={q}", timeout=10,
-                            headers={"User-Agent": "Mozilla/5.0"})
-        text = resp.content.decode("gbk", "replace")
-        name_map = {}
-        for seg in text.split(";"):
-            seg = seg.strip()
-            if "=" not in seg or "~" not in seg:
-                continue
-            parts = seg.split("~")
-            full = parts[0].split("=")[0].strip().lstrip("v_")   # v_sh603618 → sh603618
-            code = full[2:] if full[:2] in ("sh", "sz") else full
-            name_map[code] = parts[1]
-        for r in rows:
-            r["name"] = name_map.get(r["code"], "")
-    except Exception as e:
-        print(f"      ⚠️ 名称补充失败(存空串): {e}")
-    for r in rows:
-        r.pop("_mkt", None)
-    return rows
-
-
-def hot_rank_job(snap: Optional[str] = None, dry_run: bool = False) -> int:
-    """--hot-rank 独立入口: 抓东财人气榜并落 hot_rank.db(crawl.yml 午后调用)。
-    snap 自动判定: 当日无快照→'am'(竞价失败兜底), 已有→'pm'。同(date,snap)重复写入跳过。"""
-    from src.spiders.auction_spider import HotRankStore
-    date_str = datetime.now(BJ_TZ).strftime("%Y-%m-%d")
-    hr = HotRankStore()
-    if snap is None:
-        snap = "am" if not hr.has_snapshot(date_str, "am") else "pm"
-    try:
-        rows = collect_em_hot(top=100)
-    except Exception as e:
-        print(f"❌ 人气榜采集失败: {e}")
-        return 1
-    print(f"东财人气榜 {len(rows)} 条 → {date_str}/{snap}" + (" (dry-run 不落库)" if dry_run else ""))
-    if not dry_run:
-        saved = hr.save_hot_rank(date_str, snap, rows)
-        print("已存在同快照,跳过" if not saved else f"✅ 已落库 hot_rank.db ({snap}, 前{len(rows)})")
-    return 0
 
 
 def market_regime(date_str: str) -> Dict:
@@ -661,11 +585,18 @@ def _fallback_trading_day(spider: KPLSpider, date_str: str) -> str:
     raise RuntimeError(f"最近5天均无市场数据({date_str} 起回溯)")
 
 
+def pool_lag_days(pool_day: str) -> int:
+    """周期判定所用池日距"今日"的自然日数(陈旧池守卫用)。
+
+    "今日"按北京日期: runner 是 UTC, 09:25 班两者恰好相同, 凌晨补跑时裸 date.today()
+    会差一天(2026-11-25 加固)。池日格式非法时抛 ValueError, 由调用方按原逻辑吞掉。"""
+    return (datetime.now(BJ_TZ).date() - date.fromisoformat(str(pool_day))).days
+
+
 def scan(date_str: str, dry_run: bool = False) -> int:
     """主扫描: 采集 → 周期 → 出击选股 Top5 + 昨日连板·竞价换手 Top5 → 钉钉推送。
     存量评分漏斗候选与 V5 首枪已整链删除(2026-09-06): 漏斗评分/S7 融合/涨停基因/全池
     竞价分时采集、v5_results 表及回测打标一并移除 —— 每交易日省去数百请求。"""
-    t0 = time.time()
     spider = KPLSpider()
     date_str = _fallback_trading_day(spider, date_str)
     today_str = datetime.now(BJ_TZ).strftime("%Y-%m-%d")
@@ -698,7 +629,7 @@ def scan(date_str: str, dry_run: bool = False) -> int:
     _prev_limit_day = _prev_day_row[0] if _prev_day_row else None
     _conn.close()
 
-    print(f"[4/5] 情绪周期")
+    print("[4/5] 情绪周期")
     cycle_res = None
     try:
         cycle_res = compute_cycle(date_str, persist=False)
@@ -718,9 +649,8 @@ def scan(date_str: str, dry_run: bool = False) -> int:
                 # 班次全绿零感知)。口径: 池日距今日 >4 个自然日即打 ::warning:: —— 周末
                 # 周一(3天)不误报; 长假后首日会提示(池日确实落后, warning 级无害可解释)。
                 try:
-                    from datetime import date as _date
                     _pool_day = str(cycle_res.get("date", ""))
-                    _lag = (_date.today() - _date.fromisoformat(_pool_day)).days if _pool_day else 99
+                    _lag = pool_lag_days(_pool_day) if _pool_day else 99
                     if _lag > 4:
                         print(f"      ::warning::周期判定池日 {_pool_day} 落后今日 {_lag} 个自然日 — "
                               f"涨停池生产链路疑似断供(crawl.yml 15:00 后应跑 backfill_emotion --pool)")
@@ -731,7 +661,7 @@ def scan(date_str: str, dry_run: bool = False) -> int:
         else:
             print(f"      ⚠️ 周期引擎不可用({e}), 出击选股无法生成")
 
-    print(f"[5/5] 出击选股 + 昨日连板换手")
+    print("[5/5] 出击选股 + 昨日连板换手")
     picks, watch_mode, bidrank = [], False, []
     if cycle_res:
         # 出击选股(9:26 口径): stage_pool(当日周期+当日竞价) → Top5。strike_pool 原样存档供复核。
@@ -792,21 +722,6 @@ def scan(date_str: str, dry_run: bool = False) -> int:
             print(f"      昨日({_prev_limit_day})连板 {len(lianban_rows)} 只 → 竞价换手 Top{len(bidrank)}")
         except Exception as e:
             print(f"      ⚠️ 昨日连板换手排名失败(不影响主流程): {e}")
-
-    # 人气榜 am 快照(东财单源, 前100, 保留排名): 独立 hot_rank.db;dry-run 不写
-    if not dry_run:
-        print(f"      东财人气榜快照(am)")
-        try:
-            hot = collect_em_hot(top=100)
-            hr = HotRankStore()
-            snap = "am" if not hr.has_snapshot(date_str, "am") else None
-            if snap:
-                saved = hr.save_hot_rank(date_str, snap, hot)
-                print(f"      → {len(hot)} 条已存({snap})" if saved else "      → 已存在,跳过")
-            else:
-                print("      → 今日已有快照,跳过")
-        except Exception as e:
-            print(f"      ⚠️ 人气榜采集失败(不影响主流程): {e}")
 
     out = {
         "date": date_str, "generated_at": crawl_time,
@@ -907,16 +822,12 @@ def main():
     ap = argparse.ArgumentParser(description="竞价抢筹扫描")
     ap.add_argument("--date", help="扫描日期 YYYY-MM-DD(默认今天)")
     ap.add_argument("--probe", action="store_true", help="接口探测模式(T1)")
-    ap.add_argument("--hot-rank", action="store_true",
-                    help="东财人气榜快照(TOP100)落 hot_rank.db; snap 自动判定 am/pm(crawl.yml 午后调用)")
     ap.add_argument("--dry-run", action="store_true", help="演练: 不推钉钉不写生产快照, 正文打印供核验")
     args = ap.parse_args()
 
     date_str = args.date or datetime.now(BJ_TZ).strftime("%Y-%m-%d")
     if args.probe:
         return probe(date_str)
-    if args.hot_rank:
-        return hot_rank_job()
     return scan(date_str, dry_run=args.dry_run)
 
 

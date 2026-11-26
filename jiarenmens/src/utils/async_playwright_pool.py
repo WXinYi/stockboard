@@ -11,7 +11,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional, Generator
 
-from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext
 
 from src.config import USER_AGENT, MOBILE_VIEWPORT, DEVICE_SCALE_FACTOR
 from src.utils.logger import setup_logger

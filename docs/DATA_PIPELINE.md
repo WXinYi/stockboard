@@ -1,13 +1,13 @@
 # StockBoard 数据管线（当前状态）
 
-> 最后更新：2026-11-24（北京时间）。本文件只描述**当前生产链路**与必要运维点；历史事故和过程见 `git log`。
+> 最后更新：2026-11-25（北京时间）。本文件只描述**当前生产链路**与必要运维点；历史事故和过程见 `git log`。
 > 代码仓库：<https://github.com/WXinYi/stockboard>；生产站点：<https://wxinyi.github.io/stockboard/>。
 
 ## 1. 全链路一句话
 
 cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` → GitHub Pages 部署；watchdog 和格局推送直接发钉钉，不依赖页面刷新。
 
-当前生产不再跑 `main.py` / `export_json.py` / `notify_daily.py` / `prune_crawl_db.py`。核心产物是 4 契约 + 4 市场切片；`auction.db` 仍通过 Release 热层在竞价/市场类 workflow 间共享。
+当前生产不再跑 `main.py` / `export_json.py` / `notify_daily.py` / `prune_crawl_db.py`。核心产物是 4 契约 + 2 市场切片；`auction.db` 仍通过 Release 热层在竞价/市场类 workflow 间共享。
 
 ## 2. 当前调度
 
@@ -36,6 +36,8 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 - 核心时段守卫（2026-11-24 重写，看结果不看时钟）：`rank`（09:25–09:35）/ `midday`（11:29–11:40）窗口过后，定时 `market` 班发现当日快照还没提交进 git（`players.json` / `stocks.json` 的 `date` ≠ 今天）才输出 `::warning::`，并提示 `force_class=rank|midday` 补跑。非交易日、`SB_DATA_V2=0`、手动指定班次时不核对；窗口过后全天有效。
   - 旧版只判断「market 班是否落进 09:15–09:45 / 11:15–11:45」，而 cron 的 09:38、11:15 常规班本身就在窗口里，11-18 起每天固定误报 2 条。
 - `concurrency: pages-${{ github.ref }}`，`cancel-in-progress: false`：后续 market 班排队，不掐正在跑的 midday/close。
+- 时间一律按北京时区（2026-11-25 加固）：runner 是 UTC，`release_db`（日/周快照命名、超龄清理、库龄闸门、marker）、`auction_spider` 的竞价快照日期校验、竞价班陈旧池守卫、`visibility` 的「今天」统一走 `_today_bj()` / `datetime.now(BJ_TZ)`；此前因班次都在北京 09:25 后运行而恰好未出错。回归测试 `test_runner_timezone.py` 把时钟冻结在 UTC 17:30（北京次日 01:30）验证。
+- 人气榜链路已下线（2026-11-25，前端与线上 bundle 引用为 0）：不再抓东财人气榜、不产出 `hot_rank.json`、不提交 `hot_rank.db`；历史数据保留在 git 历史里。每班省 2–4s、每天少 22 次东财请求。
 
 ### 3.2 数据步骤
 
@@ -46,9 +48,9 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 | 午盘快照 | `player_snapshot.py --midday --live --no-token` | 12 worker，2N 次 rtV2 调用 |
 | 收盘快照 | `player_snapshot.py --close --live --no-token` | 12 worker，3N 次 rtV2 调用 |
 | 涨停池归档 | `backfill_emotion.py --pool <7天窗口> --skip-existing` | 15:00 后班执行，7 天滚动幂等自愈；**2026-11-19 修复**（重构删 auction-label.yml 时生产者被连带删除，limit_pool 断供 11-13~11-18 三个交易日，竞价班周期判定/连板名单静默用陈旧池；竞价班另有"池日落后>4 自然日 → ::warning::"守卫） |
-| 市场切片 | `export_market.py --market-only` | 写 `hot_rank/lianban_bid/market_breadth.json`（broken_pool 切片已随弱转强下线删除, 11-20） |
+| 市场切片 | `export_market.py --market-only` | 写 `lianban_bid/market_breadth.json`（`broken_pool` 11-20、`hot_rank` 11-25 先后下线删除） |
 | 格局推送 | `cycle_push.py --session midday/eod` | 13:00–13:25 / 14:40–15:00，钉钉正文与失败标志 |
-| auction.db | `release_db.py --what auction --download-latest/--upload-latest` | 每班恢复，sha 变更才上传，带 baseline-sha 并发守卫 |
+| auction.db | `release_db.py --what auction --download-latest/--upload-latest` | 每班恢复；上传只在 09:25 竞价班（不可重采的竞价档案）与 15:15 收盘专班（定稿），盘中班不传（唯一写入 breadth-rt 每班自实时重写、自愈）；上传带 baseline-sha 并发守卫（2026-11-24） |
 
 **LLM 影子选股已下线（2026-11-19 拍板）**：`llm-1000.yml` 重构删除后自 11-14 起无新产出，9:25 回填永远停在旧存档，且 11-07 回测结论"不转正"。已删：`src/analysis/llm_review.py`、`scripts/llm_picks_review.py` 及测试、`data/llm_archive/`、auction.yml 的 DEEPSEEK env、前端大模型卡（`auctionError` 失败提示独立成节保留）；`auction.json` 的 `llm` 键与 auction.db 的 `llm_review` 表（历史数据）不再产出/读取。
 
@@ -56,7 +58,7 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 
 ### 3.3 部署与提交
 
-- 数据班只精确提交：`players/stocks/today/hot_rank/lianban_bid/market_breadth.json` + `jiarenmens/data/.cycle_push_state.json`。
+- 数据班只精确提交：`players/stocks/today/lianban_bid/market_breadth.json` + `jiarenmens/data/.cycle_push_state.json`（白名单与实际产出一致由 `test_hot_rank_retired.py` 锁定）。
 - 提交信息：`📊 数据更新 YYYY-MM-DD [skip ci]`。
 - 推送冲突：`git -c rebase.autoStash=true pull --rebase -X theirs`，最多重试 3 次；`-X theirs` 在 rebase 中表示保留本班重放提交（最新采集数据）。
 - dist 壳按前端源码指纹缓存；代码未变时只 `rsync` 拼接最新 `public/data`。
@@ -71,13 +73,12 @@ cron-job.org 触发 GitHub Actions → 生成静态 JSON → 提交到 `main` �
 | `players.json` | `{date, rankTime, players[]}`；选手含 `id/name/userId/watched/prevClose/today` |
 | `stocks.json` | `{date, snapshot: 1130|close, updatedAt, stats[]}`；`stats[] = {code,name,h,tp,ap}` |
 | `today.json` | `{date, updatedAt, tradedPlayerIds, emContract, tradeConsensus}` |
-| `hot_rank.json` | `{date, snap, rows[], src}` |
 | `lianban_bid.json` | `{date, prev_day, top[], src}` |
 | `market_breadth.json` | `{date, row, src}` |
 
 `tradeConsensus` 当前代码写入 `totalTrades/totalBuyers/aTotalTrades/aTotalBuyers/stocks[]`。2026-11-17 生产快照暂为旧结构（缺 A 股字段），前端回退全市场口径；11-18 自然班后完整写入，契约守卫届时应收紧为“必须有”。
 
-下线切片文件（`six_history.json` / `my_positions.json` / `strike_review.json`）已于 2026-11-19 从仓库删除；部署 `rsync -a --delete` 会在下一班把线上旧文件一并清掉。`auction.json`（09:25 竞价班产出）与上述契约并存于同目录。
+下线切片文件（`six_history.json` / `my_positions.json` / `strike_review.json`，2026-11-19；`hot_rank.json` 与 `hot_rank.db`，2026-11-25）已从仓库删除；部署 `rsync -a --delete` 会在下一班把线上旧文件一并清掉。`auction.json`（09:25 竞价班产出）与上述契约并存于同目录。
 
 A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示层滤港股，数据文件保留全量。
 
@@ -136,17 +137,19 @@ A 股判定：6 位数字代码；港股为 5 位。两个共识页只在展示�
 ## 8. 当前验证基线
 
 - 前端：`npx vitest run` → 269 passed（11-23 复核）；`npx vite build` 成功。
-- 后端：`/opt/homebrew/bin/python3.12 -m unittest discover -s scripts -p 'test_*.py'` → 287 tests OK (skipped=3)（11-24 复核）。
+- 后端：`/opt/homebrew/bin/python3.12 -m unittest discover -s scripts -p 'test_*.py'` → 312 tests OK (skipped=3)（11-25：287 + fmt_time 时区 4 + 人气榜下线锁 11 + runner 时区 10）。
 - 系统 `python3` 是 3.9，跑全量会因 `dict | None` 报 import error；必须用 3.12。
 - CI：代码门禁 `test.yml` 覆盖 `jiarenmens/**/*.py`、`stockboard-app/src/**`、`scf/**`、`.github/workflows/*.yml`。门禁的单测输出先经 `sed` 把行首 `::` 改写成普通文本（2026-11-24）：被测代码走模拟失败路径时会打 `::error::`，runner 会把它收成注解，造成门禁全绿却挂红叉；`pipefail` 保住单测退出码。
 
 ## 9. 剩余事项
 
-1. 11-18 自然班验证：midday 写 A 股字段、13:05 推送正文与去重状态、15:45 新告警 workflow。
-2. A 股字段到位后收紧 `test_qa_s1_contracts.py`。
-3. S5/G4 证据链：K2、班时、20+21 班对账；R2/NR-2/NR-3 风险收口。
+1. ~~11-18 自然班验证~~ 已全过（2026-11-19 核验）。
+2. ~~A 股字段到位后收紧 `test_qa_s1_contracts.py`~~ 已完成（2026-11-20，改为「必须有」精确集合断言）。
+3. ~~S5/G4 证据链~~ 已收口（2026-11-20 文书，见 `docs/OPTIMIZATION_PROGRESS.md` 验收记录）。
 4. S6 归档：G4 后整理历史文档；本文件与 `docs/OPTIMIZATION_PROGRESS.md` 已是当前状态入口。
 5. ~~cron-job.org 历史 `llm-1000` job `8489018`~~ **已确认删除**（2026-11-17 API 复查：cron-job 上已无任何 llm 任务，20 个采集班数量一一吻合；该 job 在重构 S3 外部 cron 清理时已删，本行此前记录滞后）。另有 4 个 disabled 的 AIStock 旧项目任务（7570116~7570130），与本项目无关，未动。
+
+6. `scripts/data_reconcile.py`（本地对账工具）自 2026-11-20 起无法加载：主流程与 `recompute_926` 仍调用已删除的 `xuangubao.fetch_broken_pool`、给已删除的 `sc._broken_map` 打桩，import 即报错。不影响生产，待拍板：删掉其炸板池依赖后修复，或整工具下线。
 
 ## 10. 回滚点
 

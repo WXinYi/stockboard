@@ -38,7 +38,8 @@ ONLINE_STOCKS = ONLINE_LATEST / "stocks.json"
 
 
 def make_market_dbs(db_dir, with_crawl_db=True):
-    """两个白名单市场库 + 可选的 crawl_data.db（真实存在，用于证明从不打开）。"""
+    """白名单市场库 auction.db + 可选的 crawl_data.db（真实存在，用于证明从不打开）。
+    hot_rank.db 已于 2026-11-25 随人气榜链路下线：夹具故意不建它，证明导出不再依赖它。"""
     a = sqlite3.connect(str(Path(db_dir) / "auction.db"))
     a.execute("CREATE TABLE bid_pool (date TEXT, code TEXT, name TEXT, turnover_ratio REAL)")
     a.execute("INSERT INTO bid_pool VALUES (?, '000001', '平安银行', 3.5)", (DATE,))
@@ -46,11 +47,6 @@ def make_market_dbs(db_dir, with_crawl_db=True):
     a.execute("INSERT INTO market_breadth VALUES (?, 30, 5)", (DATE,))
     a.commit()
     a.close()
-    h = sqlite3.connect(str(Path(db_dir) / "hot_rank.db"))
-    h.execute("CREATE TABLE hot_rank (date TEXT, snap TEXT, rank INTEGER, code TEXT, name TEXT, rise REAL)")
-    h.execute("INSERT INTO hot_rank VALUES (?, 'am', 1, '000001', '平安银行', 2.1)", (DATE,))
-    h.commit()
-    h.close()
     if with_crawl_db:
         c = sqlite3.connect(str(Path(db_dir) / "crawl_data.db"))
         c.execute("CREATE TABLE positions (id INTEGER)")
@@ -160,11 +156,11 @@ class TestMarketOnlyHardConstraints(unittest.TestCase):
         self.dbs = make_market_dbs(tempfile.mkdtemp())
         self.out = Path(tempfile.mkdtemp())
 
-    def test_ALLOWED_DBS_白名单恰为两市场库(self):
-        self.assertEqual(em.ALLOWED_DBS, ("auction.db", "hot_rank.db"))
+    def test_ALLOWED_DBS_白名单恰为一市场库(self):
+        self.assertEqual(em.ALLOWED_DBS, ("auction.db",))
         self.assertTrue((self.dbs / "crawl_data.db").exists(), "存量库确实存在")
 
-    def test_经main_只连2库_crawl_data_db存在也从不打开(self):
+    def test_经main_只连1库_crawl_data_db存在也从不打开(self):
         opened = []
         real_connect = sqlite3.connect
 
@@ -177,15 +173,17 @@ class TestMarketOnlyHardConstraints(unittest.TestCase):
                 rc = em.main(["--market-only", "--out", str(self.out),
                               "--db-dir", str(self.dbs), "--date", DATE])
         self.assertEqual(rc, 0)
-        self.assertEqual(len(opened), 2, "恰好 2 次连接")
+        self.assertEqual(len(opened), 1, "恰好 1 次连接")
         self.assertFalse(any("crawl_data.db" in p for p in opened),
                          f"打开了 crawl_data.db: {opened}")
-        self.assertTrue(all("auction.db" in p or "hot_rank.db" in p for p in opened))
+        self.assertFalse(any("hot_rank" in p for p in opened),
+                         f"人气榜已下线, 不得再打开: {opened}")
+        self.assertTrue(all("auction.db" in p for p in opened))
         self.assertTrue(all("mode=ro" in p for p in opened), "只读方式")
 
     def test_connect_ro_拒绝任意非白名单库名(self):
         for name in ("crawl_data.db", "players.db", "copy.db", "auction.db.bak",
-                     "hot_rank.db.tmp", "core.db"):
+                     "hot_rank.db", "hot_rank.db.tmp", "core.db"):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 em.connect_ro(self.dbs / name)
 
@@ -201,7 +199,7 @@ class TestMarketOnlyHardConstraints(unittest.TestCase):
         self.assertEqual(rc, 0)
         names = {p.name for p in flat.iterdir()}
         self.assertEqual(names, set(em.MARKET_SLICES),
-                         "AQ1=A: 4 切片平铺在 data/latest/ 根")
+                         "AQ1=A: 市场切片平铺在 data/latest/ 根")
         self.assertFalse((flat / "market").exists(), "不迁 market/ 子目录")
         for p in flat.iterdir():
             self.assertTrue(p.is_file())
@@ -216,12 +214,11 @@ class TestMarketOnlyHardConstraints(unittest.TestCase):
         self.assertFalse(any(n.endswith(".tmp") for n in names))
         for forbidden in em.FORBIDDEN_SLICES:
             self.assertIn(forbidden, ("auction.json", "my_positions.json",
-                                      "strike_review.json", "six_history.json"))
+                                      "strike_review.json", "six_history.json",
+                                      "hot_rank.json"))
 
     def test_切片内容源自对应市场库(self):
         em.cmd_market_only(self.out, self.dbs, DATE)
-        self.assertEqual(json.loads((self.out / "hot_rank.json").read_text())["src"],
-                         "hot_rank.db")
         for name in em.MARKET_SLICES:
             doc = json.loads((self.out / name).read_text())
             self.assertIn("date", doc)
