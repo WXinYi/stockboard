@@ -1,73 +1,225 @@
 {
- "date": "2026-11-25",
+ "date": "2026-11-26",
  "generated_at": "09:25",
  "env": {
   "pass": true,
   "reasons": [
-   "情绪值22 超区间[25,75](参考: 过低冰点/过高释放亏钱效应)",
-   "红盘占比 10% < 40% (参考)"
+   "环境正常"
   ],
   "data": {
-   "strong": 22,
+   "strong": 52,
    "lbgd": 4,
    "capacity_ratio": null,
-   "red_ratio": 0.09806602852119554,
+   "red_ratio": 0.8751227174553309,
    "bid_count": [
-    104,
-    128,
+    147,
+    105,
     50,
-    18,
+    25,
     3
    ],
-   "bid_total": "142亿",
-   "bid_total_prev": "278亿"
+   "bid_total": "117亿",
+   "bid_total_prev": "142亿"
   }
  },
  "boards": [
   {
-   "code": "801159",
-   "name": "机器人概念",
-   "burst": 6.0,
-   "amount": 697844604.0,
-   "main_net": 57109020.0,
-   "src": "爆量L2",
+   "code": "801062",
+   "name": "军工",
+   "burst": 10.8,
+   "amount": 424982393.0,
+   "main_net": 93878296.0,
+   "src": "爆量+强度",
+   "strength": 532.0
+  },
+  {
+   "code": "801001",
+   "name": "芯片",
+   "burst": 8.1,
+   "amount": 1568575994.0,
+   "main_net": 103119672.0,
+   "src": "爆量L1",
+   "strength": 0.0
+  },
+  {
+   "code": "801190",
+   "name": "卫星导航",
+   "burst": 7.0,
+   "amount": 134991655.0,
+   "main_net": 39889136.0,
+   "src": "爆量+强度",
+   "strength": 188.0
+  },
+  {
+   "code": "801004",
+   "name": "锂电池",
+   "burst": 5.5,
+   "amount": 356032126.0,
+   "main_net": 23918256.0,
+   "src": "爆量+强度",
+   "strength": 116.0
+  },
+  {
+   "code": "801003",
+   "name": "5G",
+   "burst": 5.3,
+   "amount": 385758948.0,
+   "main_net": 86897431.0,
+   "src": "爆量L1",
    "strength": 0.0
   },
   {
    "code": "801045",
    "name": "医药",
-   "burst": 4.0,
-   "amount": 178491385.0,
-   "main_net": -13098703.0,
-   "src": "爆量L1",
-   "strength": 0.0
+   "burst": 4.5,
+   "amount": 233500906.0,
+   "main_net": -11361925.0,
+   "src": "爆量+强度",
+   "strength": 444.0
   },
   {
-   "code": "801027",
-   "name": "银行",
+   "code": "801053",
+   "name": "零售",
+   "burst": 4.0,
+   "amount": 88643817.0,
+   "main_net": -2966235.0,
+   "src": "爆量+强度",
+   "strength": 1052.0
+  },
+  {
+   "code": "801843",
+   "name": "商业航天",
    "burst": 0.0,
-   "amount": 293211449.0,
-   "main_net": 52994595.0,
+   "amount": 1635526233.0,
+   "main_net": 178239409.0,
    "src": "强度",
-   "strength": 7.0
+   "strength": 3358.0
+  },
+  {
+   "code": "801807",
+   "name": "算力",
+   "burst": 0.0,
+   "amount": 3549831338.0,
+   "main_net": 5403811.0,
+   "src": "强度",
+   "strength": 1922.0
+  },
+  {
+   "code": "801284",
+   "name": "举牌",
+   "burst": 0.0,
+   "amount": 150836219.0,
+   "main_net": 3099613.0,
+   "src": "强度",
+   "strength": 587.0
+  },
+  {
+   "code": "801310",
+   "name": "浙江",
+   "burst": 0.0,
+   "amount": 1254177128.0,
+   "main_net": 9974342.0,
+   "src": "强度",
+   "strength": 584.0
+  },
+  {
+   "code": "801471",
+   "name": "免税",
+   "burst": 0.0,
+   "amount": 100382649.0,
+   "main_net": 10452777.0,
+   "src": "强度",
+   "strength": 548.0
+  },
+  {
+   "code": "801218",
+   "name": "华为概念",
+   "burst": 0.0,
+   "amount": 3427253058.0,
+   "main_net": 14344374.0,
+   "src": "强度",
+   "strength": 468.0
+  },
+  {
+   "code": "801070",
+   "name": "光伏",
+   "burst": 0.0,
+   "amount": 1354851022.0,
+   "main_net": 42377087.0,
+   "src": "强度",
+   "strength": 261.0
+  },
+  {
+   "code": "801377",
+   "name": "金刚石概念",
+   "burst": 0.0,
+   "amount": 71659536.0,
+   "main_net": 1194475.0,
+   "src": "强度",
+   "strength": 210.0
+  },
+  {
+   "code": "801433",
+   "name": "光学镜头",
+   "burst": 0.0,
+   "amount": 64305299.0,
+   "main_net": 2436731.0,
+   "src": "强度",
+   "strength": 180.0
+  },
+  {
+   "code": "801216",
+   "name": "PCB概念",
+   "burst": 0.0,
+   "amount": 1009326633.0,
+   "main_net": 101757727.0,
+   "src": "强度",
+   "strength": 154.0
   }
  ],
  "strike": [
   {
    "code": "002579",
    "name": "中京电子",
-   "height": 4,
-   "status": "可做(矩阵谨慎)",
-   "reason": "龙头谱系[空间锚(最高连板)] 4连板 | 端侧AI主线空间龙, 封单 1.97亿",
+   "height": 5,
+   "status": "可做",
+   "reason": "龙头谱系[空间锚(最高连板)] 5连板 | 封单 1.07亿",
    "tag": null,
    "bid_pct": null
   },
   {
-   "code": "605018",
-   "name": "长华集团",
+   "code": "002548",
+   "name": "金新农",
+   "height": 4,
+   "status": "可做",
+   "reason": "龙头谱系[板块龙头(农业)] 主线[农业] 5只涨停, 封单 1.02亿；主线梯队 4板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "603030",
+   "name": "全筑股份",
+   "height": 2,
+   "status": "可做",
+   "reason": "主线梯队 2板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "002122",
+   "name": "汇洲智能",
    "height": 3,
-   "status": "可做(矩阵谨慎)",
-   "reason": "龙头谱系[总龙头] 主线[机器人概念] 17只涨停, 封单 0.88亿",
+   "status": "可做",
+   "reason": "主线梯队 3板",
+   "tag": null,
+   "bid_pct": null
+  },
+  {
+   "code": "600814",
+   "name": "杭州解百",
+   "height": 3,
+   "status": "可做",
+   "reason": "主线梯队 3板",
    "tag": null,
    "bid_pct": null
   }
@@ -75,107 +227,95 @@
  "strike_watch": false,
  "bidrank": [
   {
+   "code": "603960",
+   "name": "克来机电",
+   "height": 4,
+   "bid_pct": 8.6,
+   "turnover": 3.6569039601196276
+  },
+  {
    "code": "600814",
    "name": "杭州解百",
-   "height": 2,
-   "bid_pct": 8.3,
-   "turnover": 5.1215368721385675
-  },
-  {
-   "code": "002122",
-   "name": "汇洲智能",
-   "height": 2,
-   "bid_pct": 10.12,
-   "turnover": 4.57
-  },
-  {
-   "code": "605018",
-   "name": "长华集团",
    "height": 3,
-   "bid_pct": 3.7,
-   "turnover": 3.103915729876005
+   "bid_pct": 10.06,
+   "turnover": 3.64
   },
   {
    "code": "002579",
    "name": "中京电子",
-   "height": 4,
-   "bid_pct": 3.4,
-   "turnover": 2.64
+   "height": 5,
+   "bid_pct": 0.73,
+   "turnover": 2.35
   },
   {
-   "code": "001278",
-   "name": "一彬科技",
-   "height": 2,
-   "bid_pct": 10.02,
-   "turnover": 2.57
+   "code": "002122",
+   "name": "汇洲智能",
+   "height": 3,
+   "bid_pct": 5.85,
+   "turnover": 1.93
+  },
+  {
+   "code": "002548",
+   "name": "金新农",
+   "height": 4,
+   "bid_pct": 3.19,
+   "turnover": 1.81
   }
  ],
  "regime": {
-  "regime": "过渡",
-  "relay": 0.2054794520547945,
-  "max_board": 4,
+  "regime": "主线",
+  "relay": 0.2545454545454545,
+  "max_board": 5,
   "top1_days": 1,
   "detail": [
-   "昨日再板率21%",
-   "最高4板",
+   "昨日再板率25%",
+   "最高5板",
    "TOP1连续1日"
   ]
  },
  "cycle": {
-  "stage": "分歧",
+  "stage": "发酵",
   "confidence": 7,
-  "gate": "half",
+  "gate": "open",
   "mainlines": [
-   "机器人概念",
-   "算力",
-   "AI应用",
-   "端侧AI",
+   "流感",
    "农业",
-   "汽车零部件"
+   "零售",
+   "算力",
+   "医药",
+   "AI应用"
   ],
   "leaders": [
    {
     "code": "002579",
     "name": "中京电子",
-    "pid": 4,
+    "pid": 5,
     "role": "空间锚(最高连板)"
    },
    {
-    "code": "605018",
-    "name": "长华集团",
-    "pid": 3,
-    "role": "总龙头"
+    "code": "002275",
+    "name": "桂林三金",
+    "pid": 1,
+    "role": "中军(流感)"
    },
    {
-    "code": "301413",
-    "name": "安培龙",
-    "pid": 2,
-    "role": "中军(机器人概念)"
+    "code": "002548",
+    "name": "金新农",
+    "pid": 4,
+    "role": "板块龙头(农业)"
    },
    {
-    "code": "002164",
-    "name": "宁波东力",
-    "pid": 2,
-    "role": "补涨/卡位(机器人概念)"
-   },
-   {
-    "code": "001229",
-    "name": "魅视科技",
-    "pid": 2,
-    "role": "板块龙头(算力)"
-   },
-   {
-    "code": "002685",
-    "name": "华东重机",
-    "pid": 2,
-    "role": "中军(算力)"
+    "code": "600467",
+    "name": "好当家",
+    "pid": 1,
+    "role": "中军(农业)"
    }
   ]
  },
  "empty_reason": "",
  "stats": {
-  "pool": 281,
-  "boards": 3,
+  "pool": 518,
+  "boards": 17,
   "genes": 0
  },
  "candidates": [],
