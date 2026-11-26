@@ -16,6 +16,12 @@ vi.mock('../../data/loader.js', () => ({
   fetchToday: vi.fn().mockResolvedValue({ date: '2026-11-17' }),
   fetchLianbanBid: vi.fn().mockResolvedValue([]),
 }))
+// eastmoney.jsonp 在挂载期注入真实 script 拉行情: CI runner 上东财偶发 502 时用例挂到
+// 25s 超时(2026-11-26 门禁首次失败) → 断网 stub, 行情分支走错误路径, 其余导出保持真实现。
+vi.mock('../../utils/eastmoney.js', async (importOriginal) => ({
+  ...await importOriginal(),
+  jsonp: () => Promise.reject(new Error('测试环境无网络')),
+}))
 vi.mock('../../composables/useKplApi.js', () => ({
   fetchTianTi: vi.fn().mockResolvedValue([]),
   fetchGlobalIndexes: vi.fn().mockResolvedValue(null),
